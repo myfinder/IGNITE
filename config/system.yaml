@@ -1,0 +1,31 @@
+system:
+  name: IGNITE
+  version: "0.1.0"
+  description: "階層型マルチエージェントシステム"
+
+tmux:
+  session_name: ignite-session
+  window_name: ignite
+  dimensions:
+    width: 200
+    height: 50
+
+paths:
+  workspace: ./workspace
+  instructions: ./instructions
+  config: ./config
+  memory: ./memory
+  logs: ./workspace/logs
+
+claude_code:
+  command: "claude-code --dangerously-skip-permissions"
+  startup_delay: 3  # seconds to wait after launching
+
+monitoring:
+  dashboard_update_interval: 5  # seconds
+  queue_check_interval: 30      # seconds
+  log_rotation_size: 10485760   # 10MB
+
+defaults:
+  message_priority: normal
+  task_timeout: 300  # seconds

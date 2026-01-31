@@ -1,0 +1,26 @@
+# Workspace (runtime data - not tracked)
+workspace/
+
+# Memory MCP data
+memory/*.jsonl
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak

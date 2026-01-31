@@ -1,0 +1,692 @@
+# IGNITE - 階層型マルチエージェントシステム
+
+**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** は、claude code CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。
+
+<img src="images/IGNITE-members.jpg">
+
+## 🌟 特徴
+
+- **階層型エージェント構造**: Leader → Sub-Leaders(5名) → IGNITIANS(最大32並列)
+- **イベント駆動型通信**: YAMLファイルベースの非同期メッセージング
+- **並列タスク実行**: タスクの性質に応じて1-32のワーカーが並列実行
+- **キャラクター性**: 各エージェントは個性と専門性を持つ
+- **完全なローカル実行**: claude codeのフル機能をローカルPCで活用
+- **tmux統合**: 全エージェントの動作をリアルタイムで可視化
+
+## 📋 必要環境
+
+以下のツールがインストールされている必要があります：
+
+```bash
+# claude-code CLI
+claude-code --version
+
+# tmux
+tmux -V
+
+# bash（通常は標準でインストール済み）
+bash --version
+```
+
+### インストール
+
+claude-codeがインストールされていない場合：
+```bash
+# claude-codeのインストール方法はAnthropic公式ドキュメントを参照
+```
+
+tmuxがインストールされていない場合：
+```bash
+# Ubuntu/Debian
+sudo apt install tmux
+
+# macOS
+brew install tmux
+```
+
+## 🚀 クイックスタート
+
+### 1. システム起動
+
+```bash
+cd /path/to/ignite
+bash scripts/ignite_start.sh
+```
+
+初回起動時は自動的に：
+- workspaceディレクトリを初期化
+- tmuxセッション `ignite-session` を作成
+- Leader（伊羽ユイ）を起動
+- 初期ダッシュボードを作成
+
+起動が完了すると、tmuxセッションへのアタッチを促すプロンプトが表示されます。
+
+### 2. タスクを投入
+
+別のターミナル、またはtmuxセッションをデタッチ（`Ctrl+b d`）してから：
+
+```bash
+bash scripts/ignite_plan.sh "READMEファイルを作成する"
+```
+
+コンテキストを追加する場合：
+```bash
+bash scripts/ignite_plan.sh \
+  "READMEファイルを作成する" \
+  "プロジェクト概要、インストール方法、使用例を含める"
+```
+
+### 3. 進捗を確認
+
+#### ダッシュボードで確認（推奨）
+
+```bash
+# リアルタイム監視
+watch -n 5 cat workspace/dashboard.md
+
+# または1回だけ表示
+cat workspace/dashboard.md
+```
+
+#### ステータスコマンドで確認
+
+```bash
+bash scripts/ignite_status.sh
+```
+
+#### tmuxセッションで直接確認
+
+```bash
+tmux attach -t ignite-session
+```
+
+各ペインで各エージェントの動作をリアルタイムで確認できます。
+
+### 4. システム停止
+
+```bash
+bash scripts/ignite_stop.sh
+```
+
+## 🏗 システム構造
+
+### エージェント階層
+
+```
+                    User
+                     ↓
+        ┌─────────────────────────┐
+        │   Leader (伊羽ユイ)      │
+        │   - 全体統率・意思決定   │
+        └─────────────────────────┘
+                     ↓
+    ┌────────────────┴────────────────┐
+    │    Sub-Leaders (5名の専門家)    │
+    └─────────────────────────────────┘
+    ↓       ↓       ↓       ↓       ↓
+Strategist Architect Evaluator Coordinator Innovator
+義賀リオ   祢音ナナ   衣結ノア   通瀬アイナ   恵那ツムギ
+戦略立案   設計判断   品質評価   進行管理     改善提案
+                     ↓
+        ┌─────────────────────────┐
+        │ IGNITIANS (1-32並列)     │
+        │ - タスク実行ワーカー     │
+        └─────────────────────────┘
+```
+
+### 通信フロー
+
+1. **User** がタスクを投入
+2. **Leader** が目標を理解し、**Strategist** に戦略立案を依頼
+3. **Strategist** がタスクを分解し、**Coordinator** にタスクリストを送信
+4. **Coordinator** が利用可能な **IGNITIANS** にタスクを配分
+5. **IGNITIANS** が並列でタスクを実行し、結果を報告
+6. **Evaluator** が結果を評価・検証
+7. **Innovator** が改善点を提案
+8. **Leader** が最終判断を下し、ユーザーに報告
+
+必要に応じて **Architect** が設計判断を提供します。
+
+## 👥 メンバー紹介
+
+### 🔥 Leader - 伊羽ユイ（いは ゆい）
+
+<img src="images/yui-iha.jpg" width="200">
+
+**統率と鼓舞の柱**
+
+- **役割**: 全体統率、意思決定、チーム鼓舞
+- **性格**: 明るく前向き、チームを励ます存在
+- **専門性**: 戦略的判断、リソース管理、最終承認
+- **口調例**: 「みんな、一緒に頑張ろう！」「素晴らしい進捗だね！」
+
+Leaderはシステムの中心として、Sub-Leadersを統率し、プロジェクト全体の方向性を決定します。
+
+### 🧠 Strategist - 義賀リオ（ぎが りお）
+
+<img src="images/rio-giga.jpg" width="200">
+
+**戦略立案と分析の要**
+
+- **役割**: 戦略立案、タスク分解、優先度付け
+- **性格**: 冷静で論理的、データに基づく判断
+- **専門性**: タスク分解、依存関係分析、リスク評価
+- **口調例**: 「論理的に考えると...」「優先度を分析した結果...」
+
+目標を具体的で実行可能なタスクに分解し、最適な実行戦略を立案します。
+
+### 🏛 Architect - 祢音ナナ（ねおん なな）
+
+<img src="images/nana-neon.jpg" width="200">
+
+**設計と構造の調和者**
+
+- **役割**: システム設計、アーキテクチャ判断
+- **性格**: 構造と調和を重視、美的感覚を持つ
+- **専門性**: アーキテクチャ設計、設計パターン、コード構造
+- **口調例**: 「この設計なら美しく調和します」「構造を整理すると...」
+
+保守性と拡張性を考慮した、美しい設計を提案します。
+
+### 📊 Evaluator - 衣結ノア（いゆい のあ）
+
+<img src="images/noah-iyui.jpg" width="200">
+
+**検証と品質保証の守護者**
+
+- **役割**: 品質評価、検証、テスト
+- **性格**: 着実で几帳面、基準を厳守
+- **専門性**: 品質チェック、テスト実行、基準照合
+- **口調例**: 「検証結果、基準を満たしています」「3つの項目で問題を発見しました」
+
+成果物が要件と基準を満たしているか、公平かつ厳密に評価します。
+
+### 🤝 Coordinator - 通瀬アイナ（つうせ あいな）
+
+<img src="images/aina-tsuse.jpg" width="200">
+
+**進行管理と調整の要**
+
+- **役割**: タスク配分、進行管理、リソース調整
+- **性格**: 柔らかく調整上手、全体最適化を図る
+- **専門性**: タスク配分、負荷分散、進捗管理
+- **口調例**: 「調整が完了しました」「全体のバランスを見ながら...」
+
+IGNITIANSへのタスク配分を管理し、全体の進行をスムーズに調整します。
+
+### 💡 Innovator - 恵那ツムギ（えな つむぎ）
+
+<img src="images/tsumugi-ena.jpg" width="200">
+
+**改善と最適化の推進者**
+
+- **役割**: 改善提案、最適化、イノベーション
+- **性格**: 創造的で前向き、改善を楽しむ
+- **専門性**: リファクタリング、パフォーマンス最適化、プロセス改善
+- **口調例**: 「もっと効率化できそうです！」「この部分、こう改善したら...」
+
+常により良い方法を探求し、システムやコードの改善を提案します。
+
+### 🔥 IGNITIANS
+
+<img src="images/ignitians.jpg" width="200">
+
+**IGNITEを全力で応援する2等身マスコット軍団**
+
+- **役割**: IGNITEメンバーのために具体的なタスクを実行
+- **性格**: 推しへの愛にあふれた熱烈ファン。メンバーの役に立てることが最大の喜び
+- **専門性**: コード実装、ファイル操作、分析、あらゆる実行タスク
+- **数**: タスクに応じて1-32並列で動作
+- **口調例**: 「推しのために全力でやります！」「やったー！完成です！」
+
+IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタスクを全力で並列実行します。
+
+## 📂 プロジェクト構造
+
+```
+ignite/
+├── scripts/                    # 実行スクリプト
+│   ├── ignite_start.sh         # システム起動
+│   ├── ignite_plan.sh          # タスク投入
+│   ├── ignite_status.sh        # ステータス確認
+│   ├── ignite_stop.sh          # システム停止
+│   └── utils/
+│       └── send_message.sh     # メッセージ送信ユーティリティ
+│
+├── instructions/               # エージェントのシステムプロンプト
+│   ├── leader.md               # Leader用
+│   ├── strategist.md           # Strategist用
+│   ├── architect.md            # Architect用
+│   ├── evaluator.md            # Evaluator用
+│   ├── coordinator.md          # Coordinator用
+│   ├── innovator.md            # Innovator用
+│   └── ignitian.md             # IGNITIAN用
+│
+├── config/                     # 設定ファイル
+│   ├── system.yaml             # システム全体の設定
+│   ├── agents.yaml             # 各エージェントの設定
+│   └── ignitians.yaml          # IGNITIANS並列数設定
+│
+├── workspace/                  # 実行時ワークスペース（.gitignoreで除外）
+│   ├── queue/                  # メッセージキュー（各エージェント用）
+│   │   ├── leader/
+│   │   ├── strategist/
+│   │   ├── architect/
+│   │   ├── evaluator/
+│   │   ├── coordinator/
+│   │   ├── innovator/
+│   │   └── ignitians/
+│   ├── reports/                # タスク完了レポート
+│   ├── context/                # プロジェクトコンテキスト
+│   ├── logs/                   # ログファイル
+│   └── dashboard.md            # リアルタイム進捗ダッシュボード
+│
+├── docs/                       # ドキュメント
+│   ├── architecture.md         # アーキテクチャ詳細
+│   ├── protocol.md             # 通信プロトコル仕様
+│   └── examples/
+│       └── basic-usage.md      # 基本的な使用例
+│
+├── README.md                   # このファイル
+├── README_ja.md                # プロジェクトビジョン（日本語）
+└── IMPLEMENTATION_STATUS.md   # 実装状況
+```
+
+## 🛠 詳細な使い方
+
+### タスクの種類別の使用例
+
+#### 1. ドキュメント作成
+
+```bash
+bash scripts/ignite_plan.sh "プロジェクトのドキュメントを作成する"
+```
+
+**処理フロー:**
+1. Strategist がドキュメントの構造を決定
+2. Architect が情報構造を設計
+3. Coordinator が各セクションをIGNITIANSに配分
+4. IGNITIANs が並列でセクションを執筆
+5. Evaluator が完成度を評価
+6. Innovator が改善提案
+
+#### 2. コード実装
+
+```bash
+bash scripts/ignite_plan.sh \
+  "タスク管理CLIツールを実装する" \
+  "add, list, complete, deleteコマンド。データはYAMLで保存"
+```
+
+**処理フロー:**
+1. Strategist が実装をフェーズに分解
+2. Architect がコード構造を設計
+3. Coordinator が機能ごとにタスクを配分
+4. IGNITIANs が並列で実装
+5. Evaluator がコード品質とテストを検証
+6. Innovator がリファクタリング提案
+
+#### 3. データ分析
+
+```bash
+bash scripts/ignite_plan.sh "プロジェクトのコードベースを分析して改善点を洗い出す"
+```
+
+**処理フロー:**
+1. Strategist が分析戦略を立案
+2. Architect が分析対象の優先度を決定
+3. Coordinator が分析タスクを配分
+4. IGNITIANs が並列で分析
+5. Evaluator が分析結果の妥当性を検証
+6. Innovator が具体的な改善案を提示
+
+### IGNITIANS並列数の調整
+
+タスクの性質に応じて並列数を調整できます。
+
+**設定ファイル編集:**
+
+```bash
+# config/ignitians.yamlを編集
+nano config/ignitians.yaml
+```
+
+```yaml
+ignitians:
+  default: 8    # デフォルト
+
+  presets:
+    light: 16   # 軽量タスク（ファイル操作など）
+    normal: 8   # 通常タスク（実装など）
+    heavy: 4    # 重量タスク（分析など）
+```
+
+変更後はシステムを再起動:
+```bash
+bash scripts/ignite_stop.sh
+bash scripts/ignite_start.sh
+```
+
+### tmuxセッションの操作
+
+**基本操作:**
+
+```bash
+# セッションにアタッチ
+tmux attach -t ignite-session
+
+# デタッチ（セッション内で）
+Ctrl+b d
+
+# ペイン間移動
+Ctrl+b o          # 次のペインへ
+Ctrl+b ;          # 前のペインへ
+Ctrl+b q          # ペイン番号を表示
+Ctrl+b q [番号]   # 指定番号のペインへ移動
+
+# スクロール（ログ確認）
+Ctrl+b [          # スクロールモードに入る
+↑↓ または PageUp/PageDown でスクロール
+q                 # スクロールモード終了
+```
+
+**ペイン配置:**
+
+- Pane 0: Leader（伊羽ユイ）
+- Pane 1: Strategist（義賀リオ）
+- Pane 2: Architect（祢音ナナ）
+- Pane 3: Evaluator（衣結ノア）
+- Pane 4: Coordinator（通瀬アイナ）
+- Pane 5: Innovator（恵那ツムギ）
+- Pane 6以降: IGNITIANs
+
+### ダッシュボードの見方
+
+`workspace/dashboard.md` の例:
+
+```markdown
+# IGNITE Dashboard
+
+更新日時: 2026-01-31 17:10:00
+
+## プロジェクト概要
+目標: READMEファイルを作成する
+
+## Sub-Leaders状態
+- ✓ Strategist (義賀リオ): タスク分解完了 (3タスク生成)
+- ✓ Architect (祢音ナナ): 設計方針承認完了
+- ⏳ Coordinator (通瀬アイナ): タスク配分中
+- ⏸ Evaluator (衣結ノア): 待機中
+- ⏸ Innovator (恵那ツムギ): 待機中
+
+## IGNITIANS状態
+- ✓ IGNITIAN-0: タスク完了 (README骨組み作成)
+- ⏳ IGNITIAN-1: 実行中 (インストール手順作成)
+- ⏳ IGNITIAN-2: 実行中 (使用例作成)
+- ⏸ IGNITIAN-3~7: 待機中
+
+## タスク進捗
+- 完了: 1 / 3
+- 進行中: 2
+- 待機中: 0
+
+## 最新ログ
+[17:05:23] [義賀リオ] タスク分解を完了しました
+[17:06:00] [通瀬アイナ] タスクを割り当てました
+[17:08:12] [IGNITIAN-0] タスクが完了しました
+```
+
+**アイコンの意味:**
+- ✓ 完了
+- ⏳ 実行中
+- ⏸ 待機中
+- ❌ エラー
+
+## 🔍 トラブルシューティング
+
+### システムが起動しない
+
+**原因1: 既存のセッションが残っている**
+
+```bash
+# 既存セッションを確認
+tmux ls
+
+# 既存セッションを削除
+tmux kill-session -t ignite-session
+
+# 再起動
+bash scripts/ignite_start.sh
+```
+
+**原因2: claude-codeが見つからない**
+
+```bash
+# claude-codeのパス確認
+which claude-code
+
+# インストールされていない場合は、Anthropic公式サイトからインストール
+```
+
+**原因3: tmuxがインストールされていない**
+
+```bash
+# Ubuntu/Debian
+sudo apt install tmux
+
+# macOS
+brew install tmux
+```
+
+### タスクが進行しない
+
+**原因1: メッセージキューが処理されていない**
+
+```bash
+# キューの状態を確認
+find workspace/queue -name "*.yaml"
+
+# メッセージがある場合、そのエージェントのペインを確認
+tmux attach -t ignite-session
+# 該当ペインに移動してログを確認
+```
+
+**原因2: エージェントがエラーで停止**
+
+```bash
+# ログファイルを確認
+tail -f workspace/logs/*.log
+
+# または個別に
+cat workspace/logs/leader.log
+cat workspace/logs/coordinator.log
+```
+
+**原因3: 依存関係でブロックされている**
+
+```bash
+# ダッシュボードで依存関係を確認
+cat workspace/dashboard.md
+```
+
+### IGNITIANSが応答しない
+
+```bash
+# 該当するIGNITIANのペインを確認
+tmux attach -t ignite-session
+Ctrl+b q    # ペイン番号を確認
+Ctrl+b q 6  # IGNITIAN-0のペインへ移動
+
+# タスクファイルが存在するか確認
+ls -la workspace/queue/ignitians/
+
+# レポートが生成されているか確認
+ls -la workspace/reports/
+```
+
+### ダッシュボードが更新されない
+
+```bash
+# ダッシュボードファイルの存在確認
+ls -la workspace/dashboard.md
+
+# 手動で再作成
+cat > workspace/dashboard.md <<EOF
+# IGNITE Dashboard
+
+更新日時: $(date '+%Y-%m-%d %H:%M:%S')
+
+## システム状態
+システム起動中
+
+## 最新ログ
+システムを確認中
+EOF
+```
+
+### メッセージが溜まりすぎている
+
+```bash
+# 古いメッセージをクリア（注意: 処理中のタスクも削除されます）
+rm workspace/queue/*/*.yaml
+
+# または特定のキューのみクリア
+rm workspace/queue/leader/*.yaml
+```
+
+## 📊 通信プロトコル
+
+エージェント間の通信は、YAMLファイルベースのメッセージで行われます。
+
+### メッセージの基本構造
+
+```yaml
+type: user_goal              # メッセージタイプ
+from: user                   # 送信元
+to: leader                   # 送信先
+timestamp: "2026-01-31T17:00:00+09:00"  # タイムスタンプ
+priority: high               # 優先度（high/normal/low）
+payload:                     # メッセージ本体
+  goal: "READMEファイルを作成する"
+  context: "プロジェクト説明が必要"
+status: pending              # 状態（pending/processing/completed）
+```
+
+### 主要なメッセージタイプ
+
+| タイプ | 送信元 → 送信先 | 説明 |
+|--------|----------------|------|
+| `user_goal` | user → leader | ユーザーからの目標設定 |
+| `strategy_request` | leader → strategist | 戦略立案依頼 |
+| `strategy_response` | strategist → leader | 戦略提案 |
+| `task_list` | strategist → coordinator | タスクリスト |
+| `task_assignment` | coordinator → ignitian | タスク割り当て |
+| `task_completed` | ignitian → coordinator | 完了報告 |
+| `evaluation_request` | coordinator → evaluator | 評価依頼 |
+| `evaluation_result` | evaluator → leader | 評価結果 |
+| `improvement_suggestion` | innovator → leader | 改善提案 |
+
+詳細は [docs/protocol.md](docs/protocol.md) を参照してください。
+
+## 🎓 ベストプラクティス
+
+### 1. 明確なタスク定義
+
+**良い例:**
+```bash
+bash scripts/ignite_plan.sh \
+  "ユーザー認証機能を実装する" \
+  "JWT認証、/login, /logout, /refresh エンドポイント、セッション管理"
+```
+
+**悪い例:**
+```bash
+bash scripts/ignite_plan.sh "認証"
+# → 何をすべきか不明確
+```
+
+### 2. コンテキストの提供
+
+タスクが複雑な場合、第2引数でコンテキストを提供:
+
+```bash
+bash scripts/ignite_plan.sh \
+  "パフォーマンスを改善する" \
+  "データベースクエリの最適化、キャッシュの導入、N+1問題の解決"
+```
+
+### 3. 適切な並列数の選択
+
+- **軽量タスク（ファイル操作）**: 16並列
+- **通常タスク（実装）**: 8並列（デフォルト）
+- **重量タスク（分析）**: 4並列
+
+### 4. 進捗の定期確認
+
+```bash
+# ダッシュボードを5秒ごとに更新
+watch -n 5 cat workspace/dashboard.md
+
+# または別ターミナルでステータスコマンドを定期実行
+watch -n 10 bash scripts/ignite_status.sh
+```
+
+### 5. ログの活用
+
+問題が発生した場合は、まずログを確認:
+
+```bash
+# 全ログを監視
+tail -f workspace/logs/*.log
+
+# 特定のエージェントのみ
+tail -f workspace/logs/coordinator.log
+```
+
+## 📚 さらに詳しく
+
+- **基本使用例**: [docs/examples/basic-usage.md](docs/examples/basic-usage.md) - 実際の使用例とシナリオ
+- **アーキテクチャ**: [docs/architecture.md](docs/architecture.md) - システム構造の詳細
+- **プロトコル仕様**: [docs/protocol.md](docs/protocol.md) - メッセージフォーマットと通信フロー
+- **実装状況**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - 実装済み機能の一覧
+
+## 🤝 コントリビューション
+
+IGNITEプロジェクトへの貢献を歓迎します！
+
+### 貢献方法
+
+1. このリポジトリをフォーク
+2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
+
+### 拡張のアイデア
+
+- 新しいSub-Leaderの追加
+- WebUIの開発
+- Memory MCP統合による永続化
+- 自動テスト機能
+- パフォーマンスモニタリング
+
+## 📄 ライセンス
+
+MIT License
+
+## 🙏 謝辞
+
+- **multi-agent-shogun** - アーキテクチャの参考元
+- **claude code CLI** - 強力なエージェント実行環境
+- **tmux** - セッション管理ツール
+- **Anthropic** - Claude AI
+
+## 📧 サポート
+
+質問や問題がある場合は、GitHubのIssueを作成してください。
+
+---
+
+**🔥 IGNITE - 複数の知性が協調する未来へ**
+
+*Intelligent Generative Networked Interaction-driven Task Engine*
