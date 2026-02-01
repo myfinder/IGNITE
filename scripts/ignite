@@ -1413,6 +1413,49 @@ format_number() {
     printf "%'d" "$num" 2>/dev/null || echo "$num"
 }
 
+# 文字列の表示幅を計算（全角文字=2, 半角文字=1）
+get_display_width() {
+    local str="$1"
+    local width=0
+    local char
+    local i
+    for ((i=0; i<${#str}; i++)); do
+        char="${str:$i:1}"
+        # ASCII印字可能文字（0x20-0x7E）なら半角、それ以外は全角とみなす
+        if [[ "$char" =~ ^[[:print:]]$ ]]; then
+            local code=$(LC_ALL=C printf '%d' "'$char" 2>/dev/null || echo 0)
+            if [[ $code -ge 32 ]] && [[ $code -le 126 ]]; then
+                ((width++))
+            else
+                ((width+=2))
+            fi
+        else
+            ((width+=2))
+        fi
+    done
+    echo "$width"
+}
+
+# 指定した表示幅になるよう右パディング
+pad_right() {
+    local str="$1"
+    local target_width="$2"
+    local current_width=$(get_display_width "$str")
+    local padding=$((target_width - current_width))
+    if [[ $padding -lt 0 ]]; then padding=0; fi
+    printf "%s%*s" "$str" "$padding" ""
+}
+
+# 指定した表示幅になるよう左パディング（右寄せ）
+pad_left() {
+    local str="$1"
+    local target_width="$2"
+    local current_width=$(get_display_width "$str")
+    local padding=$((target_width - current_width))
+    if [[ $padding -lt 0 ]]; then padding=0; fi
+    printf "%*s%s" "$padding" "" "$str"
+}
+
 # コストを計算（ドル）
 calculate_cost() {
     local input="$1"
@@ -1734,10 +1777,20 @@ cmd_cost() {
     fi
     echo ""
 
+    # テーブル列幅定義（表示幅）
+    local col1_width=14  # エージェント名
+    local col2_width=12  # 入力トークン
+    local col3_width=12  # 出力トークン
+    local col4_width=11  # 費用
+
     # テーブルヘッダー
-    printf "┌─────────────────┬──────────────┬──────────────┬────────────┐\n"
-    printf "│ %-15s │ %12s │ %12s │ %10s │\n" "エージェント" "入力トークン" "出力トークン" "費用 (USD)"
-    printf "├─────────────────┼──────────────┼──────────────┼────────────┤\n"
+    echo "┌────────────────┬──────────────┬──────────────┬─────────────┐"
+    printf "│ %s │ %s │ %s │ %s │\n" \
+        "$(pad_right "エージェント" $col1_width)" \
+        "$(pad_left "入力トークン" $col2_width)" \
+        "$(pad_left "出力トークン" $col3_width)" \
+        "$(pad_left "費用 (USD)" $col4_width)"
+    echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
 
     # Leader と Sub-Leaders
     for i in "${!agents[@]}"; do
@@ -1751,15 +1804,19 @@ cmd_cost() {
         if [[ -n "${agent_input[$role]:-}" ]]; then
             local input_fmt=$(format_number "${agent_input[$role]}")
             local output_fmt=$(format_number "${agent_output[$role]}")
-            local cost_fmt=$(printf "%.2f" "${agent_cost[$role]}")
-            printf "│ %-15s │ %12s │ %12s │   \$%7s │\n" "$name" "$input_fmt" "$output_fmt" "$cost_fmt"
+            local cost_fmt=$(printf "\$%8.2f" "${agent_cost[$role]}")
+            printf "│ %s │ %s │ %s │ %s │\n" \
+                "$(pad_right "$name" $col1_width)" \
+                "$(pad_left "$input_fmt" $col2_width)" \
+                "$(pad_left "$output_fmt" $col3_width)" \
+                "$(pad_left "$cost_fmt" $col4_width)"
         fi
     done
 
     # IGNITIANs
     if [[ -z "$target_agent" ]] || [[ "$target_agent" == "ignitians" ]]; then
         if [[ $ignitian_count -gt 0 ]]; then
-            printf "├─────────────────┼──────────────┼──────────────┼────────────┤\n"
+            echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
 
             if [[ "$detailed" == true ]]; then
                 # 詳細表示: 各IGNITIANを個別に表示
@@ -1770,33 +1827,50 @@ cmd_cost() {
                     local cost=$(echo "$data" | cut -d: -f5)
                     local input_fmt=$(format_number "$input")
                     local output_fmt=$(format_number "$output")
-                    local cost_fmt=$(printf "%.2f" "$cost")
+                    local cost_fmt=$(printf "\$%8.2f" "$cost")
                     local display_name=$(echo "$key" | sed 's/ignitian_/IGNITIAN-/')
-                    printf "│ %-15s │ %12s │ %12s │   \$%7s │\n" "$display_name" "$input_fmt" "$output_fmt" "$cost_fmt"
+                    printf "│ %s │ %s │ %s │ %s │\n" \
+                        "$(pad_right "$display_name" $col1_width)" \
+                        "$(pad_left "$input_fmt" $col2_width)" \
+                        "$(pad_left "$output_fmt" $col3_width)" \
+                        "$(pad_left "$cost_fmt" $col4_width)"
                 done
             else
                 # 集計表示
                 local ignitian_input_fmt=$(format_number "$ignitian_input")
                 local ignitian_output_fmt=$(format_number "$ignitian_output")
-                local ignitian_cost_fmt=$(printf "%.2f" "$ignitian_cost")
-                printf "│ IGNITIANs (%d)   │ %12s │ %12s │   \$%7s │\n" "$ignitian_count" "$ignitian_input_fmt" "$ignitian_output_fmt" "$ignitian_cost_fmt"
+                local ignitian_cost_fmt=$(printf "\$%8.2f" "$ignitian_cost")
+                local ignitian_label="IGNITIANs ($ignitian_count)"
+                printf "│ %s │ %s │ %s │ %s │\n" \
+                    "$(pad_right "$ignitian_label" $col1_width)" \
+                    "$(pad_left "$ignitian_input_fmt" $col2_width)" \
+                    "$(pad_left "$ignitian_output_fmt" $col3_width)" \
+                    "$(pad_left "$ignitian_cost_fmt" $col4_width)"
             fi
         fi
     fi
 
     # 合計
     if [[ -z "$target_agent" ]]; then
-        printf "├─────────────────┼──────────────┼──────────────┼────────────┤\n"
+        echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
         local total_input_fmt=$(format_number "$total_input")
         local total_output_fmt=$(format_number "$total_output")
-        local total_cost_fmt=$(printf "%.2f" "$total_cost")
+        local total_cost_fmt=$(printf "\$%8.2f" "$total_cost")
         local jpy_cost=$(printf "%.0f" "$(echo "$total_cost * $EXCHANGE_RATE" | bc)")
-        local jpy_fmt=$(format_number "$jpy_cost")
-        printf "│ %-15s │ %12s │ %12s │   \$%7s │\n" "合計" "$total_input_fmt" "$total_output_fmt" "$total_cost_fmt"
-        printf "│                 │              │              │ (約¥%s) │\n" "$jpy_fmt"
+        local jpy_fmt="(税別 ¥$(format_number "$jpy_cost"))"
+        printf "│ %s │ %s │ %s │ %s │\n" \
+            "$(pad_right "合計" $col1_width)" \
+            "$(pad_left "$total_input_fmt" $col2_width)" \
+            "$(pad_left "$total_output_fmt" $col3_width)" \
+            "$(pad_left "$total_cost_fmt" $col4_width)"
+        printf "│ %s │ %s │ %s │ %s │\n" \
+            "$(pad_right "" $col1_width)" \
+            "$(pad_left "" $col2_width)" \
+            "$(pad_left "" $col3_width)" \
+            "$(pad_left "$jpy_fmt" $col4_width)"
     fi
 
-    printf "└─────────────────┴──────────────┴──────────────┴────────────┘\n"
+    echo "└────────────────┴──────────────┴──────────────┴─────────────┘"
 
     echo ""
     echo -e "${BLUE}料金:${NC} Claude Opus 4.5 (\$${PRICE_INPUT}/1M入力, \$${PRICE_OUTPUT}/1M出力)"
