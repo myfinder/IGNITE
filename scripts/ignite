@@ -8,7 +8,10 @@ set -u
 VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SESSION_NAME="ignite-session"
+
+# セッション名とワークスペース（後でコマンドラインで上書き可能）
+SESSION_NAME=""
+WORKSPACE_DIR=""
 
 # Sub-Leaders 定義
 SUB_LEADERS=("strategist" "architect" "evaluator" "coordinator" "innovator")
@@ -25,6 +28,56 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
+
+# =============================================================================
+# セッションID・ワークスペース管理
+# =============================================================================
+
+# セッションIDの自動生成（4文字のハッシュ）
+generate_session_id() {
+    # プロジェクトパス + タイムスタンプから短いIDを生成
+    echo "ignite-$(echo "${PROJECT_ROOT}-$(date +%s)" | md5sum | cut -c1-4)"
+}
+
+# デフォルトのワークスペースパス
+get_default_workspace() {
+    echo "$PROJECT_ROOT/workspace"
+}
+
+# セッションIDの設定（指定がなければ自動生成）
+setup_session_name() {
+    if [[ -z "$SESSION_NAME" ]]; then
+        # 既存セッションを検索
+        local existing_session
+        existing_session=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" | head -1 || true)
+
+        if [[ -n "$existing_session" ]]; then
+            SESSION_NAME="$existing_session"
+        else
+            SESSION_NAME=$(generate_session_id)
+        fi
+    fi
+}
+
+# ワークスペースの設定（指定がなければデフォルト）
+setup_workspace() {
+    if [[ -z "$WORKSPACE_DIR" ]]; then
+        WORKSPACE_DIR=$(get_default_workspace)
+    fi
+}
+
+# 実行中の全IGNITEセッションを一覧表示
+list_sessions() {
+    local sessions
+    sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
+
+    if [[ -z "$sessions" ]]; then
+        print_warning "実行中のIGNITEセッションはありません"
+        return 1
+    fi
+
+    echo "$sessions"
+}
 
 # 共通関数
 print_info() { echo -e "${BLUE}$1${NC}"; }
@@ -160,6 +213,20 @@ cmd_start() {
         case "$1" in
             -n|--no-attach) no_attach=true; shift ;;
             -f|--force) force=true; shift ;;
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -a|--agents)
                 agent_mode="$2"
                 if [[ ! "$agent_mode" =~ ^(full|leader|sub)$ ]]; then
@@ -182,6 +249,14 @@ cmd_start() {
         esac
     done
 
+    # セッション名が未指定の場合は自動生成
+    if [[ -z "$SESSION_NAME" ]]; then
+        SESSION_NAME=$(generate_session_id)
+    fi
+
+    # ワークスペースが未指定の場合はデフォルト
+    setup_workspace
+
     # ワーカー数の決定
     if [[ -z "$worker_count" ]]; then
         worker_count=$(get_worker_count)
@@ -202,6 +277,8 @@ cmd_start() {
 
     print_header "IGNITE システム起動"
     echo ""
+    echo -e "${BLUE}セッションID:${NC} $SESSION_NAME"
+    echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo -e "${BLUE}起動モード:${NC} $agent_mode"
     if [[ "$agent_mode" != "leader" ]]; then
         echo -e "${BLUE}Sub-Leaders:${NC} ${#SUB_LEADERS[@]}名"
@@ -236,14 +313,14 @@ cmd_start() {
 
     # workspaceの初期化
     print_info "workspaceを初期化中..."
-    mkdir -p workspace/queue/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
-    mkdir -p workspace/reports
-    mkdir -p workspace/context
-    mkdir -p workspace/logs
+    mkdir -p "$WORKSPACE_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
+    mkdir -p "$WORKSPACE_DIR/reports"
+    mkdir -p "$WORKSPACE_DIR/context"
+    mkdir -p "$WORKSPACE_DIR/logs"
 
     # 初期ダッシュボードの作成
     print_info "初期ダッシュボードを作成中..."
-    cat > workspace/dashboard.md <<EOF
+    cat > "$WORKSPACE_DIR/dashboard.md" <<EOF
 # IGNITE Dashboard
 
 更新日時: $(date '+%Y-%m-%d %H:%M:%S')
@@ -298,7 +375,7 @@ EOF
 
     # 初期メッセージの送信
     print_info "Leaderに初期化メッセージを送信中..."
-    cat > workspace/queue/leader/system_init_$(date +%s).yaml <<EOF
+    cat > "$WORKSPACE_DIR/queue/leader/system_init_$(date +%s).yaml" <<EOF
 type: system_init
 from: system
 to: leader
@@ -359,13 +436,15 @@ EOF
 
     # システム設定ファイルを作成（IGNITIANs数などを記録）
     print_info "システム設定を保存中..."
-    cat > workspace/system_config.yaml <<EOF
+    cat > "$WORKSPACE_DIR/system_config.yaml" <<EOF
 # IGNITE システム設定（自動生成）
 # このファイルはシステム起動時に自動的に更新されます
 
 system:
   started_at: "$(date -Iseconds)"
   agent_mode: "${agent_mode}"
+  session_name: "${SESSION_NAME}"
+  workspace_dir: "${WORKSPACE_DIR}"
 
 ignitians:
   count: ${actual_ignitian_count}
@@ -399,12 +478,35 @@ EOF
 # activate コマンド - 各エージェントにコマンドを再送信
 # =============================================================================
 cmd_activate() {
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -h|--help) cmd_help activate; exit 0 ;;
+            *) print_error "Unknown option: $1"; cmd_help activate; exit 1 ;;
+        esac
+    done
+
+    # セッション名を設定
+    setup_session_name
+
     if ! session_exists; then
-        print_error "ignite-session が見つかりません"
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
         exit 1
     fi
 
     print_header "エージェントをアクティベート中"
+    echo ""
+    echo -e "${BLUE}セッション:${NC} $SESSION_NAME"
     echo ""
 
     # ペイン数を確認
@@ -423,7 +525,7 @@ cmd_activate() {
     print_success "全エージェントにアクティベーション信号を送信しました"
     echo ""
     echo "各エージェントがシステムプロンプトを読み込んでいます。"
-    echo -e "状態確認: ${YELLOW}./scripts/ignite status${NC}"
+    echo -e "状態確認: ${YELLOW}./scripts/ignite status -s $SESSION_NAME${NC}"
 }
 
 # =============================================================================
@@ -436,6 +538,20 @@ cmd_notify() {
     # 引数解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help notify; exit 0 ;;
             *)
                 if [[ -z "$target" ]]; then
@@ -448,6 +564,10 @@ cmd_notify() {
         esac
     done
 
+    # セッション名とワークスペースを設定
+    setup_session_name
+    setup_workspace
+
     if [[ -z "$target" ]] || [[ -z "$message" ]]; then
         print_error "ターゲットとメッセージを指定してください"
         echo "使用方法: ./scripts/ignite notify <target> \"message\""
@@ -456,7 +576,10 @@ cmd_notify() {
     fi
 
     if ! session_exists; then
-        print_error "ignite-session が見つかりません"
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
         exit 1
     fi
 
@@ -465,9 +588,9 @@ cmd_notify() {
     # メッセージファイル作成
     local timestamp=$(date -Iseconds)
     local message_id=$(date +%s%N)
-    local message_file="workspace/queue/${target}/notify_${message_id}.yaml"
+    local message_file="$WORKSPACE_DIR/queue/${target}/notify_${message_id}.yaml"
 
-    mkdir -p "workspace/queue/${target}"
+    mkdir -p "$WORKSPACE_DIR/queue/${target}"
 
     cat > "$message_file" <<EOF
 type: notification
@@ -495,7 +618,7 @@ EOF
     esac
 
     tmux send-keys -t "$SESSION_NAME:ignite.$pane_num" \
-        "workspace/queue/${target}/ に新しいメッセージがあります。確認してください。" Enter
+        "$WORKSPACE_DIR/queue/${target}/ に新しいメッセージがあります。確認してください。" Enter
 
     print_success "pane $pane_num に通知を送信しました"
 }
@@ -510,17 +633,32 @@ cmd_stop() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -y|--yes) skip_confirm=true; shift ;;
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help stop; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help stop; exit 1 ;;
         esac
     done
 
+    # セッション名を設定
+    setup_session_name
+
     print_header "IGNITE システム停止"
+    echo ""
+    echo -e "${BLUE}対象セッション:${NC} $SESSION_NAME"
     echo ""
 
     # セッションの存在確認
     if ! session_exists; then
-        print_error "ignite-session が見つかりません"
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
         exit 1
     fi
 
@@ -552,6 +690,20 @@ cmd_plan() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--context) context="$2"; shift 2 ;;
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help plan; exit 0 ;;
             -*) print_error "Unknown option: $1"; cmd_help plan; exit 1 ;;
             *)
@@ -566,6 +718,10 @@ cmd_plan() {
                 ;;
         esac
     done
+
+    # セッション名とワークスペースを設定
+    setup_session_name
+    setup_workspace
 
     # 引数チェック
     if [[ -z "$goal" ]]; then
@@ -585,7 +741,10 @@ cmd_plan() {
 
     # セッションの存在確認
     if ! session_exists; then
-        print_error "ignite-session が見つかりません"
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
         echo -e "${YELLOW}先に起動してください: ./scripts/ignite start${NC}"
         exit 1
     fi
@@ -603,7 +762,7 @@ cmd_plan() {
     local message_id=$(date +%s)
 
     # Leaderへメッセージ送信
-    local message_file="workspace/queue/leader/user_goal_${message_id}.yaml"
+    local message_file="$WORKSPACE_DIR/queue/leader/user_goal_${message_id}.yaml"
 
     if [[ -n "$context" ]]; then
         cat > "$message_file" <<EOF
@@ -635,7 +794,7 @@ EOF
     # Leaderに通知（自然言語プロンプトで送信）- pane 0 を明示的に指定
     sleep 0.5
     tmux send-keys -t "$SESSION_NAME:ignite.0" \
-        "workspace/queue/leader/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
+        "$WORKSPACE_DIR/queue/leader/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
     sleep 0.3
     tmux send-keys -t "$SESSION_NAME:ignite.0" C-m
 
@@ -652,9 +811,38 @@ EOF
 # status コマンド
 # =============================================================================
 cmd_status() {
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
+            -h|--help) cmd_help status; exit 0 ;;
+            *) print_error "Unknown option: $1"; cmd_help status; exit 1 ;;
+        esac
+    done
+
+    # セッション名とワークスペースを設定
+    setup_session_name
+    setup_workspace
+
     cd "$PROJECT_ROOT"
 
     print_header "IGNITE システム状態"
+    echo ""
+    echo -e "${BLUE}セッション:${NC} $SESSION_NAME"
+    echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo ""
 
     # tmuxセッション確認
@@ -697,10 +885,10 @@ cmd_status() {
     echo ""
 
     # ダッシュボード表示
-    if [[ -f "workspace/dashboard.md" ]]; then
+    if [[ -f "$WORKSPACE_DIR/dashboard.md" ]]; then
         print_header "ダッシュボード"
         echo ""
-        cat workspace/dashboard.md
+        cat "$WORKSPACE_DIR/dashboard.md"
         echo ""
     else
         print_warning "ダッシュボードが見つかりません"
@@ -710,7 +898,7 @@ cmd_status() {
     print_header "キュー状態"
     echo ""
 
-    for queue_dir in workspace/queue/*; do
+    for queue_dir in "$WORKSPACE_DIR/queue"/*; do
         if [[ -d "$queue_dir" ]]; then
             local queue_name=$(basename "$queue_dir")
             local message_count=$(find "$queue_dir" -name "*.yaml" -type f 2>/dev/null | wc -l)
@@ -726,8 +914,8 @@ cmd_status() {
     echo ""
 
     # レポート状態
-    if [[ -d "workspace/reports" ]]; then
-        local report_count=$(find workspace/reports -name "*.yaml" -type f 2>/dev/null | wc -l)
+    if [[ -d "$WORKSPACE_DIR/reports" ]]; then
+        local report_count=$(find "$WORKSPACE_DIR/reports" -name "*.yaml" -type f 2>/dev/null | wc -l)
         print_header "レポート"
         echo "  完了レポート: ${report_count} 件"
         echo ""
@@ -737,8 +925,8 @@ cmd_status() {
     print_header "最新ログ (直近5件)"
     echo ""
 
-    if [[ -d "workspace/logs" ]] && [[ "$(ls -A workspace/logs 2>/dev/null)" ]]; then
-        for log_file in workspace/logs/*.log; do
+    if [[ -d "$WORKSPACE_DIR/logs" ]] && [[ "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
+        for log_file in "$WORKSPACE_DIR/logs"/*.log; do
             if [[ -f "$log_file" ]]; then
                 echo -e "${BLUE}$(basename "$log_file"):${NC}"
                 tail -n 5 "$log_file" 2>/dev/null | sed 's/^/  /'
@@ -751,17 +939,38 @@ cmd_status() {
     fi
 
     print_header "コマンド"
-    echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat workspace/dashboard.md${NC}"
-    echo -e "  tmuxアタッチ: ${YELLOW}./scripts/ignite attach${NC}"
-    echo -e "  システム停止: ${YELLOW}./scripts/ignite stop${NC}"
+    echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat $WORKSPACE_DIR/dashboard.md${NC}"
+    echo -e "  tmuxアタッチ: ${YELLOW}./scripts/ignite attach -s $SESSION_NAME${NC}"
+    echo -e "  システム停止: ${YELLOW}./scripts/ignite stop -s $SESSION_NAME${NC}"
 }
 
 # =============================================================================
 # attach コマンド
 # =============================================================================
 cmd_attach() {
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -h|--help) cmd_help attach; exit 0 ;;
+            *) print_error "Unknown option: $1"; cmd_help attach; exit 1 ;;
+        esac
+    done
+
+    # セッション名を設定
+    setup_session_name
+
     if ! session_exists; then
-        print_error "ignite-session が見つかりません"
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
         echo -e "${YELLOW}先に起動してください: ./scripts/ignite start${NC}"
         exit 1
     fi
@@ -781,25 +990,35 @@ cmd_logs() {
         case "$1" in
             -f|--follow) follow=true; shift ;;
             -n|--lines) lines="$2"; shift 2 ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help logs; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help logs; exit 1 ;;
         esac
     done
 
+    # ワークスペースを設定
+    setup_workspace
+
     cd "$PROJECT_ROOT"
 
-    if [[ ! -d "workspace/logs" ]] || [[ -z "$(ls -A workspace/logs 2>/dev/null)" ]]; then
+    if [[ ! -d "$WORKSPACE_DIR/logs" ]] || [[ -z "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
         print_warning "ログファイルが見つかりません"
         exit 0
     fi
 
     if [[ "$follow" == true ]]; then
         print_info "ログをリアルタイム監視中... (Ctrl+C で終了)"
-        tail -f workspace/logs/*.log 2>/dev/null
+        tail -f "$WORKSPACE_DIR/logs"/*.log 2>/dev/null
     else
         print_header "ログ (直近${lines}行)"
         echo ""
-        for log_file in workspace/logs/*.log; do
+        for log_file in "$WORKSPACE_DIR/logs"/*.log; do
             if [[ -f "$log_file" ]]; then
                 echo -e "${BLUE}=== $(basename "$log_file") ===${NC}"
                 tail -n "$lines" "$log_file" 2>/dev/null
@@ -819,35 +1038,55 @@ cmd_clean() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -y|--yes) skip_confirm=true; shift ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help clean; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help clean; exit 1 ;;
         esac
     done
 
+    # セッション名とワークスペースを設定
+    setup_session_name
+    setup_workspace
+
     cd "$PROJECT_ROOT"
 
     print_header "IGNITE workspaceクリア"
     echo ""
+    echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
+    echo ""
 
     # セッションが実行中の場合は警告
     if session_exists; then
-        print_warning "ignite-session が実行中です"
-        echo "先にシステムを停止することをお勧めします: ./scripts/ignite stop"
+        print_warning "セッション '$SESSION_NAME' が実行中です"
+        echo "先にシステムを停止することをお勧めします: ./scripts/ignite stop -s $SESSION_NAME"
         echo ""
     fi
 
     # 確認
     if [[ "$skip_confirm" == false ]]; then
         echo "以下のディレクトリがクリアされます:"
-        echo "  - workspace/queue/*"
-        echo "  - workspace/reports/*"
-        echo "  - workspace/logs/*"
-        echo "  - workspace/context/*"
-        echo "  - workspace/state/*"
-        echo "  - workspace/archive/*"
-        echo "  - workspace/dashboard.md"
-        echo "  - workspace/system_config.yaml"
-        echo "  - workspace/coordinator_state.yaml"
+        echo "  - $WORKSPACE_DIR/queue/*"
+        echo "  - $WORKSPACE_DIR/reports/*"
+        echo "  - $WORKSPACE_DIR/logs/*"
+        echo "  - $WORKSPACE_DIR/context/*"
+        echo "  - $WORKSPACE_DIR/state/*"
+        echo "  - $WORKSPACE_DIR/archive/*"
+        echo "  - $WORKSPACE_DIR/dashboard.md"
+        echo "  - $WORKSPACE_DIR/system_config.yaml"
+        echo "  - $WORKSPACE_DIR/coordinator_state.yaml"
         echo ""
         read -p "続行しますか? (y/N): " -n 1 -r
         echo
@@ -860,20 +1099,44 @@ cmd_clean() {
     # クリーンアップ実行
     print_info "workspaceをクリア中..."
 
-    rm -rf workspace/queue/*/
-    mkdir -p workspace/queue/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
+    rm -rf "$WORKSPACE_DIR/queue"/*/
+    mkdir -p "$WORKSPACE_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
 
-    rm -rf workspace/reports/*
-    rm -rf workspace/logs/*
-    rm -rf workspace/context/*
-    rm -f workspace/dashboard.md
-    rm -f workspace/system_config.yaml
-    rm -f workspace/coordinator_state.yaml
-    rm -rf workspace/state/*
-    rm -rf workspace/archive/*
-    mkdir -p workspace/archive/{leader,strategist,coordinator}
+    rm -rf "$WORKSPACE_DIR/reports"/*
+    rm -rf "$WORKSPACE_DIR/logs"/*
+    rm -rf "$WORKSPACE_DIR/context"/*
+    rm -f "$WORKSPACE_DIR/dashboard.md"
+    rm -f "$WORKSPACE_DIR/system_config.yaml"
+    rm -f "$WORKSPACE_DIR/coordinator_state.yaml"
+    rm -rf "$WORKSPACE_DIR/state"/*
+    rm -rf "$WORKSPACE_DIR/archive"/*
+    mkdir -p "$WORKSPACE_DIR/archive"/{leader,strategist,coordinator}
 
     print_success "workspaceをクリアしました"
+}
+
+# =============================================================================
+# list コマンド - 実行中のセッション一覧
+# =============================================================================
+cmd_list() {
+    print_header "実行中のIGNITEセッション"
+    echo ""
+
+    local sessions
+    sessions=$(tmux list-sessions -F '#{session_name} (#{session_windows} windows, created #{session_created_string})' 2>/dev/null | grep "^ignite-" || true)
+
+    if [[ -z "$sessions" ]]; then
+        print_warning "実行中のIGNITEセッションはありません"
+        echo ""
+        echo -e "新しいセッションを起動: ${YELLOW}./scripts/ignite start${NC}"
+    else
+        echo "$sessions" | while read -r session; do
+            echo -e "  ${GREEN}●${NC} $session"
+        done
+        echo ""
+        echo -e "セッションに接続: ${YELLOW}./scripts/ignite attach -s <session-id>${NC}"
+        echo -e "セッションを停止: ${YELLOW}./scripts/ignite stop -s <session-id>${NC}"
+    fi
 }
 
 # =============================================================================
@@ -889,6 +1152,8 @@ cmd_help() {
             echo "IGNITE システムを起動します"
             echo ""
             echo "オプション:"
+            echo "  -s, --session <id>    セッションIDを指定（未指定時は自動生成）"
+            echo "  -w, --workspace <dir> ワークスペースディレクトリを指定"
             echo "  -n, --no-attach       起動後に自動アタッチしない"
             echo "  -f, --force           既存セッションを強制終了して再起動"
             echo "  -a, --agents <mode>   エージェント起動モード"
@@ -905,12 +1170,13 @@ cmd_help() {
             echo "  pane 6+:   IGNITIANs (デフォルト8並列)"
             echo ""
             echo "例:"
-            echo "  ./scripts/ignite start                    # 全エージェント起動"
-            echo "  ./scripts/ignite start -a leader          # Leaderのみ起動"
-            echo "  ./scripts/ignite start -a sub             # Leader + Sub-Leadersのみ"
-            echo "  ./scripts/ignite start --workers 4        # IGNITIANs 4並列で起動"
-            echo "  ./scripts/ignite start --no-workers       # IGNITIANsなしで起動"
-            echo "  ./scripts/ignite start -f --no-attach     # 強制再起動、アタッチなし"
+            echo "  ./scripts/ignite start                        # 全エージェント起動（自動ID）"
+            echo "  ./scripts/ignite start -s proj-a              # セッションID指定で起動"
+            echo "  ./scripts/ignite start -w /tmp/ws1            # ワークスペース指定で起動"
+            echo "  ./scripts/ignite start -s proj-a -w /tmp/ws1  # 両方指定"
+            echo "  ./scripts/ignite start -a leader              # Leaderのみ起動"
+            echo "  ./scripts/ignite start -a sub                 # Leader + Sub-Leadersのみ"
+            echo "  ./scripts/ignite start --workers 4            # IGNITIANs 4並列で起動"
             ;;
         stop)
             echo "使用方法: ./scripts/ignite stop [オプション]"
@@ -918,12 +1184,14 @@ cmd_help() {
             echo "IGNITE システムを停止します"
             echo ""
             echo "オプション:"
-            echo "  -y, --yes    確認をスキップ"
-            echo "  -h, --help   このヘルプを表示"
+            echo "  -s, --session <id>  停止するセッションIDを指定"
+            echo "  -y, --yes           確認をスキップ"
+            echo "  -h, --help          このヘルプを表示"
             echo ""
             echo "例:"
-            echo "  ./scripts/ignite stop"
-            echo "  ./scripts/ignite stop -y"
+            echo "  ./scripts/ignite stop              # 実行中のセッションを停止"
+            echo "  ./scripts/ignite stop -s proj-a    # 指定セッションを停止"
+            echo "  ./scripts/ignite stop -y           # 確認なしで停止"
             ;;
         plan)
             echo "使用方法: ./scripts/ignite plan <目標> [オプション]"
@@ -954,14 +1222,22 @@ cmd_help() {
             echo "  - 最新ログ"
             ;;
         attach)
-            echo "使用方法: ./scripts/ignite attach"
+            echo "使用方法: ./scripts/ignite attach [オプション]"
             echo ""
             echo "tmuxセッションに接続します"
+            echo ""
+            echo "オプション:"
+            echo "  -s, --session <id>  接続するセッションIDを指定"
+            echo "  -h, --help          このヘルプを表示"
             echo ""
             echo "tmux操作:"
             echo "  Ctrl+b d    セッションをデタッチ"
             echo "  Ctrl+b o    次のペインに移動"
             echo "  Ctrl+b [    スクロールモード"
+            echo ""
+            echo "例:"
+            echo "  ./scripts/ignite attach              # 実行中のセッションに接続"
+            echo "  ./scripts/ignite attach -s proj-a    # 指定セッションに接続"
             ;;
         logs)
             echo "使用方法: ./scripts/ignite logs [オプション]"
@@ -1012,6 +1288,11 @@ cmd_help() {
             echo "  ./scripts/ignite notify strategist \"戦略を立案してください\""
             echo "  ./scripts/ignite notify ignitians \"タスク1を実行してください\""
             ;;
+        list)
+            echo "使用方法: ./scripts/ignite list"
+            echo ""
+            echo "実行中のIGNITEセッション一覧を表示します"
+            ;;
         "")
             echo -e "${BOLD}IGNITE${NC} - Intelligent Generative Networked Interaction-driven Task Engine"
             echo ""
@@ -1020,6 +1301,7 @@ cmd_help() {
             echo "コマンド:"
             echo "  start     システムを起動"
             echo "  stop      システムを停止"
+            echo "  list      実行中のセッション一覧"
             echo "  plan      タスクを投入"
             echo "  status    状態を確認"
             echo "  attach    tmuxセッションに接続"
@@ -1030,8 +1312,20 @@ cmd_help() {
             echo "  help      ヘルプを表示"
             echo ""
             echo "グローバルオプション:"
-            echo "  -h, --help       ヘルプを表示"
-            echo "  -v, --version    バージョンを表示"
+            echo "  -s, --session <id>    セッションIDを指定"
+            echo "  -w, --workspace <dir> ワークスペースを指定"
+            echo "  -h, --help            ヘルプを表示"
+            echo "  -v, --version         バージョンを表示"
+            echo ""
+            echo "複数プロジェクト並行実行:"
+            echo "  # プロジェクトAを起動"
+            echo "  ./scripts/ignite start -s proj-a -w /tmp/workspace-a"
+            echo ""
+            echo "  # プロジェクトBを起動（別セッション）"
+            echo "  ./scripts/ignite start -s proj-b -w /tmp/workspace-b"
+            echo ""
+            echo "  # セッション一覧確認"
+            echo "  ./scripts/ignite list"
             echo ""
             echo "例:"
             echo "  ./scripts/ignite start"
@@ -1057,10 +1351,11 @@ main() {
     case "${1:-}" in
         start)    shift; cmd_start "$@" ;;
         stop)     shift; cmd_stop "$@" ;;
+        list)     cmd_list ;;
         plan)     shift; cmd_plan "$@" ;;
-        status)   cmd_status ;;
-        attach)   cmd_attach ;;
-        activate) cmd_activate ;;
+        status)   shift; cmd_status "$@" ;;
+        attach)   shift; cmd_attach "$@" ;;
+        activate) shift; cmd_activate "$@" ;;
         notify)   shift; cmd_notify "$@" ;;
         logs)     shift; cmd_logs "$@" ;;
         clean)    shift; cmd_clean "$@" ;;
