@@ -1352,11 +1352,11 @@ load_pricing() {
     PRICE_CACHE_CREATE=$(grep -A5 "claude-opus-4-5-20251101:" "$pricing_file" | grep "cache_creation_per_1m_tokens:" | awk '{print $2}')
     EXCHANGE_RATE=$(grep "exchange_rate_jpy:" "$pricing_file" | awk '{print $2}')
 
-    # デフォルト値
-    PRICE_INPUT=${PRICE_INPUT:-15.00}
-    PRICE_OUTPUT=${PRICE_OUTPUT:-75.00}
-    PRICE_CACHE_READ=${PRICE_CACHE_READ:-1.50}
-    PRICE_CACHE_CREATE=${PRICE_CACHE_CREATE:-18.75}
+    # デフォルト値 (Claude Opus 4.5)
+    PRICE_INPUT=${PRICE_INPUT:-5.00}
+    PRICE_OUTPUT=${PRICE_OUTPUT:-25.00}
+    PRICE_CACHE_READ=${PRICE_CACHE_READ:-0.50}
+    PRICE_CACHE_CREATE=${PRICE_CACHE_CREATE:-6.25}
     EXCHANGE_RATE=${EXCHANGE_RATE:-150.0}
 }
 
@@ -1416,23 +1416,8 @@ format_number() {
 # 文字列の表示幅を計算（全角文字=2, 半角文字=1）
 get_display_width() {
     local str="$1"
-    local width=0
-    local char
-    local i
-    for ((i=0; i<${#str}; i++)); do
-        char="${str:$i:1}"
-        # ASCII印字可能文字（0x20-0x7E）なら半角、それ以外は全角とみなす
-        if [[ "$char" =~ ^[[:print:]]$ ]]; then
-            local code=$(LC_ALL=C printf '%d' "'$char" 2>/dev/null || echo 0)
-            if [[ $code -ge 32 ]] && [[ $code -le 126 ]]; then
-                ((width++))
-            else
-                ((width+=2))
-            fi
-        else
-            ((width+=2))
-        fi
-    done
+    # wc -L はターミナルの表示幅を正しく計算する（ヒアストリングで渡す）
+    local width=$(wc -L <<< "$str")
     echo "$width"
 }
 
@@ -1481,6 +1466,102 @@ find_sessions_after_time() {
       | select(.created >= $after)
       | .sessionId
     ' "$sessions_index"
+}
+
+# エージェント役割からsessions-index.jsonを検索してセッションIDを解決
+resolve_agent_session_id() {
+    local agent_role="$1"
+    local started_at="$2"
+    local sessions_index="$CLAUDE_PROJECTS_DIR/sessions-index.json"
+
+    [[ ! -f "$sessions_index" ]] && return 1
+
+    local pattern=""
+    case "$agent_role" in
+        leader|strategist|architect|evaluator|coordinator|innovator)
+            pattern="instructions/${agent_role}\\.md"
+            ;;
+        ignitian_*)
+            local num="${agent_role#ignitian_}"
+            pattern="IGNITIAN-${num}"
+            ;;
+        *) return 1 ;;
+    esac
+
+    # まずsessions-index.jsonから検索
+    local session_id=$(jq -r --arg after "$started_at" --arg pattern "$pattern" '
+      .entries
+      | map(select(.created >= $after and (.firstPrompt | test($pattern))))
+      | sort_by(.created) | last | .sessionId // empty
+    ' "$sessions_index" 2>/dev/null)
+
+    if [[ -n "$session_id" ]]; then
+        echo "$session_id"
+        return 0
+    fi
+
+    # インデックスに見つからない場合、セッションファイルを直接検索
+    local project_dir=$(dirname "$sessions_index")
+    for f in "$project_dir"/*.jsonl; do
+        [[ -f "$f" ]] || continue
+        # ファイルの更新時刻が開始時刻より後かチェック
+        local file_mtime=$(stat -c %Y "$f" 2>/dev/null)
+        local start_epoch=$(date -d "$started_at" +%s 2>/dev/null)
+        [[ -z "$file_mtime" ]] || [[ -z "$start_epoch" ]] && continue
+        [[ $file_mtime -lt $start_epoch ]] && continue
+
+        # firstPromptにパターンが含まれるか確認
+        if head -5 "$f" 2>/dev/null | grep -q "$pattern"; then
+            basename "$f" .jsonl
+            return 0
+        fi
+    done
+}
+
+# sessions.yamlのsession_idがnullのエージェントを自動解決
+update_sessions_yaml() {
+    local sessions_file="$WORKSPACE_DIR/costs/sessions.yaml"
+
+    [[ ! -f "$sessions_file" ]] && return 1
+
+    local started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+    [[ -z "$started_at" ]] && return 1
+
+    # ISO 8601形式の開始時刻をUTCに変換（sessions-index.jsonはUTC）
+    # エージェント起動はsessions.yamlのstarted_atより前に行われるため、3分前からを検索対象とする
+    local started_utc=$(date -u -d "$started_at - 3 minutes" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null)
+    [[ -z "$started_utc" ]] && return 1
+
+    local updated=false
+
+    # Sub-Leaders のセッションID解決
+    for role in leader strategist architect evaluator coordinator innovator; do
+        local current_id=$(grep -A5 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+        if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
+            local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+            if [[ -n "$resolved_id" ]]; then
+                sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                updated=true
+            fi
+        fi
+    done
+
+    # IGNITIANs のセッションID解決
+    for i in 1 2 3 4 5 6; do
+        local role="ignitian_$i"
+        if grep -q "^  ${role}:" "$sessions_file"; then
+            local current_id=$(grep -A3 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+            if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
+                local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+                if [[ -n "$resolved_id" ]]; then
+                    sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                    updated=true
+                fi
+            fi
+        fi
+    done
+
+    [[ "$updated" == true ]]
 }
 
 # エージェント名からセッションIDを取得
@@ -1575,6 +1656,9 @@ cmd_cost() {
 
     # ワークスペースを設定
     setup_workspace
+
+    # session_id が null のエージェントがあれば自動解決を試みる
+    update_sessions_yaml 2>/dev/null || true
 
     # 一覧モード
     if [[ "$list_mode" == true ]]; then
@@ -1781,16 +1865,18 @@ cmd_cost() {
     local col1_width=14  # エージェント名
     local col2_width=12  # 入力トークン
     local col3_width=12  # 出力トークン
+    local col5_width=13  # キャッシュ（読込/作成）
     local col4_width=11  # 費用
 
     # テーブルヘッダー
-    echo "┌────────────────┬──────────────┬──────────────┬─────────────┐"
-    printf "│ %s │ %s │ %s │ %s │\n" \
+    echo "┌────────────────┬──────────────┬──────────────┬───────────────┬─────────────┐"
+    printf "│ %s │ %s │ %s │ %s │ %s │\n" \
         "$(pad_right "エージェント" $col1_width)" \
         "$(pad_left "入力トークン" $col2_width)" \
         "$(pad_left "出力トークン" $col3_width)" \
+        "$(pad_left "Cache(R/W)" $col5_width)" \
         "$(pad_left "費用 (USD)" $col4_width)"
-    echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
+    echo "├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤"
 
     # Leader と Sub-Leaders
     for i in "${!agents[@]}"; do
@@ -1804,11 +1890,15 @@ cmd_cost() {
         if [[ -n "${agent_input[$role]:-}" ]]; then
             local input_fmt=$(format_number "${agent_input[$role]}")
             local output_fmt=$(format_number "${agent_output[$role]}")
+            local cache_r=$(echo "scale=1; ${agent_cache_read[$role]:-0} / 1000000" | bc)
+            local cache_c=$(echo "scale=1; ${agent_cache_creation[$role]:-0} / 1000000" | bc)
+            local cache_fmt="${cache_r}/${cache_c}M"
             local cost_fmt=$(printf "\$%8.2f" "${agent_cost[$role]}")
-            printf "│ %s │ %s │ %s │ %s │\n" \
+            printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                 "$(pad_right "$name" $col1_width)" \
                 "$(pad_left "$input_fmt" $col2_width)" \
                 "$(pad_left "$output_fmt" $col3_width)" \
+                "$(pad_left "$cache_fmt" $col5_width)" \
                 "$(pad_left "$cost_fmt" $col4_width)"
         fi
     done
@@ -1816,7 +1906,7 @@ cmd_cost() {
     # IGNITIANs
     if [[ -z "$target_agent" ]] || [[ "$target_agent" == "ignitians" ]]; then
         if [[ $ignitian_count -gt 0 ]]; then
-            echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
+            echo "├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤"
 
             if [[ "$detailed" == true ]]; then
                 # 詳細表示: 各IGNITIANを個別に表示
@@ -1824,27 +1914,37 @@ cmd_cost() {
                     local data="${ignitian_data[$key]}"
                     local input=$(echo "$data" | cut -d: -f1)
                     local output=$(echo "$data" | cut -d: -f2)
+                    local cache_read=$(echo "$data" | cut -d: -f3)
+                    local cache_create=$(echo "$data" | cut -d: -f4)
                     local cost=$(echo "$data" | cut -d: -f5)
                     local input_fmt=$(format_number "$input")
                     local output_fmt=$(format_number "$output")
+                    local cache_r=$(echo "scale=1; ${cache_read:-0} / 1000000" | bc)
+                    local cache_c=$(echo "scale=1; ${cache_create:-0} / 1000000" | bc)
+                    local cache_fmt="${cache_r}/${cache_c}M"
                     local cost_fmt=$(printf "\$%8.2f" "$cost")
                     local display_name=$(echo "$key" | sed 's/ignitian_/IGNITIAN-/')
-                    printf "│ %s │ %s │ %s │ %s │\n" \
+                    printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                         "$(pad_right "$display_name" $col1_width)" \
                         "$(pad_left "$input_fmt" $col2_width)" \
                         "$(pad_left "$output_fmt" $col3_width)" \
+                        "$(pad_left "$cache_fmt" $col5_width)" \
                         "$(pad_left "$cost_fmt" $col4_width)"
                 done
             else
                 # 集計表示
                 local ignitian_input_fmt=$(format_number "$ignitian_input")
                 local ignitian_output_fmt=$(format_number "$ignitian_output")
+                local ign_cache_r=$(echo "scale=1; ${ignitian_cache_read:-0} / 1000000" | bc)
+                local ign_cache_c=$(echo "scale=1; ${ignitian_cache_creation:-0} / 1000000" | bc)
+                local ignitian_cache_fmt="${ign_cache_r}/${ign_cache_c}M"
                 local ignitian_cost_fmt=$(printf "\$%8.2f" "$ignitian_cost")
                 local ignitian_label="IGNITIANs ($ignitian_count)"
-                printf "│ %s │ %s │ %s │ %s │\n" \
+                printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                     "$(pad_right "$ignitian_label" $col1_width)" \
                     "$(pad_left "$ignitian_input_fmt" $col2_width)" \
                     "$(pad_left "$ignitian_output_fmt" $col3_width)" \
+                    "$(pad_left "$ignitian_cache_fmt" $col5_width)" \
                     "$(pad_left "$ignitian_cost_fmt" $col4_width)"
             fi
         fi
@@ -1852,28 +1952,29 @@ cmd_cost() {
 
     # 合計
     if [[ -z "$target_agent" ]]; then
-        echo "├────────────────┼──────────────┼──────────────┼─────────────┤"
+        echo "├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤"
         local total_input_fmt=$(format_number "$total_input")
         local total_output_fmt=$(format_number "$total_output")
+        local total_cache_r=$(echo "scale=1; ${total_cache_read:-0} / 1000000" | bc)
+        local total_cache_c=$(echo "scale=1; ${total_cache_creation:-0} / 1000000" | bc)
+        local total_cache_fmt="${total_cache_r}/${total_cache_c}M"
         local total_cost_fmt=$(printf "\$%8.2f" "$total_cost")
         local jpy_cost=$(printf "%.0f" "$(echo "$total_cost * $EXCHANGE_RATE" | bc)")
-        local jpy_fmt="(税別 ¥$(format_number "$jpy_cost"))"
-        printf "│ %s │ %s │ %s │ %s │\n" \
+        printf "│ %s │ %s │ %s │ %s │ %s │\n" \
             "$(pad_right "合計" $col1_width)" \
             "$(pad_left "$total_input_fmt" $col2_width)" \
             "$(pad_left "$total_output_fmt" $col3_width)" \
+            "$(pad_left "$total_cache_fmt" $col5_width)" \
             "$(pad_left "$total_cost_fmt" $col4_width)"
-        printf "│ %s │ %s │ %s │ %s │\n" \
-            "$(pad_right "" $col1_width)" \
-            "$(pad_left "" $col2_width)" \
-            "$(pad_left "" $col3_width)" \
-            "$(pad_left "$jpy_fmt" $col4_width)"
     fi
 
-    echo "└────────────────┴──────────────┴──────────────┴─────────────┘"
+    echo "└────────────────┴──────────────┴──────────────┴───────────────┴─────────────┘"
 
     echo ""
     echo -e "${BLUE}料金:${NC} Claude Opus 4.5 (\$${PRICE_INPUT}/1M入力, \$${PRICE_OUTPUT}/1M出力)"
+    if [[ -z "$target_agent" ]]; then
+        echo -e "${BLUE}日本円概算:${NC} ¥$(format_number "$jpy_cost") (税別, \$1=¥${EXCHANGE_RATE})"
+    fi
 
     # 詳細表示の場合はキャッシュ情報も表示
     if [[ "$detailed" == true ]]; then
