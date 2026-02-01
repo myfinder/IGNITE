@@ -50,7 +50,7 @@ brew install tmux
 
 ```bash
 cd /path/to/ignite
-bash scripts/ignite_start.sh
+./scripts/ignite start
 ```
 
 初回起動時は自動的に：
@@ -61,24 +61,37 @@ bash scripts/ignite_start.sh
 
 起動が完了すると、tmuxセッションへのアタッチを促すプロンプトが表示されます。
 
+**オプション:**
+```bash
+# 起動後に自動アタッチしない
+./scripts/ignite start --no-attach
+
+# 既存セッションを強制終了して再起動
+./scripts/ignite start -f
+```
+
 ### 2. タスクを投入
 
 別のターミナル、またはtmuxセッションをデタッチ（`Ctrl+b d`）してから：
 
 ```bash
-bash scripts/ignite_plan.sh "READMEファイルを作成する"
+./scripts/ignite plan "READMEファイルを作成する"
 ```
 
 コンテキストを追加する場合：
 ```bash
-bash scripts/ignite_plan.sh \
-  "READMEファイルを作成する" \
-  "プロジェクト概要、インストール方法、使用例を含める"
+./scripts/ignite plan "READMEファイルを作成する" -c "プロジェクト概要、インストール方法、使用例を含める"
 ```
 
 ### 3. 進捗を確認
 
-#### ダッシュボードで確認（推奨）
+#### ステータスコマンドで確認（推奨）
+
+```bash
+./scripts/ignite status
+```
+
+#### ダッシュボードで確認
 
 ```bash
 # リアルタイム監視
@@ -88,16 +101,23 @@ watch -n 5 cat workspace/dashboard.md
 cat workspace/dashboard.md
 ```
 
-#### ステータスコマンドで確認
+#### ログを確認
 
 ```bash
-bash scripts/ignite_status.sh
+# 最新ログを表示
+./scripts/ignite logs
+
+# リアルタイム監視
+./scripts/ignite logs -f
+
+# 行数を指定
+./scripts/ignite logs -n 50
 ```
 
 #### tmuxセッションで直接確認
 
 ```bash
-tmux attach -t ignite-session
+./scripts/ignite attach
 ```
 
 各ペインで各エージェントの動作をリアルタイムで確認できます。
@@ -105,7 +125,19 @@ tmux attach -t ignite-session
 ### 4. システム停止
 
 ```bash
-bash scripts/ignite_stop.sh
+./scripts/ignite stop
+
+# 確認をスキップ
+./scripts/ignite stop -y
+```
+
+### 5. workspaceクリア
+
+```bash
+./scripts/ignite clean
+
+# 確認をスキップ
+./scripts/ignite clean -y
 ```
 
 ## 🏗 システム構造
@@ -246,10 +278,7 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 ```
 ignite/
 ├── scripts/                    # 実行スクリプト
-│   ├── ignite_start.sh         # システム起動
-│   ├── ignite_plan.sh          # タスク投入
-│   ├── ignite_status.sh        # ステータス確認
-│   ├── ignite_stop.sh          # システム停止
+│   ├── ignite                  # 統合コマンド (start/stop/plan/status/attach/logs/clean)
 │   └── utils/
 │       └── send_message.sh     # メッセージ送信ユーティリティ
 │
@@ -294,12 +323,27 @@ ignite/
 
 ## 🛠 詳細な使い方
 
+### コマンド一覧
+
+| コマンド | 説明 | 例 |
+|---------|------|-----|
+| `start` | システム起動 | `./scripts/ignite start` |
+| `stop` | システム停止 | `./scripts/ignite stop` |
+| `plan` | タスク投入 | `./scripts/ignite plan "目標"` |
+| `status` | 状態確認 | `./scripts/ignite status` |
+| `attach` | tmuxセッションに接続 | `./scripts/ignite attach` |
+| `logs` | ログ表示 | `./scripts/ignite logs` |
+| `clean` | workspaceクリア | `./scripts/ignite clean` |
+| `help` | ヘルプ表示 | `./scripts/ignite help` |
+
+詳細なヘルプは `./scripts/ignite help <command>` で確認できます。
+
 ### タスクの種類別の使用例
 
 #### 1. ドキュメント作成
 
 ```bash
-bash scripts/ignite_plan.sh "プロジェクトのドキュメントを作成する"
+./scripts/ignite plan "プロジェクトのドキュメントを作成する"
 ```
 
 **処理フロー:**
@@ -313,9 +357,7 @@ bash scripts/ignite_plan.sh "プロジェクトのドキュメントを作成す
 #### 2. コード実装
 
 ```bash
-bash scripts/ignite_plan.sh \
-  "タスク管理CLIツールを実装する" \
-  "add, list, complete, deleteコマンド。データはYAMLで保存"
+./scripts/ignite plan "タスク管理CLIツールを実装する" -c "add, list, complete, deleteコマンド。データはYAMLで保存"
 ```
 
 **処理フロー:**
@@ -329,7 +371,7 @@ bash scripts/ignite_plan.sh \
 #### 3. データ分析
 
 ```bash
-bash scripts/ignite_plan.sh "プロジェクトのコードベースを分析して改善点を洗い出す"
+./scripts/ignite plan "プロジェクトのコードベースを分析して改善点を洗い出す"
 ```
 
 **処理フロー:**
@@ -363,8 +405,8 @@ ignitians:
 
 変更後はシステムを再起動:
 ```bash
-bash scripts/ignite_stop.sh
-bash scripts/ignite_start.sh
+./scripts/ignite stop -y
+./scripts/ignite start
 ```
 
 ### tmuxセッションの操作
@@ -399,6 +441,22 @@ q                 # スクロールモード終了
 - Pane 4: Coordinator（通瀬アイナ）
 - Pane 5: Innovator（恵那ツムギ）
 - Pane 6以降: IGNITIANs
+
+### ヘルプの確認
+
+```bash
+# 全体のヘルプ
+./scripts/ignite help
+./scripts/ignite --help
+
+# コマンド別のヘルプ
+./scripts/ignite help start
+./scripts/ignite help plan
+./scripts/ignite start --help
+
+# バージョン確認
+./scripts/ignite --version
+```
 
 ### ダッシュボードの見方
 
@@ -452,11 +510,8 @@ q                 # スクロールモード終了
 # 既存セッションを確認
 tmux ls
 
-# 既存セッションを削除
-tmux kill-session -t ignite-session
-
-# 再起動
-bash scripts/ignite_start.sh
+# 強制的に再起動
+./scripts/ignite start -f
 ```
 
 **原因2: claude-codeが見つからない**
@@ -483,45 +538,41 @@ brew install tmux
 **原因1: メッセージキューが処理されていない**
 
 ```bash
-# キューの状態を確認
-find workspace/queue -name "*.yaml"
+# ステータスでキュー状態を確認
+./scripts/ignite status
 
 # メッセージがある場合、そのエージェントのペインを確認
-tmux attach -t ignite-session
+./scripts/ignite attach
 # 該当ペインに移動してログを確認
 ```
 
 **原因2: エージェントがエラーで停止**
 
 ```bash
-# ログファイルを確認
-tail -f workspace/logs/*.log
+# ログをリアルタイム監視
+./scripts/ignite logs -f
 
-# または個別に
-cat workspace/logs/leader.log
-cat workspace/logs/coordinator.log
+# または一度に表示
+./scripts/ignite logs -n 50
 ```
 
 **原因3: 依存関係でブロックされている**
 
 ```bash
-# ダッシュボードで依存関係を確認
-cat workspace/dashboard.md
+# ステータスで依存関係を確認
+./scripts/ignite status
 ```
 
 ### IGNITIANSが応答しない
 
 ```bash
+# ステータスでキュー状態を確認
+./scripts/ignite status
+
 # 該当するIGNITIANのペインを確認
-tmux attach -t ignite-session
+./scripts/ignite attach
 Ctrl+b q    # ペイン番号を確認
 Ctrl+b q 6  # IGNITIAN-0のペインへ移動
-
-# タスクファイルが存在するか確認
-ls -la workspace/queue/ignitians/
-
-# レポートが生成されているか確認
-ls -la workspace/reports/
 ```
 
 ### ダッシュボードが更新されない
@@ -547,11 +598,11 @@ EOF
 ### メッセージが溜まりすぎている
 
 ```bash
-# 古いメッセージをクリア（注意: 処理中のタスクも削除されます）
-rm workspace/queue/*/*.yaml
+# workspaceをクリア（注意: 処理中のタスクも削除されます）
+./scripts/ignite clean
 
-# または特定のキューのみクリア
-rm workspace/queue/leader/*.yaml
+# 確認なしでクリア
+./scripts/ignite clean -y
 ```
 
 ## 📊 通信プロトコル
@@ -594,25 +645,21 @@ status: pending              # 状態（pending/processing/completed）
 
 **良い例:**
 ```bash
-bash scripts/ignite_plan.sh \
-  "ユーザー認証機能を実装する" \
-  "JWT認証、/login, /logout, /refresh エンドポイント、セッション管理"
+./scripts/ignite plan "ユーザー認証機能を実装する" -c "JWT認証、/login, /logout, /refresh エンドポイント、セッション管理"
 ```
 
 **悪い例:**
 ```bash
-bash scripts/ignite_plan.sh "認証"
+./scripts/ignite plan "認証"
 # → 何をすべきか不明確
 ```
 
 ### 2. コンテキストの提供
 
-タスクが複雑な場合、第2引数でコンテキストを提供:
+タスクが複雑な場合、`-c` オプションでコンテキストを提供:
 
 ```bash
-bash scripts/ignite_plan.sh \
-  "パフォーマンスを改善する" \
-  "データベースクエリの最適化、キャッシュの導入、N+1問題の解決"
+./scripts/ignite plan "パフォーマンスを改善する" -c "データベースクエリの最適化、キャッシュの導入、N+1問題の解決"
 ```
 
 ### 3. 適切な並列数の選択
@@ -624,11 +671,14 @@ bash scripts/ignite_plan.sh \
 ### 4. 進捗の定期確認
 
 ```bash
-# ダッシュボードを5秒ごとに更新
+# ステータスを確認
+./scripts/ignite status
+
+# ダッシュボードを5秒ごとに監視
 watch -n 5 cat workspace/dashboard.md
 
-# または別ターミナルでステータスコマンドを定期実行
-watch -n 10 bash scripts/ignite_status.sh
+# ログをリアルタイム監視
+./scripts/ignite logs -f
 ```
 
 ### 5. ログの活用
@@ -636,11 +686,14 @@ watch -n 10 bash scripts/ignite_status.sh
 問題が発生した場合は、まずログを確認:
 
 ```bash
-# 全ログを監視
-tail -f workspace/logs/*.log
+# 最新ログを表示
+./scripts/ignite logs
 
-# 特定のエージェントのみ
-tail -f workspace/logs/coordinator.log
+# リアルタイム監視
+./scripts/ignite logs -f
+
+# 多くの行を表示
+./scripts/ignite logs -n 100
 ```
 
 ## 📚 さらに詳しく

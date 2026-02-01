@@ -50,7 +50,7 @@ brew install tmux
 
 ```bash
 cd /path/to/ignite
-bash scripts/ignite_start.sh
+./scripts/ignite start
 ```
 
 On first startup, the system automatically:
@@ -61,24 +61,37 @@ On first startup, the system automatically:
 
 After startup completes, you'll be prompted to attach to the tmux session.
 
+**Options:**
+```bash
+# Don't auto-attach after startup
+./scripts/ignite start --no-attach
+
+# Force restart by terminating existing session
+./scripts/ignite start -f
+```
+
 ### 2. Submit a Task
 
 From another terminal, or after detaching from tmux session (`Ctrl+b d`):
 
 ```bash
-bash scripts/ignite_plan.sh "Create a README file"
+./scripts/ignite plan "Create a README file"
 ```
 
 To add context:
 ```bash
-bash scripts/ignite_plan.sh \
-  "Create a README file" \
-  "Include project overview, installation instructions, and usage examples"
+./scripts/ignite plan "Create a README file" -c "Include project overview, installation instructions, and usage examples"
 ```
 
 ### 3. Check Progress
 
-#### Via Dashboard (Recommended)
+#### Via Status Command (Recommended)
+
+```bash
+./scripts/ignite status
+```
+
+#### Via Dashboard
 
 ```bash
 # Real-time monitoring
@@ -88,16 +101,23 @@ watch -n 5 cat workspace/dashboard.md
 cat workspace/dashboard.md
 ```
 
-#### Via Status Command
+#### View Logs
 
 ```bash
-bash scripts/ignite_status.sh
+# Show recent logs
+./scripts/ignite logs
+
+# Real-time monitoring
+./scripts/ignite logs -f
+
+# Specify number of lines
+./scripts/ignite logs -n 50
 ```
 
 #### Direct tmux Session View
 
 ```bash
-tmux attach -t ignite-session
+./scripts/ignite attach
 ```
 
 You can monitor each agent's activity in real-time across panes.
@@ -105,7 +125,19 @@ You can monitor each agent's activity in real-time across panes.
 ### 4. Stop the System
 
 ```bash
-bash scripts/ignite_stop.sh
+./scripts/ignite stop
+
+# Skip confirmation
+./scripts/ignite stop -y
+```
+
+### 5. Clear Workspace
+
+```bash
+./scripts/ignite clean
+
+# Skip confirmation
+./scripts/ignite clean -y
 ```
 
 ## 🏗 System Architecture
@@ -247,10 +279,7 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 ```
 ignite/
 ├── scripts/                    # Execution scripts
-│   ├── ignite_start.sh         # System startup
-│   ├── ignite_plan.sh          # Task submission
-│   ├── ignite_status.sh        # Status check
-│   ├── ignite_stop.sh          # System shutdown
+│   ├── ignite                  # Unified command (start/stop/plan/status/attach/logs/clean)
 │   └── utils/
 │       └── send_message.sh     # Message sending utility
 │
@@ -295,12 +324,27 @@ ignite/
 
 ## 🛠 Detailed Usage
 
+### Command List
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `start` | Start system | `./scripts/ignite start` |
+| `stop` | Stop system | `./scripts/ignite stop` |
+| `plan` | Submit task | `./scripts/ignite plan "goal"` |
+| `status` | Check status | `./scripts/ignite status` |
+| `attach` | Connect to tmux session | `./scripts/ignite attach` |
+| `logs` | View logs | `./scripts/ignite logs` |
+| `clean` | Clear workspace | `./scripts/ignite clean` |
+| `help` | Show help | `./scripts/ignite help` |
+
+For detailed help, use `./scripts/ignite help <command>`.
+
 ### Usage Examples by Task Type
 
 #### 1. Documentation Creation
 
 ```bash
-bash scripts/ignite_plan.sh "Create project documentation"
+./scripts/ignite plan "Create project documentation"
 ```
 
 **Processing Flow:**
@@ -314,9 +358,7 @@ bash scripts/ignite_plan.sh "Create project documentation"
 #### 2. Code Implementation
 
 ```bash
-bash scripts/ignite_plan.sh \
-  "Implement a task management CLI tool" \
-  "add, list, complete, delete commands. Store data in YAML"
+./scripts/ignite plan "Implement a task management CLI tool" -c "add, list, complete, delete commands. Store data in YAML"
 ```
 
 **Processing Flow:**
@@ -330,7 +372,7 @@ bash scripts/ignite_plan.sh \
 #### 3. Data Analysis
 
 ```bash
-bash scripts/ignite_plan.sh "Analyze the project codebase and identify improvements"
+./scripts/ignite plan "Analyze the project codebase and identify improvements"
 ```
 
 **Processing Flow:**
@@ -364,8 +406,8 @@ ignitians:
 
 Restart the system after changes:
 ```bash
-bash scripts/ignite_stop.sh
-bash scripts/ignite_start.sh
+./scripts/ignite stop -y
+./scripts/ignite start
 ```
 
 ### tmux Session Operations
@@ -400,6 +442,22 @@ q                 # Exit scroll mode
 - Pane 4: Coordinator (Aina Tsuse)
 - Pane 5: Innovator (Tsumugi Ena)
 - Pane 6+: IGNITIANs
+
+### Getting Help
+
+```bash
+# General help
+./scripts/ignite help
+./scripts/ignite --help
+
+# Command-specific help
+./scripts/ignite help start
+./scripts/ignite help plan
+./scripts/ignite start --help
+
+# Version check
+./scripts/ignite --version
+```
 
 ### Understanding the Dashboard
 
@@ -453,11 +511,8 @@ Goal: Create a README file
 # Check existing sessions
 tmux ls
 
-# Remove existing session
-tmux kill-session -t ignite-session
-
-# Restart
-bash scripts/ignite_start.sh
+# Force restart
+./scripts/ignite start -f
 ```
 
 **Cause 2: claude-code not found**
@@ -485,44 +540,40 @@ brew install tmux
 
 ```bash
 # Check queue status
-find workspace/queue -name "*.yaml"
+./scripts/ignite status
 
 # If messages exist, check that agent's pane
-tmux attach -t ignite-session
+./scripts/ignite attach
 # Navigate to the relevant pane and check logs
 ```
 
 **Cause 2: Agent stopped due to error**
 
 ```bash
-# Check log files
-tail -f workspace/logs/*.log
+# Real-time log monitoring
+./scripts/ignite logs -f
 
-# Or individually
-cat workspace/logs/leader.log
-cat workspace/logs/coordinator.log
+# Or display at once
+./scripts/ignite logs -n 50
 ```
 
 **Cause 3: Blocked by dependencies**
 
 ```bash
-# Check dependencies in dashboard
-cat workspace/dashboard.md
+# Check dependencies via status
+./scripts/ignite status
 ```
 
 ### IGNITIANS Not Responding
 
 ```bash
+# Check queue status
+./scripts/ignite status
+
 # Check the relevant IGNITIAN's pane
-tmux attach -t ignite-session
+./scripts/ignite attach
 Ctrl+b q    # Check pane numbers
 Ctrl+b q 6  # Go to IGNITIAN-0's pane
-
-# Check if task file exists
-ls -la workspace/queue/ignitians/
-
-# Check if reports are generated
-ls -la workspace/reports/
 ```
 
 ### Dashboard Not Updating
@@ -548,11 +599,11 @@ EOF
 ### Too Many Messages Queued
 
 ```bash
-# Clear old messages (Warning: also deletes in-progress tasks)
-rm workspace/queue/*/*.yaml
+# Clear workspace (Warning: also deletes in-progress tasks)
+./scripts/ignite clean
 
-# Or clear specific queue only
-rm workspace/queue/leader/*.yaml
+# Skip confirmation
+./scripts/ignite clean -y
 ```
 
 ## 📊 Communication Protocol
@@ -595,25 +646,21 @@ See [docs/protocol.md](docs/protocol.md) for details.
 
 **Good Example:**
 ```bash
-bash scripts/ignite_plan.sh \
-  "Implement user authentication feature" \
-  "JWT authentication, /login, /logout, /refresh endpoints, session management"
+./scripts/ignite plan "Implement user authentication feature" -c "JWT authentication, /login, /logout, /refresh endpoints, session management"
 ```
 
 **Bad Example:**
 ```bash
-bash scripts/ignite_plan.sh "authentication"
+./scripts/ignite plan "authentication"
 # → Unclear what should be done
 ```
 
 ### 2. Provide Context
 
-For complex tasks, provide context via the second argument:
+For complex tasks, provide context via the `-c` option:
 
 ```bash
-bash scripts/ignite_plan.sh \
-  "Improve performance" \
-  "Database query optimization, introduce caching, resolve N+1 problem"
+./scripts/ignite plan "Improve performance" -c "Database query optimization, introduce caching, resolve N+1 problem"
 ```
 
 ### 3. Choose Appropriate Parallelism
@@ -625,11 +672,14 @@ bash scripts/ignite_plan.sh \
 ### 4. Regular Progress Checks
 
 ```bash
-# Update dashboard every 5 seconds
+# Check status
+./scripts/ignite status
+
+# Monitor dashboard every 5 seconds
 watch -n 5 cat workspace/dashboard.md
 
-# Or run status command periodically in another terminal
-watch -n 10 bash scripts/ignite_status.sh
+# Real-time log monitoring
+./scripts/ignite logs -f
 ```
 
 ### 5. Utilize Logs
@@ -637,11 +687,14 @@ watch -n 10 bash scripts/ignite_status.sh
 When problems occur, check logs first:
 
 ```bash
-# Monitor all logs
-tail -f workspace/logs/*.log
+# Show recent logs
+./scripts/ignite logs
 
-# Specific agent only
-tail -f workspace/logs/coordinator.log
+# Real-time monitoring
+./scripts/ignite logs -f
+
+# Show more lines
+./scripts/ignite logs -n 100
 ```
 
 ## 📚 Learn More
