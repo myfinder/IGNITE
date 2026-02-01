@@ -19,6 +19,7 @@ IGNITE may not be able to sing, dance, or go live streaming just yet, but they�
 - **Character Personality**: Each agent has unique personality and expertise
 - **Fully Local Execution**: Leverage full claude code capabilities on local PC
 - **tmux Integration**: Real-time visualization of all agent activities
+- **Cost Tracking**: Real-time token usage and cost monitoring per agent
 
 ## 📋 Requirements
 
@@ -146,7 +147,20 @@ You can monitor each agent's activity in real-time across panes.
 ./scripts/ignite stop -y
 ```
 
-### 5. Clear Workspace
+### 5. Check Costs
+
+```bash
+# Show token usage and costs
+./scripts/ignite cost
+
+# Detailed view (individual IGNITIANs)
+./scripts/ignite cost -d
+
+# JSON output
+./scripts/ignite cost -j
+```
+
+### 6. Clear Workspace
 
 ```bash
 ./scripts/ignite clean
@@ -310,7 +324,8 @@ ignite/
 ├── config/                     # Configuration files
 │   ├── system.yaml             # System-wide settings
 │   ├── agents.yaml             # Individual agent settings
-│   └── ignitians.yaml          # IGNITIANS parallelism settings
+│   ├── ignitians.yaml          # IGNITIANS parallelism settings
+│   └── pricing.yaml            # Claude API pricing settings
 │
 ├── workspace/                  # Runtime workspace (excluded via .gitignore)
 │   ├── queue/                  # Message queues (per agent)
@@ -350,6 +365,7 @@ ignite/
 | `attach` | Connect to tmux session | `./scripts/ignite attach` |
 | `logs` | View logs | `./scripts/ignite logs` |
 | `clean` | Clear workspace | `./scripts/ignite clean` |
+| `cost` | Show token usage and costs | `./scripts/ignite cost` |
 | `list` | List sessions | `./scripts/ignite list` |
 | `help` | Show help | `./scripts/ignite help` |
 

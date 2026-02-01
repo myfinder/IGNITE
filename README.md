@@ -19,6 +19,7 @@ IGNITEは今はまだ歌って踊ってライブ配信することはできま�
 - **キャラクター性**: 各エージェントは個性と専門性を持つ
 - **完全なローカル実行**: claude codeのフル機能をローカルPCで活用
 - **tmux統合**: 全エージェントの動作をリアルタイムで可視化
+- **コスト追跡**: エージェントごとのトークン消費量と費用をリアルタイムで確認
 
 ## 📋 必要環境
 
@@ -146,7 +147,35 @@ cat workspace/dashboard.md
 ./scripts/ignite stop -y
 ```
 
-### 5. workspaceクリア
+### 5. コスト確認
+
+```bash
+# トークン消費量と費用を表示
+./scripts/ignite cost
+
+# 詳細表示（IGNITIANs個別表示）
+./scripts/ignite cost -d
+
+# JSON形式で出力
+./scripts/ignite cost -j
+```
+
+**表示例:**
+```
+┌────────────────┬──────────────┬──────────────┬───────────────┬─────────────┐
+│ エージェント   │ 入力トークン │ 出力トークン │    Cache(R/W) │  費用 (USD) │
+├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤
+│ 伊羽ユイ       │          236 │          339 │       1.7/.2M │   $    2.57 │
+│ ...            │              │              │               │             │
+├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤
+│ 合計           │       22,322 │       14,302 │    139.6/3.7M │   $   93.83 │
+└────────────────┴──────────────┴──────────────┴───────────────┴─────────────┘
+
+料金: Claude Opus 4.5 ($5.00/1M入力, $25.00/1M出力)
+日本円概算: ¥14,074 (税別, $1=¥150.0)
+```
+
+### 6. workspaceクリア
 
 ```bash
 ./scripts/ignite clean
@@ -309,7 +338,8 @@ ignite/
 ├── config/                     # 設定ファイル
 │   ├── system.yaml             # システム全体の設定
 │   ├── agents.yaml             # 各エージェントの設定
-│   └── ignitians.yaml          # IGNITIANS並列数設定
+│   ├── ignitians.yaml          # IGNITIANS並列数設定
+│   └── pricing.yaml            # Claude API料金設定
 │
 ├── workspace/                  # 実行時ワークスペース（.gitignoreで除外）
 │   ├── queue/                  # メッセージキュー（各エージェント用）
@@ -349,6 +379,7 @@ ignite/
 | `attach` | tmuxセッションに接続 | `./scripts/ignite attach` |
 | `logs` | ログ表示 | `./scripts/ignite logs` |
 | `clean` | workspaceクリア | `./scripts/ignite clean` |
+| `cost` | トークン消費量・費用を表示 | `./scripts/ignite cost` |
 | `list` | セッション一覧表示 | `./scripts/ignite list` |
 | `help` | ヘルプ表示 | `./scripts/ignite help` |
 
