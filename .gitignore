@@ -21,6 +21,9 @@ Thumbs.db
 *.swo
 *~
 
+# Claude Code
+.claude/
+
 # Temporary files
 *.tmp
 *.bak
