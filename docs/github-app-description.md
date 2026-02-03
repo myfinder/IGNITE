@@ -7,7 +7,7 @@ IGNITE Bot - Intelligent Generative Networked Interaction-driven Task Engine
 
 GitHub integration bot for the IGNITE system. Provides:
 • Automatic responses to Issues/PRs
-• Task triggering via @ignite-bot mentions
+• Task triggering via @ignite-gh-app mentions
 • PR creation and comments as Bot
 • Automated code review and implementation
 
@@ -15,7 +15,7 @@ GitHub integration bot for the IGNITE system. Provides:
 
 IGNITEシステム用のGitHub連携Bot。以下の機能を提供します：
 • Issue/PRへの自動応答
-• @ignite-bot メンションによるタスク起動
+• @ignite-gh-app メンションによるタスク起動
 • Bot名義でのPR作成・コメント投稿
 • 自動コードレビューと実装
 

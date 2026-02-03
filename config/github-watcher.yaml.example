@@ -59,7 +59,7 @@ watcher:
 triggers:
   # メンションパターン（正規表現として解釈）
   # このパターンがコメントに含まれている場合、タスクメッセージを生成
-  mention_pattern: "@ignite-bot"
+  mention_pattern: "@ignite-gh-app"
 
   # トリガーキーワード
   # メンション後のキーワードでアクションタイプを判別

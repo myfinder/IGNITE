@@ -91,7 +91,7 @@ load_config() {
 
     # トリガー設定
     MENTION_PATTERN=$(grep -E '^\s*mention_pattern:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
-    MENTION_PATTERN=${MENTION_PATTERN:-"@ignite-bot"}
+    MENTION_PATTERN=${MENTION_PATTERN:-"@ignite-gh-app"}
 
     # ワークスペース設定
     WORKSPACE_DIR=$(grep -E '^\s*workspace:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
@@ -410,7 +410,7 @@ EOF
     echo "$message_file"
 }
 
-# トリガーメッセージを検出（@ignite-bot など）
+# トリガーメッセージを検出（@ignite-gh-app など）
 create_task_message() {
     local event_type="$1"
     local repo="$2"

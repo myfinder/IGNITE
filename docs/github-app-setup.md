@@ -49,7 +49,7 @@ https://github.com/settings/apps/new にアクセスします。
 
 | 項目 | 設定値 |
 |------|--------|
-| **GitHub App name** | `ignite-bot` など（一意な名前） |
+| **GitHub App name** | `ignite-gh-app` など（一意な名前） |
 | **Homepage URL** | プロジェクトのURLまたは `https://github.com/your-org/ignite` |
 
 ### 3. Webhook設定
@@ -99,7 +99,7 @@ IGNITEはポーリング方式でイベントを取得するため、Webhookは�
 mkdir -p ~/.config/ignite
 
 # ダウンロードしたPrivate Keyを移動
-mv ~/Downloads/ignite-bot.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
+mv ~/Downloads/ignite-gh-app.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
 
 # 権限を制限
 chmod 600 ~/.config/ignite/github-app-private-key.pem

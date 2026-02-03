@@ -30,4 +30,4 @@ github_app:
   # (オプション) App名
   # コメント等でBot名を表示する際に使用
   # 未設定の場合は github_app_name[bot] として表示されます
-  app_name: "ignite-bot"
+  app_name: "ignite-gh-app"

@@ -10,7 +10,7 @@ GitHub Watcher monitors events (Issues, PRs, comments) in GitHub repositories an
 
 - **Issue/PR event monitoring**: Detect new creations and updates
 - **Comment monitoring**: Detect comments on Issues/PRs
-- **Trigger functionality**: Automatically start tasks via mentions (@ignite-bot)
+- **Trigger functionality**: Automatically start tasks via mentions (@ignite-gh-app)
 - **Bot detection**: Does not react to own Bot posts
 - **Duplicate prevention**: Records processed events to prevent duplicate processing
 
@@ -86,7 +86,7 @@ Start automatic tasks via mentions or keywords:
 ```yaml
 triggers:
   # Mention pattern
-  mention_pattern: "@ignite-bot"
+  mention_pattern: "@ignite-gh-app"
 
   # Actions by keyword
   keywords:
@@ -252,7 +252,7 @@ payload:
     Error occurs during login.
   requested_by: human-user
   trigger_comment: |
-    @ignite-bot implement this issue
+    @ignite-gh-app implement this issue
   branch_prefix: "ignite/"
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
 status: pending
@@ -265,15 +265,15 @@ status: pending
 Mentioning in GitHub Issue/PR comments like below will automatically start IGNITE tasks:
 
 ```
-@ignite-bot implement this issue
+@ignite-gh-app implement this issue
 ```
 
 ```
-@ignite-bot fix this issue
+@ignite-gh-app fix this issue
 ```
 
 ```
-@ignite-bot create a PR
+@ignite-gh-app create a PR
 ```
 
 ### Trigger Types
@@ -286,7 +286,7 @@ Mentioning in GitHub Issue/PR comments like below will automatically start IGNIT
 
 ## Issue → PR Auto-creation Flow
 
-1. **Trigger detection**: User comments `@ignite-bot implement this`
+1. **Trigger detection**: User comments `@ignite-gh-app implement this`
 2. **Task message generation**: GitHub Watcher creates `github_task` message
 3. **IGNITE processing**: Task execution through Leader → Strategist → IGNITIANs flow
 4. **PR creation**: After implementation, create PR as Bot using `create_pr.sh`

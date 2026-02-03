@@ -49,7 +49,7 @@ Navigate to https://github.com/settings/apps/new
 
 | Field | Value |
 |-------|-------|
-| **GitHub App name** | `ignite-bot` or any unique name |
+| **GitHub App name** | `ignite-gh-app` or any unique name |
 | **Homepage URL** | Project URL or `https://github.com/your-org/ignite` |
 
 ### 3. Webhook Settings
@@ -99,7 +99,7 @@ In the "Private keys" section at the bottom of your App's settings page:
 mkdir -p ~/.config/ignite
 
 # Move downloaded Private Key
-mv ~/Downloads/ignite-bot.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
+mv ~/Downloads/ignite-gh-app.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
 
 # Restrict permissions
 chmod 600 ~/.config/ignite/github-app-private-key.pem

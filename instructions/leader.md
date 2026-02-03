@@ -268,7 +268,7 @@ payload:
 
 ### github_task 受信時
 
-メンション（@ignite-bot 等）でトリガーされたタスクリクエストを処理します。
+メンション（@ignite-gh-app 等）でトリガーされたタスクリクエストを処理します。
 
 ```yaml
 # workspace/queue/leader/github_task_xxx.yaml
@@ -283,7 +283,7 @@ payload:
   issue_title: "機能リクエスト"
   issue_body: "詳細..."
   requested_by: human-user
-  trigger_comment: "@ignite-bot このIssueを実装して"
+  trigger_comment: "@ignite-gh-app このIssueを実装して"
   branch_prefix: "ignite/"
 ```
 
@@ -467,7 +467,7 @@ PRコメントで修正依頼が来た場合：
 
 ### review トリガー処理
 
-PRに対して `@ignite-bot review` が来た場合：
+PRに対して `@ignite-gh-app review` が来た場合：
 
 1. **PRの差分を取得**
    ```bash
