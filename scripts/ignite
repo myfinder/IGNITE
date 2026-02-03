@@ -109,6 +109,17 @@ get_worker_count() {
     echo "$DEFAULT_WORKER_COUNT"
 }
 
+# GitHub Watcher自動起動設定を取得
+get_watcher_auto_start() {
+    local config_file="$PROJECT_ROOT/config/github-watcher.yaml"
+    if [[ -f "$config_file" ]]; then
+        local enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
+        [[ "$enabled" == "true" ]]
+    else
+        return 1
+    fi
+}
+
 # エージェント起動関数（最大3回リトライ）
 start_agent() {
     local role="$1"      # strategist, architect, etc.
@@ -211,6 +222,7 @@ cmd_start() {
     local agent_mode="full"    # full, leader, sub
     local worker_count=""
     local no_workers=false
+    local with_watcher=""      # 空=設定に従う, true=起動, false=起動しない
 
     # オプション解析
     while [[ $# -gt 0 ]]; do
@@ -248,6 +260,8 @@ cmd_start() {
                 shift 2
                 ;;
             --no-workers) no_workers=true; shift ;;
+            --with-watcher) with_watcher=true; shift ;;
+            --no-watcher) with_watcher=false; shift ;;
             -h|--help) cmd_help start; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help start; exit 1 ;;
         esac
@@ -321,6 +335,8 @@ cmd_start() {
     mkdir -p "$WORKSPACE_DIR/reports"
     mkdir -p "$WORKSPACE_DIR/context"
     mkdir -p "$WORKSPACE_DIR/logs"
+    mkdir -p "$WORKSPACE_DIR/state"  # Watcher用ステートファイル保存先
+    mkdir -p "$WORKSPACE_DIR/repos"  # 外部リポジトリのclone先
 
     # 初期ダッシュボードの作成
     print_info "初期ダッシュボードを作成中..."
@@ -533,6 +549,32 @@ EOF
     echo -e "  - セッション終了: ${YELLOW}./scripts/ignite stop${NC}"
     echo ""
 
+    # GitHub Watcher の起動判定
+    local start_watcher=false
+    if [[ "$with_watcher" == "true" ]]; then
+        start_watcher=true
+    elif [[ "$with_watcher" == "false" ]]; then
+        start_watcher=false
+    elif get_watcher_auto_start; then
+        start_watcher=true
+    fi
+
+    # GitHub Watcher の起動
+    if [[ "$start_watcher" == true ]]; then
+        if [[ -f "$PROJECT_ROOT/config/github-watcher.yaml" ]]; then
+            print_info "GitHub Watcherを起動中..."
+            # ログ出力先を設定してバックグラウンド起動
+            local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
+            "$SCRIPT_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            local watcher_pid=$!
+            echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
+            print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
+            print_info "ログ: $watcher_log"
+        else
+            print_warning "github-watcher.yaml が見つかりません。Watcher起動をスキップ"
+        fi
+    fi
+
     # 自動アタッチ
     if [[ "$no_attach" == false ]]; then
         read -p "tmuxセッションにアタッチしますか? (Y/n): " -n 1 -r
@@ -743,6 +785,17 @@ cmd_stop() {
 
     # ワークスペースを設定
     setup_workspace
+
+    # GitHub Watcher を停止
+    if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+        local watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        if kill -0 "$watcher_pid" 2>/dev/null; then
+            print_info "GitHub Watcherを停止中..."
+            kill "$watcher_pid" 2>/dev/null || true
+            print_success "GitHub Watcher停止完了"
+        fi
+        rm -f "$WORKSPACE_DIR/github_watcher.pid"
+    fi
 
     # コスト履歴を保存
     save_cost_history
@@ -1132,6 +1185,20 @@ cmd_status() {
         echo "  完了レポート: ${report_count} 件"
         echo ""
     fi
+
+    # GitHub Watcher状態
+    print_header "GitHub Watcher"
+    if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+        local watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        if kill -0 "$watcher_pid" 2>/dev/null; then
+            print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
+        else
+            print_warning "GitHub Watcher: 停止（PIDファイルあり）"
+        fi
+    else
+        print_info "GitHub Watcher: 未起動"
+    fi
+    echo ""
 
     # 最新ログ
     print_header "最新ログ (直近5件)"
@@ -2032,6 +2099,8 @@ cmd_help() {
             echo "                          sub:    Leader + Sub-Leaders（IGNITIANsなし）"
             echo "  --workers <N>         IGNITIANs並列数（1-32）"
             echo "  --no-workers          IGNITIANsを起動しない"
+            echo "  --with-watcher        GitHub Watcherも一緒に起動"
+            echo "  --no-watcher          GitHub Watcherを起動しない（設定で有効でも）"
             echo "  -h, --help            このヘルプを表示"
             echo ""
             echo "ペインレイアウト (fullモード):"
@@ -2047,6 +2116,7 @@ cmd_help() {
             echo "  ./scripts/ignite start -a leader              # Leaderのみ起動"
             echo "  ./scripts/ignite start -a sub                 # Leader + Sub-Leadersのみ"
             echo "  ./scripts/ignite start --workers 4            # IGNITIANs 4並列で起動"
+            echo "  ./scripts/ignite start --with-watcher         # GitHub Watcherも起動"
             ;;
         stop)
             echo "使用方法: ./scripts/ignite stop [オプション]"
@@ -2191,6 +2261,43 @@ cmd_help() {
             echo ""
             echo "実行中のIGNITEセッション一覧を表示します"
             ;;
+        work-on)
+            echo "使用方法: ./scripts/ignite work-on <issue> [オプション]"
+            echo ""
+            echo "Issue番号を指定して実装を開始します"
+            echo ""
+            echo "引数:"
+            echo "  <issue>    Issue番号またはURL"
+            echo ""
+            echo "オプション:"
+            echo "  -r, --repo <repo>       リポジトリ（owner/repo形式）"
+            echo "  -s, --session <id>      対象セッションIDを指定"
+            echo "  -w, --workspace <dir>   ワークスペースを指定"
+            echo "  -h, --help              このヘルプを表示"
+            echo ""
+            echo "例:"
+            echo "  ./scripts/ignite work-on 123 --repo owner/repo"
+            echo "  ./scripts/ignite work-on https://github.com/owner/repo/issues/123"
+            ;;
+        watcher)
+            echo "使用方法: ./scripts/ignite watcher <action>"
+            echo ""
+            echo "GitHub Watcherを管理します"
+            echo ""
+            echo "アクション:"
+            echo "  start                       バックグラウンドで起動"
+            echo "  stop                        停止"
+            echo "  status                      状態確認"
+            echo "  once                        単発実行"
+            echo "  comment <issue> [options]   Issueにコメント投稿"
+            echo "  ack <issue> [repo]          受付応答を投稿"
+            echo ""
+            echo "例:"
+            echo "  ./scripts/ignite watcher start"
+            echo "  ./scripts/ignite watcher status"
+            echo "  ./scripts/ignite watcher comment 123 --repo owner/repo --bot --body \"メッセージ\""
+            echo "  ./scripts/ignite watcher ack 123 owner/repo"
+            ;;
         cost)
             echo "使用方法: ./scripts/ignite cost [オプション]"
             echo ""
@@ -2226,6 +2333,8 @@ cmd_help() {
             echo "  stop      システムを停止"
             echo "  list      実行中のセッション一覧"
             echo "  plan      タスクを投入"
+            echo "  work-on   Issue番号を指定して実装開始"
+            echo "  watcher   GitHub Watcherを管理"
             echo "  status    状態を確認"
             echo "  cost      トークン消費量・費用を表示"
             echo "  attach    tmuxセッションに接続"
@@ -2269,6 +2378,227 @@ cmd_help() {
 }
 
 # =============================================================================
+# work-on コマンド - Issue番号を指定して実装開始
+# =============================================================================
+cmd_work_on() {
+    local issue_input=""
+    local repo=""
+
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -r|--repo)
+                repo="$2"
+                shift 2
+                ;;
+            -s|--session)
+                SESSION_NAME="$2"
+                if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
+                    SESSION_NAME="ignite-$SESSION_NAME"
+                fi
+                shift 2
+                ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
+            -h|--help) cmd_help work-on; exit 0 ;;
+            -*)
+                print_error "Unknown option: $1"
+                cmd_help work-on
+                exit 1
+                ;;
+            *)
+                if [[ -z "$issue_input" ]]; then
+                    issue_input="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # セッション名とワークスペースを設定
+    setup_session_name
+    setup_workspace
+
+    # Issue入力チェック
+    if [[ -z "$issue_input" ]]; then
+        print_error "Issue番号またはURLを指定してください"
+        echo ""
+        echo "使用方法:"
+        echo "  ./scripts/ignite work-on 123 --repo owner/repo"
+        echo "  ./scripts/ignite work-on https://github.com/owner/repo/issues/123"
+        exit 1
+    fi
+
+    # URLかどうかチェック
+    local issue_number=""
+    if [[ "$issue_input" =~ ^https?://.*github\.com/([^/]+)/([^/]+)/issues/([0-9]+) ]]; then
+        repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        issue_number="${BASH_REMATCH[3]}"
+    else
+        issue_number="$issue_input"
+        if [[ -z "$repo" ]]; then
+            # リポジトリを推測
+            repo=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
+            if [[ -z "$repo" ]]; then
+                print_error "リポジトリを指定してください: --repo owner/repo"
+                exit 1
+            fi
+        fi
+    fi
+
+    # セッションの存在確認
+    if ! session_exists; then
+        print_error "セッション '$SESSION_NAME' が見つかりません"
+        echo ""
+        print_info "実行中のセッション一覧:"
+        list_sessions 2>/dev/null || true
+        echo -e "${YELLOW}先に起動してください: ./scripts/ignite start${NC}"
+        exit 1
+    fi
+
+    print_header "IGNITE Work-on Issue"
+    echo ""
+    echo -e "${BLUE}Issue:${NC} #$issue_number"
+    echo -e "${BLUE}リポジトリ:${NC} $repo"
+    echo ""
+
+    # Issue情報を取得
+    print_info "Issue情報を取得中..."
+    local issue_info
+    issue_info=$(gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "")
+
+    if [[ -z "$issue_info" ]] || [[ "$issue_info" == "null" ]]; then
+        print_error "Issue #${issue_number} が見つかりません"
+        exit 1
+    fi
+
+    local issue_title=$(echo "$issue_info" | jq -r '.title')
+    local issue_body=$(echo "$issue_info" | jq -r '.body // ""' | head -c 2000)
+    local issue_url=$(echo "$issue_info" | jq -r '.html_url')
+
+    print_success "Issue: $issue_title"
+    echo ""
+
+    # タイムスタンプとメッセージID生成
+    local timestamp=$(date -Iseconds)
+    local message_id=$(date +%s%N)
+
+    # github_taskメッセージを作成
+    local message_file="$WORKSPACE_DIR/queue/leader/github_task_${message_id}.yaml"
+
+    cat > "$message_file" <<EOF
+type: github_task
+from: user
+to: leader
+timestamp: "${timestamp}"
+priority: high
+payload:
+  trigger: "implement"
+  repository: ${repo}
+  issue_number: ${issue_number}
+  issue_title: "${issue_title}"
+  issue_body: |
+$(echo "$issue_body" | sed 's/^/    /')
+  requested_by: user
+  trigger_comment: "work-onコマンドによる手動トリガー"
+  branch_prefix: "ignite/"
+  url: "${issue_url}"
+status: pending
+EOF
+
+    print_success "タスクメッセージを作成しました: $message_file"
+
+    # Leaderに通知
+    sleep 0.5
+    tmux send-keys -t "$SESSION_NAME:ignite.0" \
+        "$WORKSPACE_DIR/queue/leader/ に新しいタスクがあります。Issue #${issue_number}「${issue_title}」の実装を開始してください。"
+    sleep 0.3
+    tmux send-keys -t "$SESSION_NAME:ignite.0" C-m
+
+    echo ""
+    print_success "Issue #${issue_number} の実装タスクを投入しました"
+    echo ""
+    echo "次のステップ:"
+    echo -e "  1. 進捗確認: ${YELLOW}./scripts/ignite status${NC}"
+    echo -e "  2. ログ確認: ${YELLOW}./scripts/ignite logs -f${NC}"
+    echo -e "  3. tmux確認: ${YELLOW}./scripts/ignite attach${NC}"
+}
+
+# =============================================================================
+# watcher コマンド - GitHub Watcher管理
+# =============================================================================
+cmd_watcher() {
+    local action="${1:-}"
+    shift 2>/dev/null || true
+
+    case "$action" in
+        start)
+            print_info "GitHub Watcherを起動します..."
+            "$SCRIPT_DIR/utils/github_watcher.sh" &
+            print_success "GitHub Watcherをバックグラウンドで起動しました"
+            ;;
+        stop)
+            print_info "GitHub Watcherを停止します..."
+            pkill -f "github_watcher.sh" 2>/dev/null || true
+            print_success "GitHub Watcherを停止しました"
+            ;;
+        status)
+            if pgrep -f "github_watcher.sh" > /dev/null; then
+                print_success "GitHub Watcher: 実行中"
+                pgrep -f "github_watcher.sh" | while read pid; do
+                    echo "  PID: $pid"
+                done
+            else
+                print_warning "GitHub Watcher: 停止中"
+            fi
+            ;;
+        once)
+            print_info "GitHub Watcherを単発実行します..."
+            "$SCRIPT_DIR/utils/github_watcher.sh" --once
+            ;;
+        comment)
+            # Issueにコメント投稿
+            "$SCRIPT_DIR/utils/comment_on_issue.sh" "$@"
+            ;;
+        ack)
+            # 受付応答を投稿
+            local issue="${1:-}"
+            local repo="${2:-}"
+            if [[ -z "$issue" ]]; then
+                print_error "Issue番号を指定してください"
+                echo "使用方法: ./scripts/ignite watcher ack <issue_number> [repo]"
+                exit 1
+            fi
+            if [[ -n "$repo" ]]; then
+                "$SCRIPT_DIR/utils/comment_on_issue.sh" "$issue" --repo "$repo" --bot --template acknowledge
+            else
+                "$SCRIPT_DIR/utils/comment_on_issue.sh" "$issue" --bot --template acknowledge
+            fi
+            ;;
+        *)
+            echo "使用方法: ./scripts/ignite watcher <action>"
+            echo ""
+            echo "アクション:"
+            echo "  start                       バックグラウンドで起動"
+            echo "  stop                        停止"
+            echo "  status                      状態確認"
+            echo "  once                        単発実行"
+            echo "  comment <issue> [options]   Issueにコメント投稿"
+            echo "  ack <issue> [repo]          受付応答を投稿"
+            echo ""
+            echo "コメント例:"
+            echo "  ./scripts/ignite watcher comment 123 --repo owner/repo --bot --body \"メッセージ\""
+            echo "  ./scripts/ignite watcher ack 123 owner/repo"
+            ;;
+    esac
+}
+
+# =============================================================================
 # メイン
 # =============================================================================
 main() {
@@ -2284,6 +2614,8 @@ main() {
         notify)   shift; cmd_notify "$@" ;;
         logs)     shift; cmd_logs "$@" ;;
         clean)    shift; cmd_clean "$@" ;;
+        work-on)  shift; cmd_work_on "$@" ;;
+        watcher)  shift; cmd_watcher "$@" ;;
         help)     shift; cmd_help "$@" ;;
         -h|--help) cmd_help ;;
         -v|--version) echo "IGNITE v$VERSION" ;;

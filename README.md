@@ -79,6 +79,9 @@ cd /path/to/ignite
 
 # セッションIDとワークスペースを指定して起動
 ./scripts/ignite start -s my-session -w /path/to/workspace
+
+# GitHub Watcherも一緒に起動
+./scripts/ignite start --with-watcher
 ```
 
 `-s`/`--session` と `-w`/`--workspace` オプションを使用することで、複数のプロジェクトを並行して実行できます。詳細は「複数プロジェクトの並行実行」セクションを参照してください。
@@ -380,6 +383,8 @@ ignite/
 | `logs` | ログ表示 | `./scripts/ignite logs` |
 | `clean` | workspaceクリア | `./scripts/ignite clean` |
 | `cost` | トークン消費量・費用を表示 | `./scripts/ignite cost` |
+| `work-on` | Issue番号を指定して実装開始 | `./scripts/ignite work-on 123 --repo owner/repo` |
+| `watcher` | GitHub Watcherを管理 | `./scripts/ignite watcher start` |
 | `list` | セッション一覧表示 | `./scripts/ignite list` |
 | `help` | ヘルプ表示 | `./scripts/ignite help` |
 
@@ -786,6 +791,8 @@ watch -n 5 ./scripts/ignite status
 - **アーキテクチャ**: [docs/architecture.md](docs/architecture.md) - システム構造の詳細
 - **プロトコル仕様**: [docs/protocol.md](docs/protocol.md) - メッセージフォーマットと通信フロー
 - **実装状況**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - 実装済み機能の一覧
+- **GitHub App設定**: [docs/github-app-setup.md](docs/github-app-setup.md) - Bot用GitHub Appの作成手順
+- **GitHub Watcher**: [docs/github-watcher.md](docs/github-watcher.md) - GitHubイベント監視システムの使い方
 
 ## 🤝 コントリビューション
 

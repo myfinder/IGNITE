@@ -1,0 +1,33 @@
+# GitHub App 設定
+# このファイルをコピーして github-app.yaml として使用してください
+# cp config/github-app.yaml.example config/github-app.yaml
+#
+# 設定手順:
+# 1. GitHub App を作成: https://github.com/settings/apps/new
+# 2. Private Key を生成してダウンロード
+# 3. リポジトリに App をインストール
+# 4. 各値を設定
+#
+# 詳細は docs/github-app-setup.md を参照してください
+
+github_app:
+  # GitHub App ID
+  # App作成後の設定ページに表示される数字
+  # 例: 123456
+  app_id: "YOUR_APP_ID"
+
+  # Installation ID
+  # リポジトリにAppをインストールした後に取得
+  # 取得方法: gh api /users/{username}/installation | jq '.id'
+  # 例: 12345678
+  installation_id: "YOUR_INSTALLATION_ID"
+
+  # Private Key ファイルのパス
+  # App設定ページで生成したPrivate Keyファイル
+  # 注意: このファイルは厳重に管理してください
+  private_key_path: "~/.config/ignite/github-app-private-key.pem"
+
+  # (オプション) App名
+  # コメント等でBot名を表示する際に使用
+  # 未設定の場合は github_app_name[bot] として表示されます
+  app_name: "ignite-bot"
