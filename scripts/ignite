@@ -606,7 +606,8 @@ EOF
             print_info "GitHub Watcherを起動中..."
             # ログ出力先を設定してバックグラウンド起動
             local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
-            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml" \
+                "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
             print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
