@@ -177,7 +177,8 @@ install_config() {
     # 設定ファイルをコピー（既存ファイルは保持）
     for file in "$source_config"/*.yaml "$source_config"/*.yaml.example; do
         [[ -f "$file" ]] || continue
-        local filename=$(basename "$file")
+        local filename
+        filename=$(basename "$file")
         local dest="$CONFIG_DIR/$filename"
 
         # .example ファイルは常にコピー
