@@ -64,6 +64,20 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# 移植性のある sed -i 実装 (GNU sed / BSD sed 両対応)
+sed_inplace() {
+    local pattern="$1"
+    local file="$2"
+    local tmp
+    tmp=$(mktemp)
+    if sed "$pattern" "$file" > "$tmp" && [[ -s "$tmp" || ! -s "$file" ]]; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
 # =============================================================================
 # セッションID・ワークスペース管理
 # =============================================================================
@@ -1720,7 +1734,7 @@ update_sessions_yaml() {
         if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
             local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
             if [[ -n "$resolved_id" ]]; then
-                sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                sed_inplace "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                 updated=true
             fi
         fi
@@ -1734,7 +1748,7 @@ update_sessions_yaml() {
             if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
                 local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
                 if [[ -n "$resolved_id" ]]; then
-                    sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                    sed_inplace "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                     updated=true
                 fi
             fi

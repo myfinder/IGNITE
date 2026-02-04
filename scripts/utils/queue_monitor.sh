@@ -19,6 +19,20 @@ log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[QUEUE]${NC} $1"
 log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[QUEUE]${NC} $1"; }
 log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[QUEUE]${NC} $1"; }
 
+# 移植性のある sed -i 実装 (GNU sed / BSD sed 両対応)
+sed_inplace() {
+    local pattern="$1"
+    local file="$2"
+    local tmp
+    tmp=$(mktemp)
+    if sed "$pattern" "$file" > "$tmp" && [[ -s "$tmp" || ! -s "$file" ]]; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
 # 設定
 WORKSPACE_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}"
 POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
@@ -188,7 +202,7 @@ scan_queue() {
         PROCESSED_FILES[$filepath]=1
 
         # statusをprocessingに更新
-        sed -i 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
+        sed_inplace 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
     done
 }
 
@@ -231,7 +245,7 @@ monitor_queues() {
                     local ignitian_num=${BASH_REMATCH[1]}
                     process_message "$file" "ignitian_${ignitian_num}"
                     PROCESSED_FILES[$filepath]=1
-                    sed -i 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
+                    sed_inplace 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
                 fi
             done
         fi
@@ -293,7 +307,7 @@ monitor_with_inotify() {
             local status=$(grep -E '^status:' "$filepath" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
             if [[ "$status" == "pending" ]]; then
                 process_message "$filepath" "$queue_name"
-                sed -i 's/^status: pending/status: processing/' "$filepath" 2>/dev/null || true
+                sed_inplace 's/^status: pending/status: processing/' "$filepath" 2>/dev/null || true
             fi
         fi
     done
