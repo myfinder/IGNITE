@@ -9,6 +9,37 @@ VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# =============================================================================
+# XDG パス解決（インストールモード vs 開発モード）
+# =============================================================================
+
+# XDG Base Directory paths
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+# インストールモード判定: ~/.config/ignite/.install_paths が存在するか
+INSTALLED_MODE=false
+if [[ -f "$XDG_CONFIG_HOME/ignite/.install_paths" ]]; then
+    INSTALLED_MODE=true
+fi
+
+# パス解決
+if [[ "$INSTALLED_MODE" == "true" ]]; then
+    # インストールモード: XDGパスを使用
+    IGNITE_CONFIG_DIR="$XDG_CONFIG_HOME/ignite"
+    IGNITE_DATA_DIR="$XDG_DATA_HOME/ignite"
+    IGNITE_INSTRUCTIONS_DIR="$IGNITE_DATA_DIR/instructions"
+    IGNITE_SCRIPTS_DIR="$IGNITE_DATA_DIR/scripts"
+    DEFAULT_WORKSPACE_DIR="$HOME/ignite-workspace"
+else
+    # 開発モード: PROJECT_ROOTを使用
+    IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
+    IGNITE_DATA_DIR="$PROJECT_ROOT"
+    IGNITE_INSTRUCTIONS_DIR="$PROJECT_ROOT/instructions"
+    IGNITE_SCRIPTS_DIR="$PROJECT_ROOT/scripts"
+    DEFAULT_WORKSPACE_DIR="$PROJECT_ROOT/workspace"
+fi
+
 # セッション名とワークスペース（後でコマンドラインで上書き可能）
 SESSION_NAME=""
 WORKSPACE_DIR=""
@@ -45,7 +76,7 @@ generate_session_id() {
 
 # デフォルトのワークスペースパス
 get_default_workspace() {
-    echo "$PROJECT_ROOT/workspace"
+    echo "$DEFAULT_WORKSPACE_DIR"
 }
 
 # セッションIDの設定（指定がなければ自動生成）
@@ -97,7 +128,7 @@ session_exists() {
 
 # 設定ファイルからワーカー数を取得
 get_worker_count() {
-    local config_file="$PROJECT_ROOT/config/ignitians.yaml"
+    local config_file="$IGNITE_CONFIG_DIR/ignitians.yaml"
     if [[ -f "$config_file" ]]; then
         local count
         count=$(grep "default:" "$config_file" | head -1 | awk '{print $2}')
@@ -111,7 +142,7 @@ get_worker_count() {
 
 # GitHub Watcher自動起動設定を取得
 get_watcher_auto_start() {
-    local config_file="$PROJECT_ROOT/config/github-watcher.yaml"
+    local config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
     if [[ -f "$config_file" ]]; then
         local enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
         [[ "$enabled" == "true" ]]
@@ -135,9 +166,9 @@ start_agent() {
         tmux split-window -t "$SESSION_NAME:ignite" -h
         tmux select-layout -t "$SESSION_NAME:ignite" tiled
 
-        # Claude CLI 起動
+        # Claude CLI 起動（ワークスペースディレクトリで実行）
         tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-            "cd '$PROJECT_ROOT' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
+            "cd '$WORKSPACE_DIR' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
         sleep 3
 
         # 権限確認通過
@@ -148,9 +179,9 @@ start_agent() {
 
         # 起動確認（ペインが生きているか）
         if tmux list-panes -t "$SESSION_NAME:ignite" 2>/dev/null | grep -q "$pane:"; then
-            # システムプロンプト読み込み
+            # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-                "instructions/${role}.md を読んで、あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/${role}/ のメッセージを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に読み替えてください。"
+                "$IGNITE_INSTRUCTIONS_DIR/${role}.md を読んで、あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/${role}/ のメッセージを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に読み替えてください。"
             sleep 0.3
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" C-m
             sleep 2  # プロンプト送信後の安定待機
@@ -181,9 +212,9 @@ start_ignitian() {
         tmux split-window -t "$SESSION_NAME:ignite" -h
         tmux select-layout -t "$SESSION_NAME:ignite" tiled
 
-        # Claude CLI 起動
+        # Claude CLI 起動（ワークスペースディレクトリで実行）
         tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-            "cd '$PROJECT_ROOT' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
+            "cd '$WORKSPACE_DIR' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
         sleep 3
 
         # 権限確認通過
@@ -194,9 +225,9 @@ start_ignitian() {
 
         # 起動確認
         if tmux list-panes -t "$SESSION_NAME:ignite" 2>/dev/null | grep -q "$pane:"; then
-            # システムプロンプト読み込み
+            # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-                "instructions/ignitians.md を読んで、あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/ignitians/ignitian_${id}.yaml を監視してください。instructions内の workspace/ は $WORKSPACE_DIR に読み替えてください。"
+                "$IGNITE_INSTRUCTIONS_DIR/ignitian.md を読んで、あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/ignitians/ignitian_${id}.yaml を監視してください。instructions内の workspace/ は $WORKSPACE_DIR に読み替えてください。"
             sleep 0.3
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" C-m
             sleep 2  # プロンプト送信後の安定待機
@@ -239,7 +270,7 @@ cmd_start() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -306,7 +337,7 @@ cmd_start() {
     fi
     echo ""
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     # 既存のセッションチェック
     if session_exists; then
@@ -366,7 +397,7 @@ EOF
     # Leader ペイン (pane 0)
     print_info "Leader (伊羽ユイ) を起動中..."
     tmux send-keys -t "$SESSION_NAME:ignite" \
-        "cd '$PROJECT_ROOT' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
+        "cd '$WORKSPACE_DIR' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
 
     # 起動待機（確認プロンプト表示を待つ）
     print_warning "Leaderの起動を待機中... (3秒)"
@@ -382,11 +413,11 @@ EOF
     print_warning "Claude Codeの起動を待機中... (8秒)"
     sleep 8
 
-    # Leaderにシステムプロンプトを読み込ませる
+    # Leaderにシステムプロンプトを読み込ませる（絶対パスを使用）
     print_info "Leaderシステムプロンプトをロード中..."
-    local instruction_file="instructions/leader.md"
+    local instruction_file="$IGNITE_INSTRUCTIONS_DIR/leader.md"
     if [[ "$agent_mode" == "leader" ]]; then
-        instruction_file="instructions/leader-solo.md"
+        instruction_file="$IGNITE_INSTRUCTIONS_DIR/leader-solo.md"
         print_info "単独モード: $instruction_file を使用"
     fi
     tmux send-keys -t "$SESSION_NAME:ignite" \
@@ -566,7 +597,7 @@ EOF
 
     # GitHub Watcher の起動
     if [[ "$start_watcher" == true ]]; then
-        if [[ -f "$PROJECT_ROOT/config/github-watcher.yaml" ]]; then
+        if [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
             # 既存のWatcher/モニターをクリーンアップ（前セッションの残骸対策）
             pkill -f "github_watcher.sh" 2>/dev/null || true
             pkill -f "queue_monitor.sh" 2>/dev/null || true
@@ -575,7 +606,7 @@ EOF
             print_info "GitHub Watcherを起動中..."
             # ログ出力先を設定してバックグラウンド起動
             local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
-            "$SCRIPT_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
             print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
@@ -585,7 +616,7 @@ EOF
             # Leaderのキュー監視のため、単独モードでも起動が必要
             print_info "キューモニターを起動中..."
             local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
-            "$SCRIPT_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+            "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
             local queue_pid=$!
             echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
             print_success "キューモニター起動完了 (PID: $queue_pid)"
@@ -679,7 +710,7 @@ cmd_notify() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -714,7 +745,7 @@ cmd_notify() {
         exit 1
     fi
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     # メッセージファイル作成
     local timestamp=$(date -Iseconds)
@@ -996,7 +1027,7 @@ cmd_plan() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -1033,7 +1064,7 @@ cmd_plan() {
         exit 1
     fi
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     # セッションの存在確認
     if ! session_exists; then
@@ -1120,7 +1151,7 @@ cmd_status() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -1133,7 +1164,7 @@ cmd_status() {
     setup_session_name
     setup_workspace
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     print_header "IGNITE システム状態"
     echo ""
@@ -1316,7 +1347,7 @@ cmd_logs() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -1328,7 +1359,7 @@ cmd_logs() {
     # ワークスペースを設定
     setup_workspace
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     if [[ ! -d "$WORKSPACE_DIR/logs" ]] || [[ -z "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
         print_warning "ログファイルが見つかりません"
@@ -1364,7 +1395,7 @@ cmd_clean() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -1384,7 +1415,7 @@ cmd_clean() {
     setup_session_name
     setup_workspace
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKSPACE_DIR"
 
     print_header "IGNITE workspaceクリア"
     echo ""
@@ -1450,7 +1481,7 @@ cmd_clean() {
 
 # 料金設定を読み込む
 load_pricing() {
-    local pricing_file="$PROJECT_ROOT/config/pricing.yaml"
+    local pricing_file="$IGNITE_CONFIG_DIR/pricing.yaml"
     if [[ ! -f "$pricing_file" ]]; then
         print_error "料金設定ファイルが見つかりません: $pricing_file"
         return 1
@@ -1590,7 +1621,8 @@ resolve_agent_session_id() {
     local pattern=""
     case "$agent_role" in
         leader|strategist|architect|evaluator|coordinator|innovator)
-            pattern="instructions/${agent_role}\\.md"
+            # セッション履歴内で指示ファイルのパターンを検索
+            pattern="${agent_role}\\.md.*として振る舞って"
             ;;
         ignitian_*)
             local num="${agent_role#ignitian_}"
@@ -1756,7 +1788,7 @@ cmd_cost() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -2445,7 +2477,7 @@ cmd_work_on() {
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
-                    WORKSPACE_DIR="$PROJECT_ROOT/$WORKSPACE_DIR"
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
                 fi
                 shift 2
                 ;;
@@ -2583,7 +2615,7 @@ cmd_watcher() {
     case "$action" in
         start)
             print_info "GitHub Watcherを起動します..."
-            "$SCRIPT_DIR/utils/github_watcher.sh" &
+            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" &
             print_success "GitHub Watcherをバックグラウンドで起動しました"
             ;;
         stop)
@@ -2603,11 +2635,11 @@ cmd_watcher() {
             ;;
         once)
             print_info "GitHub Watcherを単発実行します..."
-            "$SCRIPT_DIR/utils/github_watcher.sh" --once
+            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" --once
             ;;
         comment)
             # Issueにコメント投稿
-            "$SCRIPT_DIR/utils/comment_on_issue.sh" "$@"
+            "$IGNITE_SCRIPTS_DIR/utils/comment_on_issue.sh" "$@"
             ;;
         ack)
             # 受付応答を投稿
@@ -2619,9 +2651,9 @@ cmd_watcher() {
                 exit 1
             fi
             if [[ -n "$repo" ]]; then
-                "$SCRIPT_DIR/utils/comment_on_issue.sh" "$issue" --repo "$repo" --bot --template acknowledge
+                "$IGNITE_SCRIPTS_DIR/utils/comment_on_issue.sh" "$issue" --repo "$repo" --bot --template acknowledge
             else
-                "$SCRIPT_DIR/utils/comment_on_issue.sh" "$issue" --bot --template acknowledge
+                "$IGNITE_SCRIPTS_DIR/utils/comment_on_issue.sh" "$issue" --bot --template acknowledge
             fi
             ;;
         *)
