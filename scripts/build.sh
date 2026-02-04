@@ -14,19 +14,12 @@ if [[ -z "$VERSION" ]]; then
     VERSION="1.0.0"
 fi
 
-# アーキテクチャ検出
-ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64) ARCH="x86_64" ;;
-    aarch64|arm64) ARCH="arm64" ;;
-    *) ARCH="unknown" ;;
-esac
-
+# OS検出（アーキテクチャは不要 - 純粋なBashスクリプトのため）
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
 # 出力設定
 DIST_DIR="$PROJECT_ROOT/dist"
-ARCHIVE_NAME="ignite-v${VERSION}-${OS}-${ARCH}"
+ARCHIVE_NAME="ignite-v${VERSION}-${OS}"
 BUILD_DIR="$DIST_DIR/$ARCHIVE_NAME"
 
 # カラー定義
@@ -61,7 +54,7 @@ IGNITE ビルドスクリプト
   -h, --help       このヘルプを表示
 
 出力:
-  dist/ignite-v${VERSION}-${OS}-${ARCH}.tar.gz
+  dist/ignite-v${VERSION}-${OS}.tar.gz
 
 例:
   ./scripts/build.sh
@@ -239,7 +232,7 @@ main() {
         case "$1" in
             --version)
                 VERSION="$2"
-                ARCHIVE_NAME="ignite-v${VERSION}-${OS}-${ARCH}"
+                ARCHIVE_NAME="ignite-v${VERSION}-${OS}"
                 BUILD_DIR="$DIST_DIR/$ARCHIVE_NAME"
                 shift 2
                 ;;
@@ -268,7 +261,6 @@ main() {
     print_header "IGNITE ビルド v${VERSION}"
     echo ""
     echo "OS: $OS"
-    echo "Arch: $ARCH"
     echo "Output: $DIST_DIR/${ARCHIVE_NAME}.tar.gz"
     echo ""
 
