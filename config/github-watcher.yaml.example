@@ -48,10 +48,12 @@ watcher:
 
   # 処理済みイベントの保存先
   # 重複処理を防ぐためのステートファイル
+  # 注: プロジェクトルート（ignite/）からの相対パス
   state_file: "workspace/state/github_watcher_state.json"
 
   # ワークスペースディレクトリ
   # イベントメッセージの出力先
+  # 注: プロジェクトルート（ignite/）からの相対パス
   workspace: "workspace"
 
 # トリガー設定
@@ -165,4 +167,5 @@ logging:
   level: info
 
   # ログファイル（空の場合は標準出力のみ）
+  # 注: プロジェクトルート（ignite/）からの相対パス
   file: "workspace/logs/github_watcher.log"
