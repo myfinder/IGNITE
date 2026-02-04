@@ -1,0 +1,349 @@
+# GitHub App 設定ガイド
+
+このドキュメントでは、IGNITEでGitHub連携機能を使用するためのGitHub Appの設定方法を説明します。
+
+## 概要
+
+### GitHub Appとは
+
+GitHub Appは、GitHub上でBot的な動作を実現するための認証・認可の仕組みです。個人アクセストークン（PAT）とは異なり、以下の特徴があります:
+
+- **Bot名義での操作**: コメントやPR作成が`[bot]`付きのアカウント名で表示される
+- **細かい権限管理**: リポジトリごと、操作種別ごとに権限を設定可能
+- **有効期限付きトークン**: セキュリティのため短期間で自動的に失効
+- **人間/Bot判別**: イベント発火時にBotの投稿を自動判別可能
+
+### なぜGitHub Appが必要か
+
+IGNITEのGitHub連携機能では、以下の理由でGitHub Appを使用します:
+
+1. **Bot応答の識別**: IGNITEからの自動応答をBotとして明確に識別
+2. **無限ループ防止**: 自分自身のBot投稿に反応しないよう制御
+3. **セキュリティ**: 最小権限の原則に基づいた細かいアクセス制御
+
+## 前提条件
+
+以下のツールがインストールされている必要があります:
+
+```bash
+# GitHub CLI (gh)
+gh --version
+
+# gh-token拡張（GitHub Appトークン生成用）
+gh extension list | grep gh-token
+```
+
+### gh-token拡張のインストール
+
+```bash
+gh extension install Link-/gh-token
+```
+
+## GitHub App作成手順
+
+### 1. GitHub App作成ページにアクセス
+
+https://github.com/settings/apps/new にアクセスします。
+
+### 2. 基本情報の設定
+
+| 項目 | 設定値 |
+|------|--------|
+| **GitHub App name** | `ignite-gh-app` など（一意な名前） |
+| **Homepage URL** | プロジェクトのURLまたは `https://github.com/your-org/ignite` |
+
+### 3. Webhook設定
+
+IGNITEはポーリング方式でイベントを取得するため、Webhookは不要です。
+
+- **Active**: チェックを外す（無効化）
+
+### 4. 権限設定
+
+「Permissions」セクションで以下を設定:
+
+**Repository permissions:**
+
+| 権限 | レベル | 説明 |
+|------|--------|------|
+| **Contents** | Read and write | ファイルの読み書き、コミット作成 |
+| **Issues** | Read and write | Issue閲覧・コメント・作成 |
+| **Pull requests** | Read and write | PR閲覧・コメント・作成・マージ |
+| **Metadata** | Read-only | リポジトリのメタデータ（自動設定） |
+
+### 5. インストール範囲
+
+「Where can this GitHub App be installed?」で:
+
+- **Only on this account**: 自分のアカウント/組織のみ（推奨）
+
+### 6. App作成
+
+「Create GitHub App」をクリックして作成完了。
+
+作成後に表示される **App ID** を控えておきます。
+
+## Private Key生成
+
+### 1. Private Keyの生成
+
+作成したAppの設定ページ下部の「Private keys」セクションで:
+
+1. 「Generate a private key」をクリック
+2. `.pem` ファイルが自動ダウンロードされる
+
+### 2. Private Keyの保存
+
+```bash
+# IGNITEの設定ディレクトリを作成
+mkdir -p ~/.config/ignite
+
+# ダウンロードしたPrivate Keyを移動
+mv ~/Downloads/ignite-gh-app.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
+
+# 権限を制限
+chmod 600 ~/.config/ignite/github-app-private-key.pem
+```
+
+## リポジトリへのインストール
+
+### 1. Appのインストール
+
+作成したAppの設定ページで:
+
+1. 左メニューの「Install App」をクリック
+2. 対象のアカウント/組織を選択
+3. 「Only select repositories」を選択し、対象リポジトリを指定
+4. 「Install」をクリック
+
+### 2. Installation ID取得
+
+インストール後、Installation IDを取得します。以下のいずれかの方法を使用してください。
+
+#### 方法A: GitHubのURLから取得（推奨）
+
+1. https://github.com/settings/installations にアクセス
+2. インストールしたAppの「Configure」をクリック
+3. URLを確認: `https://github.com/settings/installations/12345678`
+4. この `12345678` がInstallation ID
+
+#### 方法B: gh-token拡張を使用
+
+```bash
+gh token installations \
+  --app-id YOUR_APP_ID \
+  --key ~/.config/ignite/github-app-private-key.pem
+```
+
+出力例:
+```
+ID        Account
+12345678  myfinder
+```
+
+## 設定ファイル作成
+
+### 1. テンプレートをコピー
+
+```bash
+cp config/github-app.yaml.example config/github-app.yaml
+```
+
+### 2. 設定値を入力
+
+```yaml
+# config/github-app.yaml
+github_app:
+  # GitHub App ID（作成後に表示される数字）
+  app_id: "123456"
+
+  # Installation ID（リポジトリにインストール後に取得）
+  installation_id: "12345678"
+
+  # Private Keyファイルのパス
+  private_key_path: "~/.config/ignite/github-app-private-key.pem"
+```
+
+## トークン取得スクリプトの使い方
+
+### 基本的な使用方法
+
+```bash
+# トークンを取得
+./scripts/utils/get_github_app_token.sh
+
+# 出力例: ghs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### Bot名義でのGitHub操作
+
+```bash
+# トークンを取得して環境変数に設定
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+
+# Bot名義でIssueにコメント
+GH_TOKEN="$BOT_TOKEN" gh issue comment 1 --repo owner/repo --body "Hello from IGNITE Bot!"
+
+# Bot名義でPR作成
+GH_TOKEN="$BOT_TOKEN" gh pr create --repo owner/repo --title "Fix bug" --body "Automated fix"
+```
+
+### スクリプト内での使用
+
+```bash
+#!/bin/bash
+
+# IGNITEプロジェクトルートで実行する想定
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+
+if [[ -z "$BOT_TOKEN" ]]; then
+    echo "Error: Failed to get GitHub App token"
+    exit 1
+fi
+
+# Bot名義で操作
+GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "処理を開始しました"
+```
+
+## IGNITEでの活用例
+
+### Bot名義でのIssueコメント
+
+GitHub Watcher が新しいIssueを検知した場合、Bot名義で自動応答:
+
+```yaml
+# workspace/queue/leader/github_event_xxx.yaml
+type: github_event
+from: github_watcher
+to: leader
+payload:
+  event_type: issue_created
+  repository: owner/repo
+  issue_number: 123
+  author: human-user
+  author_type: User
+  body: "ログイン機能にバグがあります"
+```
+
+LeaderがIssueを確認し、処理状況をBot名義でコメント:
+
+```bash
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "このIssueを確認しました。対応を開始します。"
+```
+
+### 人間/Bot判別ロジック
+
+GitHub Watcherは、イベントの発信者がBotかどうかを判別し、Bot投稿には反応しません:
+
+```bash
+is_human_event() {
+    local author_type="$1"
+    local author_login="$2"
+
+    # User タイプで、かつ [bot] サフィックスがない場合のみtrue
+    [[ "$author_type" == "User" ]] && [[ ! "$author_login" =~ \[bot\]$ ]]
+}
+
+# 使用例
+if is_human_event "$author_type" "$author_login"; then
+    # 人間の投稿に対する処理
+    echo "Processing human event..."
+fi
+```
+
+### 自動PR作成
+
+Issueに対応するPRを自動作成:
+
+```bash
+# Issue内容を取得
+ISSUE_DATA=$(GH_TOKEN="$BOT_TOKEN" gh api /repos/owner/repo/issues/123)
+ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
+
+# 実装ブランチを作成
+git checkout -b ignite/issue-123
+
+# ... IGNITIANsが実装 ...
+
+# コミット＆プッシュ
+git add -A
+git commit -m "fix: resolve issue #123 - ${ISSUE_TITLE}
+
+Co-Authored-By: IGNITE Bot <noreply@ignite.local>"
+git push -u origin ignite/issue-123
+
+# Bot名義でPR作成
+GH_TOKEN="$BOT_TOKEN" gh pr create \
+    --repo owner/repo \
+    --title "fix: resolve issue #123" \
+    --body "Closes #123
+
+## Summary
+This PR was automatically generated by IGNITE.
+
+## Changes
+- (変更内容)
+"
+```
+
+## トラブルシューティング
+
+### トークン取得エラー
+
+**原因1: gh-token拡張がインストールされていない**
+
+```bash
+gh extension install Link-/gh-token
+```
+
+**原因2: Private Keyファイルが見つからない**
+
+```bash
+# パスを確認
+cat config/github-app.yaml | grep private_key_path
+
+# ファイルの存在確認
+ls -la ~/.config/ignite/github-app-private-key.pem
+```
+
+**原因3: App IDまたはInstallation IDが間違っている**
+
+```bash
+# Installation IDの再確認
+gh api /users/{username}/installation | jq '.id'
+```
+
+### 権限エラー
+
+**症状**: `Resource not accessible by integration`
+
+**対処**: GitHub Appの権限設定を確認し、必要な権限を追加してください。
+権限変更後はリポジトリの再インストールが必要な場合があります。
+
+### Botコメントが表示されない
+
+**症状**: コメントは成功するが、Bot名義で表示されない
+
+**対処**: `GH_TOKEN` 環境変数が正しく設定されているか確認:
+
+```bash
+# 正しい使用法
+GH_TOKEN="$BOT_TOKEN" gh issue comment ...
+
+# 間違った使用法（通常のPATが使用される）
+gh issue comment ...
+```
+
+## セキュリティに関する注意
+
+1. **Private Keyの保護**: `.pem` ファイルは厳重に管理し、決してリポジトリにコミットしないでください
+2. **最小権限の原則**: 必要最小限の権限のみをAppに付与してください
+3. **トークンの扱い**: トークンは短期間で失効しますが、ログに出力しないよう注意してください
+4. **設定ファイル**: `config/github-app.yaml` は `.gitignore` に追加されています
+
+## 関連ドキュメント
+
+- [GitHub Watcher使用ガイド](./github-watcher.md) - イベント監視システムの使い方
+- [プロトコル仕様](./protocol.md) - メッセージフォーマット
+- [アーキテクチャ](./architecture.md) - システム構造の詳細

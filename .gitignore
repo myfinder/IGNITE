@@ -10,6 +10,10 @@ memory/*.jsonl
 # Environment variables
 .env
 
+# GitHub App configuration (contains sensitive data)
+config/github-app.yaml
+config/github-watcher.yaml
+
 # OS files
 .DS_Store
 Thumbs.db

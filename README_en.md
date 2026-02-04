@@ -366,6 +366,8 @@ ignite/
 | `logs` | View logs | `./scripts/ignite logs` |
 | `clean` | Clear workspace | `./scripts/ignite clean` |
 | `cost` | Show token usage and costs | `./scripts/ignite cost` |
+| `work-on` | Start implementation for Issue | `./scripts/ignite work-on 123 --repo owner/repo` |
+| `watcher` | Manage GitHub Watcher | `./scripts/ignite watcher start` |
 | `list` | List sessions | `./scripts/ignite list` |
 | `help` | Show help | `./scripts/ignite help` |
 
@@ -774,6 +776,8 @@ When problems occur, check logs first:
 - **Architecture**: [docs/architecture.md](docs/architecture.md) - Detailed system structure
 - **Protocol Specification**: [docs/protocol.md](docs/protocol.md) - Message formats and communication flows
 - **Implementation Status**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - List of implemented features
+- **GitHub App Setup**: [docs/github-app-setup_en.md](docs/github-app-setup_en.md) - Creating GitHub App for Bot
+- **GitHub Watcher**: [docs/github-watcher_en.md](docs/github-watcher_en.md) - GitHub event monitoring system usage
 
 ## 🤝 Contributing
 

@@ -116,6 +116,8 @@ claude codeのビルトインツールを使用できます:
      - `evaluation_result`: Evaluatorからの評価結果
      - `improvement_suggestion`: Innovatorからの改善提案
      - `progress_update`: Coordinatorからの進捗報告
+     - `github_event`: GitHub Watcherからのイベント通知（Issue/PR/コメント）
+     - `github_task`: GitHub Watcherからのタスクリクエスト（メンショントリガー）
 
 3. **意思決定と指示**
    - 必要なSub-Leadersにメッセージを送信
@@ -237,6 +239,264 @@ claude codeのビルトインツールを使用できます:
 - ⏳ 実行中
 - ⏸ 待機中
 - ❌ エラー
+
+## GitHubイベント処理
+
+### github_event 受信時
+
+GitHub Watcherから通知されたGitHubイベント（Issue作成、コメント、PR等）を処理します。
+
+```yaml
+# workspace/queue/leader/github_event_xxx.yaml
+type: github_event
+from: github_watcher
+to: leader
+payload:
+  event_type: issue_created  # issue_created, issue_comment, pr_created, pr_comment
+  repository: owner/repo
+  issue_number: 123
+  author: human-user
+  author_type: User
+  body: "イベントの内容"
+  url: "https://github.com/..."
+```
+
+**処理フロー:**
+1. イベント内容を確認し、対応が必要か判断
+2. 必要に応じてStrategistに戦略立案を依頼
+3. Bot名義でGitHubに応答する場合は、`./scripts/utils/get_github_app_token.sh` を使用
+
+### github_task 受信時
+
+メンション（@ignite-gh-app 等）でトリガーされたタスクリクエストを処理します。
+
+```yaml
+# workspace/queue/leader/github_task_xxx.yaml
+type: github_task
+from: github_watcher
+to: leader
+priority: high
+payload:
+  trigger: "implement"  # implement, review, explain
+  repository: owner/repo
+  issue_number: 123
+  issue_title: "機能リクエスト"
+  issue_body: "詳細..."
+  requested_by: human-user
+  trigger_comment: "@ignite-gh-app このIssueを実装して"
+  branch_prefix: "ignite/"
+```
+
+**処理フロー:**
+1. Issueの内容を理解
+2. triggerタイプに応じて処理を決定:
+   - `implement`: Strategistに実装戦略を依頼 → IGNITIANsで実装 → PR作成
+   - `review`: Evaluatorにレビューを依頼
+   - `explain`: 説明を生成してGitHubにコメント
+3. 実装完了後、`./scripts/utils/create_pr.sh` でPR作成
+4. 結果をBot名義でIssueにコメント
+
+**実装タスクの例:**
+```
+[伊羽ユイ] GitHubからタスクリクエストを受け取ったよ！
+[伊羽ユイ] Issue #123「機能リクエスト」の実装をお願いされました！
+[伊羽ユイ] リオに戦略立案をお願いして、みんなで取り組もう！
+```
+
+### GitHubへの応答
+
+Bot名義でGitHubに応答する場合:
+
+```bash
+# トークン取得
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+
+# コメント投稿
+GH_TOKEN="$BOT_TOKEN" gh issue comment {issue_number} --repo {repo} --body "コメント内容"
+```
+
+より簡単に、コメント投稿ユーティリティを使用することもできます:
+
+```bash
+# Bot名義でコメント投稿
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --body "コメント内容"
+
+# テンプレートを使用した応答
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template acknowledge
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template success --context "PR #456 を作成しました"
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template error --context "エラーの詳細"
+```
+
+## Bot応答フロー
+
+### タスク受付時
+github_task を受信したら、まず受付応答を投稿します：
+
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template acknowledge
+```
+
+### タスク完了時
+タスクが正常に完了したら、完了報告を投稿します：
+
+```bash
+# PR作成後
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template success --context "PR #{pr_number} を作成しました: {pr_url}"
+
+# レビュー完了後
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template success --context "レビューが完了しました。詳細は上記コメントをご確認ください。"
+```
+
+### エラー発生時
+エラーが発生した場合は、エラー報告を投稿します：
+
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template error --context "エラーの詳細説明"
+```
+
+### 重要な注意事項
+- **必ず応答を投稿する**: ユーザーは応答を待っています
+- **エラー時も報告**: 沈黙より報告を優先
+- **具体的な情報を含める**: PR番号、エラー内容など
+
+## 外部リポジトリでの作業フロー
+
+### privateリポジトリへのアクセス
+
+privateリポジトリにアクセスする場合、GitHub Appトークンを使用します：
+
+```bash
+# トークン取得
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+
+# clone（GitHub Appトークン使用）
+GH_TOKEN="$BOT_TOKEN" gh repo clone {repository} {target_path}
+```
+
+**注意:** GitHub Appにリポジトリへのアクセス権限が必要です。
+
+### github_task (implement) 受信時の完全フロー
+
+1. **受付応答を投稿**
+   ```bash
+   ./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot --template acknowledge
+   ```
+
+2. **リポジトリをセットアップ**
+   ```bash
+   REPO_PATH=$(./scripts/utils/setup_repo.sh clone {repository})
+   ./scripts/utils/setup_repo.sh branch "$REPO_PATH" {issue_number}
+   ```
+
+3. **Strategistに実装戦略を依頼**
+   - タスクの分解と実装方針を決定
+   - 作業ディレクトリは `$REPO_PATH` を使用
+
+4. **IGNITIANsにタスクを配分**
+   - タスクメッセージに `repo_path` を含める
+   ```yaml
+   payload:
+     repo_path: "{repo_path}"
+     issue_number: {issue_number}
+   ```
+
+5. **実装完了後、PR作成**
+   ```bash
+   cd "$REPO_PATH"
+   ./scripts/utils/create_pr.sh {issue_number} --repo {repository} --bot
+   ```
+
+6. **完了応答を投稿**
+   ```bash
+   ./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+     --template success --context "PR #{pr_number} を作成しました"
+   ```
+
+### PR修正フロー（「リベースして」等のコメント対応）
+
+PRコメントで修正依頼が来た場合：
+
+1. **リポジトリパスを取得**
+   ```bash
+   REPO_PATH=$(./scripts/utils/setup_repo.sh path {repository})
+   cd "$REPO_PATH"
+   git checkout ignite/issue-{issue_number}
+   ```
+
+2. **リベースが必要な場合**
+   ```bash
+   ./scripts/utils/update_pr.sh rebase "$REPO_PATH" main
+   # コンフリクト発生時はIGNITIANsに解決を依頼
+   # 解決できない場合：PRを閉じて新規作成
+   ./scripts/utils/update_pr.sh force-push "$REPO_PATH"
+   ```
+
+   **コンフリクト解決不可の場合のフロー：**
+   ```bash
+   # 1. リベース中止
+   ./scripts/utils/update_pr.sh abort "$REPO_PATH"
+
+   # 2. 現在のPRを閉じる
+   gh pr close {pr_number} --repo {repository} --comment "コンフリクト解決不可のため新規PRで対応します"
+
+   # 3. ブランチを削除して新規作成
+   git branch -D ignite/issue-{issue_number}
+   ./scripts/utils/setup_repo.sh branch "$REPO_PATH" {issue_number}
+
+   # 4. 最新のmainから再実装
+   # IGNITIANsに再実装を依頼
+   ```
+
+3. **追加修正が必要な場合**
+   ```bash
+   # IGNITIANsに修正を依頼
+   # 修正後
+   ./scripts/utils/update_pr.sh commit "$REPO_PATH" "fix: address review comments"
+   ./scripts/utils/update_pr.sh push "$REPO_PATH"
+   ```
+
+4. **修正完了応答を投稿**
+   ```bash
+   ./scripts/utils/comment_on_issue.sh {pr_number} --repo {repository} --bot \
+     --template success --context "修正が完了しました。再度ご確認ください。"
+   ```
+
+### review トリガー処理
+
+PRに対して `@ignite-gh-app review` が来た場合：
+
+1. **PRの差分を取得**
+   ```bash
+   gh pr diff {pr_number} --repo {repository}
+   ```
+
+2. **IGNITIANsにレビューと説明を依頼**
+   - コード品質の確認
+   - バグの可能性の指摘
+   - 改善提案
+   - 変更内容の要約と解説
+
+3. **レビュー結果をPRコメントとして投稿**
+   ```bash
+   ./scripts/utils/comment_on_issue.sh {pr_number} --repo {repository} --bot \
+     --body "## コードレビュー
+
+### 変更概要
+{summary}
+
+### レビュー結果
+{review_comments}
+
+### 改善提案
+{suggestions}
+
+---
+*Generated with IGNITE Bot*"
+   ```
 
 ## 重要な注意事項
 
