@@ -112,8 +112,17 @@ load_config() {
 init_state() {
     mkdir -p "$(dirname "$STATE_FILE")"
     if [[ ! -f "$STATE_FILE" ]]; then
-        echo '{"processed_events":{},"last_check":{}}' > "$STATE_FILE"
+        # 新規作成時は現在時刻を記録
+        # これ以降のイベントのみ処理対象とする（過去イベントの再処理防止）
+        local now=$(date -Iseconds)
+        echo "{\"processed_events\":{},\"last_check\":{},\"initialized_at\":\"$now\"}" > "$STATE_FILE"
+        log_info "新規ステートファイル作成: $now 以降のイベントを監視"
     fi
+}
+
+# 初期化時刻を取得（sinceパラメータのフォールバック用）
+get_initialized_at() {
+    jq -r '.initialized_at // empty' "$STATE_FILE" 2>/dev/null
 }
 
 # イベントIDが処理済みかチェック
@@ -189,8 +198,17 @@ get_bot_token() {
 # Issueイベントを取得
 fetch_issues() {
     local repo="$1"
+    local since=""
 
-    gh api "/repos/${repo}/issues" \
+    # 最終チェック時刻があれば使用、なければ初期化時刻を使用
+    since=$(jq -r ".last_check[\"${repo}_issues\"] // .initialized_at // empty" "$STATE_FILE")
+
+    local api_url="/repos/${repo}/issues?state=all&sort=created&direction=desc&per_page=30"
+    if [[ -n "$since" ]]; then
+        api_url="${api_url}&since=${since}"
+    fi
+
+    gh api "$api_url" \
         --jq '.[] | select(.pull_request == null) | {
             id: .id,
             number: .number,
@@ -210,8 +228,8 @@ fetch_issue_comments() {
     local repo="$1"
     local since=""
 
-    # 最終チェック時刻があれば使用
-    since=$(jq -r ".last_check[\"${repo}_issue_comments\"] // empty" "$STATE_FILE")
+    # 最終チェック時刻があれば使用、なければ初期化時刻を使用
+    since=$(jq -r ".last_check[\"${repo}_issue_comments\"] // .initialized_at // empty" "$STATE_FILE")
 
     local api_url="/repos/${repo}/issues/comments?sort=created&direction=desc&per_page=30"
     if [[ -n "$since" ]]; then
@@ -233,9 +251,15 @@ fetch_issue_comments() {
 # PRイベントを取得
 fetch_prs() {
     local repo="$1"
+    local since=""
 
-    gh api "/repos/${repo}/pulls?state=open&sort=created&direction=desc" \
-        --jq '.[] | {
+    # 最終チェック時刻があれば使用、なければ初期化時刻を使用
+    since=$(jq -r ".last_check[\"${repo}_prs\"] // .initialized_at // empty" "$STATE_FILE")
+
+    # PRs API は since パラメータをサポートしていないので、
+    # 取得後に created_at でフィルタリングする
+    gh api "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" \
+        --jq --arg since "${since:-1970-01-01T00:00:00Z}" '.[] | select(.created_at >= $since) | {
             id: .id,
             number: .number,
             title: .title,
@@ -256,7 +280,8 @@ fetch_pr_comments() {
     local repo="$1"
     local since=""
 
-    since=$(jq -r ".last_check[\"${repo}_pr_comments\"] // empty" "$STATE_FILE")
+    # 最終チェック時刻があれば使用、なければ初期化時刻を使用
+    since=$(jq -r ".last_check[\"${repo}_pr_comments\"] // .initialized_at // empty" "$STATE_FILE")
 
     local api_url="/repos/${repo}/pulls/comments?sort=created&direction=desc&per_page=30"
     if [[ -n "$since" ]]; then

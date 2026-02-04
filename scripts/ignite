@@ -570,6 +570,15 @@ EOF
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
             print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
             print_info "ログ: $watcher_log"
+
+            # キューモニター起動（Watcher有効時のみ）
+            print_info "キューモニターを起動中..."
+            local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
+            "$SCRIPT_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+            local queue_pid=$!
+            echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
+            print_success "キューモニター起動完了 (PID: $queue_pid)"
+            print_info "ログ: $queue_log"
         else
             print_warning "github-watcher.yaml が見つかりません。Watcher起動をスキップ"
         fi
@@ -795,6 +804,17 @@ cmd_stop() {
             print_success "GitHub Watcher停止完了"
         fi
         rm -f "$WORKSPACE_DIR/github_watcher.pid"
+    fi
+
+    # キューモニターを停止
+    if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
+        local queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        if kill -0 "$queue_pid" 2>/dev/null; then
+            print_info "キューモニターを停止中..."
+            kill "$queue_pid" 2>/dev/null || true
+            print_success "キューモニター停止完了"
+        fi
+        rm -f "$WORKSPACE_DIR/queue_monitor.pid"
     fi
 
     # コスト履歴を保存
@@ -1197,6 +1217,19 @@ cmd_status() {
         fi
     else
         print_info "GitHub Watcher: 未起動"
+    fi
+
+    # キューモニター状態
+    print_header "キューモニター"
+    if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
+        local queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        if kill -0 "$queue_pid" 2>/dev/null; then
+            print_success "キューモニター: 実行中 (PID: $queue_pid)"
+        else
+            print_warning "キューモニター: 停止（PIDファイルあり）"
+        fi
+    else
+        print_info "キューモニター: 未起動"
     fi
     echo ""
 
