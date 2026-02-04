@@ -562,6 +562,11 @@ EOF
     # GitHub Watcher の起動
     if [[ "$start_watcher" == true ]]; then
         if [[ -f "$PROJECT_ROOT/config/github-watcher.yaml" ]]; then
+            # 既存のWatcher/モニターをクリーンアップ（前セッションの残骸対策）
+            pkill -f "github_watcher.sh" 2>/dev/null || true
+            pkill -f "queue_monitor.sh" 2>/dev/null || true
+            sleep 1
+
             print_info "GitHub Watcherを起動中..."
             # ログ出力先を設定してバックグラウンド起動
             local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
