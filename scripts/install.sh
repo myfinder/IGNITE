@@ -50,8 +50,13 @@ IGNITE インストーラー v${VERSION}
   --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.config/ignite)
   --data-dir <path>    データファイルのインストール先 (デフォルト: ~/.local/share/ignite)
   --upgrade            アップグレードモード (バイナリ・データは上書き、設定は保持)
-  --force              既存ファイルをすべて上書き
+  --force              既存ファイルをすべて上書き (設定ファイル含む)
   -h, --help           このヘルプを表示
+
+動作:
+  - 新規インストール時: すべてのファイルをインストール
+  - 既存インストール検出時: 自動的にアップグレードモードで実行
+    (バイナリ・データは上書き、設定ファイルは保持)
 
 環境変数:
   IGNITE_BIN_DIR       実行ファイルのインストール先
@@ -62,9 +67,9 @@ IGNITE インストーラー v${VERSION}
   XDG_DATA_HOME        XDG準拠のデータディレクトリ
 
 例:
-  ./install.sh                         # 新規インストール
-  ./install.sh --upgrade               # アップグレード (推奨)
-  ./install.sh --force                 # すべて上書き
+  ./install.sh                         # 新規インストール or 自動アップグレード
+  ./install.sh --upgrade               # 明示的にアップグレード
+  ./install.sh --force                 # すべて上書き (設定含む)
   ./install.sh --bin-dir /usr/local/bin
 EOF
 }
@@ -256,6 +261,18 @@ EOF
 }
 
 # =============================================================================
+# 既存インストールの検出
+# =============================================================================
+
+detect_existing_install() {
+    # 既存のインストールを検出
+    if [[ -f "$BIN_DIR/ignite" ]] || [[ -d "$CONFIG_DIR" ]] || [[ -d "$DATA_DIR" ]]; then
+        return 0  # 既存インストールあり
+    fi
+    return 1  # 新規インストール
+}
+
+# =============================================================================
 # メイン
 # =============================================================================
 
@@ -298,6 +315,16 @@ main() {
     echo ""
     print_header "IGNITE インストーラー v${VERSION}"
     echo ""
+
+    # 既存インストールの自動検出
+    if [[ "$UPGRADE" != "true" ]] && [[ "$FORCE" != "true" ]]; then
+        if detect_existing_install; then
+            print_info "既存のインストールを検出しました。アップグレードモードで実行します。"
+            echo ""
+            UPGRADE=true
+        fi
+    fi
+
     echo "インストール先:"
     echo "  実行ファイル: $BIN_DIR"
     echo "  設定ファイル: $CONFIG_DIR"
