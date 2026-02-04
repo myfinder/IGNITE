@@ -75,11 +75,46 @@ EOF
 }
 
 # =============================================================================
-# Bot Token 取得
+# Bot Token 取得（リトライ機構付き）
 # =============================================================================
 
+# 設定
+BOT_TOKEN_MAX_RETRIES="${BOT_TOKEN_MAX_RETRIES:-3}"
+BOT_TOKEN_RETRY_DELAY="${BOT_TOKEN_RETRY_DELAY:-2}"
+
 get_bot_token() {
-    "${SCRIPT_DIR}/get_github_app_token.sh" 2>/dev/null || echo ""
+    local retry_count=0
+    local token=""
+    local last_error=""
+
+    while [[ $retry_count -lt $BOT_TOKEN_MAX_RETRIES ]]; do
+        # トークン取得を試行
+        token=$("${SCRIPT_DIR}/get_github_app_token.sh" 2>&1)
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 ]] && [[ -n "$token" ]] && [[ "$token" == ghs_* ]]; then
+            # 成功: ghs_ プレフィックスで始まる有効なトークン
+            echo "$token"
+            return 0
+        fi
+
+        # 失敗: エラー内容を保存
+        last_error="$token"
+        retry_count=$((retry_count + 1))
+
+        if [[ $retry_count -lt $BOT_TOKEN_MAX_RETRIES ]]; then
+            log_warn "Bot Token取得失敗 (試行 $retry_count/$BOT_TOKEN_MAX_RETRIES)。${BOT_TOKEN_RETRY_DELAY}秒後にリトライ..."
+            sleep "$BOT_TOKEN_RETRY_DELAY"
+        fi
+    done
+
+    # 全リトライ失敗
+    log_warn "Bot Token取得失敗 (全${BOT_TOKEN_MAX_RETRIES}回の試行が失敗)"
+    if [[ -n "$last_error" ]]; then
+        log_warn "最後のエラー: $last_error"
+    fi
+    echo ""
+    return 1
 }
 
 # =============================================================================
