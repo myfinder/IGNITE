@@ -42,15 +42,19 @@ send_to_agent() {
     fi
 
     # エージェント名からペインインデックスを決定
-    # IGNITE のペイン構成: 0=Leader, 1-8=Sub-agents/IGNITIANs
+    # IGNITE のペイン構成: 0=Leader, 1-5=Sub-Leaders, 6-=IGNITIANs
     case "$agent" in
         leader) pane_index=0 ;;
         strategist) pane_index=1 ;;
+        architect) pane_index=2 ;;
+        evaluator) pane_index=3 ;;
+        coordinator) pane_index=4 ;;
+        innovator) pane_index=5 ;;
         *)
             # IGNITIAN の場合は名前からインデックスを推測
             if [[ "$agent" =~ ^ignitian-([0-9]+)$ ]]; then
                 local num=${BASH_REMATCH[1]}
-                pane_index=$((num + 1))
+                pane_index=$((num + 5))  # Sub-Leaders(5) + IGNITIAN番号
             else
                 log_warn "未知のエージェント: $agent"
                 return 1
@@ -168,8 +172,12 @@ monitor_queues() {
         # Leader キュー
         scan_queue "$WORKSPACE_DIR/queue/leader" "leader"
 
-        # Strategist キュー
+        # Sub-Leaders キュー
         scan_queue "$WORKSPACE_DIR/queue/strategist" "strategist"
+        scan_queue "$WORKSPACE_DIR/queue/architect" "architect"
+        scan_queue "$WORKSPACE_DIR/queue/evaluator" "evaluator"
+        scan_queue "$WORKSPACE_DIR/queue/coordinator" "coordinator"
+        scan_queue "$WORKSPACE_DIR/queue/innovator" "innovator"
 
         # IGNITIAN キュー（複数）
         for ignitian_dir in "$WORKSPACE_DIR/queue/ignitian-"*; do
@@ -200,6 +208,10 @@ monitor_with_inotify() {
     local watch_dirs=()
     [[ -d "$WORKSPACE_DIR/queue/leader" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/leader")
     [[ -d "$WORKSPACE_DIR/queue/strategist" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/strategist")
+    [[ -d "$WORKSPACE_DIR/queue/architect" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/architect")
+    [[ -d "$WORKSPACE_DIR/queue/evaluator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/evaluator")
+    [[ -d "$WORKSPACE_DIR/queue/coordinator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/coordinator")
+    [[ -d "$WORKSPACE_DIR/queue/innovator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/innovator")
     for ignitian_dir in "$WORKSPACE_DIR/queue/ignitian-"*; do
         [[ -d "$ignitian_dir" ]] && watch_dirs+=("$ignitian_dir")
     done
