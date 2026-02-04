@@ -633,6 +633,13 @@ process_issues() {
             continue
         fi
 
+        # アクセス制御チェック
+        if ! is_user_authorized "$author"; then
+            log_info "アクセス制御: ユーザー '$author' のIssue作成をスキップ"
+            mark_event_processed "issue" "$id"
+            continue
+        fi
+
         log_event "新規Issue検知: #$(echo "$issue" | jq -r '.number') by $author"
 
         local message_file=$(create_event_message "issue_created" "$repo" "$issue")
@@ -695,6 +702,13 @@ process_issue_comments() {
             local message_file=$(create_task_message "issue_comment" "$repo" "$comment" "$trigger_type")
             log_success "タスクメッセージ作成: $message_file"
         else
+            # アクセス制御チェック（トリガーなしコメント）
+            if ! is_user_authorized "$author"; then
+                log_info "アクセス制御: ユーザー '$author' のIssueコメントをスキップ"
+                mark_event_processed "issue_comment" "$id"
+                continue
+            fi
+
             local message_file=$(create_event_message "issue_comment" "$repo" "$comment")
             log_success "メッセージ作成: $message_file"
         fi
@@ -756,6 +770,13 @@ process_prs() {
             local message_file=$(create_task_message "pr_created" "$repo" "$pr" "$trigger_type")
             log_success "タスクメッセージ作成: $message_file"
         else
+            # アクセス制御チェック（トリガーなしPR）
+            if ! is_user_authorized "$author"; then
+                log_info "アクセス制御: ユーザー '$author' のPR作成をスキップ"
+                mark_event_processed "pr" "$id"
+                continue
+            fi
+
             local message_file=$(create_event_message "pr_created" "$repo" "$pr")
             log_success "メッセージ作成: $message_file"
         fi
@@ -817,6 +838,13 @@ process_pr_comments() {
             local message_file=$(create_task_message "pr_comment" "$repo" "$comment" "$trigger_type")
             log_success "タスクメッセージ作成: $message_file"
         else
+            # アクセス制御チェック（トリガーなしPRコメント）
+            if ! is_user_authorized "$author"; then
+                log_info "アクセス制御: ユーザー '$author' のPRコメントをスキップ"
+                mark_event_processed "pr_comment" "$id"
+                continue
+            fi
+
             local message_file=$(create_event_message "pr_comment" "$repo" "$comment")
             log_success "メッセージ作成: $message_file"
         fi
