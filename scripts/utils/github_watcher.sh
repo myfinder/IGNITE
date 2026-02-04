@@ -51,7 +51,14 @@ load_config() {
 
     STATE_FILE=$(grep -E '^\s*state_file:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
     STATE_FILE=${STATE_FILE:-$DEFAULT_STATE_FILE}
-    STATE_FILE="${PROJECT_ROOT}/${STATE_FILE}"
+    # IGNITE_WORKSPACE_DIR が設定されていればそれを基準にする（インストールモード対応）
+    if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
+        # state_file が "workspace/..." で始まる場合は "workspace/" を除去
+        STATE_FILE="${STATE_FILE#workspace/}"
+        STATE_FILE="${IGNITE_WORKSPACE_DIR}/${STATE_FILE}"
+    else
+        STATE_FILE="${PROJECT_ROOT}/${STATE_FILE}"
+    fi
 
     IGNORE_BOT=$(grep -E '^\s*ignore_bot:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
     IGNORE_BOT=${IGNORE_BOT:-true}
@@ -103,9 +110,14 @@ load_config() {
     MENTION_PATTERN=${MENTION_PATTERN:-"@ignite-gh-app"}
 
     # ワークスペース設定
-    WORKSPACE_DIR=$(grep -E '^\s*workspace:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
-    WORKSPACE_DIR=${WORKSPACE_DIR:-"workspace"}
-    WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
+    # IGNITE_WORKSPACE_DIR が設定されていればそれを使用（インストールモード対応）
+    if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
+        WORKSPACE_DIR="$IGNITE_WORKSPACE_DIR"
+    else
+        WORKSPACE_DIR=$(grep -E '^\s*workspace:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+        WORKSPACE_DIR=${WORKSPACE_DIR:-"workspace"}
+        WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
+    fi
 
     # アクセス制御設定
     ACCESS_CONTROL_ENABLED=$(awk '/^access_control:/{found=1} found && /^[[:space:]]+enabled:/{print $2; exit}' "$config_file" | tr -d '"')
