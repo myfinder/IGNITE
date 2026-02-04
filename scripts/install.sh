@@ -30,6 +30,10 @@ BIN_DIR="${IGNITE_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
 CONFIG_DIR="${IGNITE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/ignite}"
 DATA_DIR="${IGNITE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ignite}"
 
+# インストールモードフラグ
+FORCE=false
+UPGRADE=false
+
 # =============================================================================
 # ヘルプ
 # =============================================================================
@@ -45,7 +49,8 @@ IGNITE インストーラー v${VERSION}
   --bin-dir <path>     実行ファイルのインストール先 (デフォルト: ~/.local/bin)
   --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.config/ignite)
   --data-dir <path>    データファイルのインストール先 (デフォルト: ~/.local/share/ignite)
-  --force              既存ファイルを上書き
+  --upgrade            アップグレードモード (バイナリ・データは上書き、設定は保持)
+  --force              既存ファイルをすべて上書き
   -h, --help           このヘルプを表示
 
 環境変数:
@@ -57,8 +62,9 @@ IGNITE インストーラー v${VERSION}
   XDG_DATA_HOME        XDG準拠のデータディレクトリ
 
 例:
-  ./install.sh
-  ./install.sh --force
+  ./install.sh                         # 新規インストール
+  ./install.sh --upgrade               # アップグレード (推奨)
+  ./install.sh --force                 # すべて上書き
   ./install.sh --bin-dir /usr/local/bin
 EOF
 }
@@ -124,12 +130,16 @@ install_binary() {
         return 1
     fi
 
-    if [[ -f "$BIN_DIR/ignite" ]] && [[ "$FORCE" != "true" ]]; then
-        print_warning "$BIN_DIR/ignite は既に存在します (--force で上書き)"
+    if [[ -f "$BIN_DIR/ignite" ]] && [[ "$FORCE" != "true" ]] && [[ "$UPGRADE" != "true" ]]; then
+        print_warning "$BIN_DIR/ignite は既に存在します (--upgrade または --force で上書き)"
     else
         cp "$source_bin" "$BIN_DIR/ignite"
         chmod +x "$BIN_DIR/ignite"
-        print_success "ignite を $BIN_DIR にインストールしました"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "ignite を $BIN_DIR にアップグレードしました"
+        else
+            print_success "ignite を $BIN_DIR にインストールしました"
+        fi
     fi
 }
 
@@ -161,9 +171,13 @@ install_config() {
             continue
         fi
 
-        # 既存設定は保持
+        # 既存設定は保持（--upgrade でも --force 以外はスキップ）
         if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]]; then
-            print_info "$filename は既に存在します (スキップ)"
+            if [[ "$UPGRADE" == "true" ]]; then
+                print_info "$filename は既に存在します (設定を保持)"
+            else
+                print_info "$filename は既に存在します (スキップ)"
+            fi
         else
             cp "$file" "$dest"
             print_success "$filename をインストールしました"
@@ -185,7 +199,11 @@ install_data() {
     if [[ -d "$source_instructions" ]]; then
         mkdir -p "$DATA_DIR/instructions"
         cp -r "$source_instructions"/* "$DATA_DIR/instructions/"
-        print_success "instructions を $DATA_DIR/instructions にインストールしました"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "instructions を $DATA_DIR/instructions にアップグレードしました"
+        else
+            print_success "instructions を $DATA_DIR/instructions にインストールしました"
+        fi
     fi
 
     # scripts/utils ディレクトリ
@@ -201,7 +219,11 @@ install_data() {
         mkdir -p "$DATA_DIR/scripts/utils"
         cp -r "$source_utils"/* "$DATA_DIR/scripts/utils/"
         chmod +x "$DATA_DIR/scripts/utils"/*.sh 2>/dev/null || true
-        print_success "scripts/utils を $DATA_DIR/scripts/utils にインストールしました"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "scripts/utils を $DATA_DIR/scripts/utils にアップグレードしました"
+        else
+            print_success "scripts/utils を $DATA_DIR/scripts/utils にインストールしました"
+        fi
     fi
 }
 
@@ -238,8 +260,6 @@ EOF
 # =============================================================================
 
 main() {
-    local FORCE=false
-
     # 引数解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -254,6 +274,10 @@ main() {
             --data-dir)
                 DATA_DIR="$2"
                 shift 2
+                ;;
+            --upgrade)
+                UPGRADE=true
+                shift
                 ;;
             --force)
                 FORCE=true
@@ -301,9 +325,15 @@ main() {
     check_path
 
     echo ""
-    print_header "インストール完了"
-    echo ""
-    print_success "IGNITE が正常にインストールされました！"
+    if [[ "$UPGRADE" == "true" ]]; then
+        print_header "アップグレード完了"
+        echo ""
+        print_success "IGNITE が正常にアップグレードされました！"
+    else
+        print_header "インストール完了"
+        echo ""
+        print_success "IGNITE が正常にインストールされました！"
+    fi
     echo ""
     echo "使い方:"
     echo "  ignite start                    # システム起動"
