@@ -83,18 +83,25 @@ BOT_TOKEN_MAX_RETRIES="${BOT_TOKEN_MAX_RETRIES:-3}"
 BOT_TOKEN_RETRY_DELAY="${BOT_TOKEN_RETRY_DELAY:-2}"
 
 get_bot_token() {
+    local repo="${1:-}"
     local retry_count=0
     local token=""
     local last_error=""
     local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
+    local repo_option=""
+
+    # リポジトリが指定されている場合は --repo オプションを使用（Organization対応）
+    if [[ -n "$repo" ]]; then
+        repo_option="--repo $repo"
+    fi
 
     while [[ $retry_count -lt $BOT_TOKEN_MAX_RETRIES ]]; do
         # トークン取得を試行
         # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "$token_script" 2>&1)
+            token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "$token_script" $repo_option 2>&1)
         else
-            token=$("$token_script" 2>&1)
+            token=$("$token_script" $repo_option 2>&1)
         fi
         local exit_code=$?
 
@@ -213,7 +220,8 @@ post_comment() {
     local token_args=""
 
     if [[ "$use_bot" == "true" ]]; then
-        local bot_token=$(get_bot_token)
+        # リポジトリを渡してトークン取得（Organization対応）
+        local bot_token=$(get_bot_token "$repo")
         if [[ -n "$bot_token" ]]; then
             log_info "Bot名義でコメントを投稿中..."
             GH_TOKEN="$bot_token" gh issue comment "$issue_number" --repo "$repo" --body "$body"

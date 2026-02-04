@@ -116,31 +116,6 @@ chmod 600 ~/.config/ignite/github-app-private-key.pem
 3. 「Only select repositories」を選択し、対象リポジトリを指定
 4. 「Install」をクリック
 
-### 2. Installation ID取得
-
-インストール後、Installation IDを取得します。以下のいずれかの方法を使用してください。
-
-#### 方法A: GitHubのURLから取得（推奨）
-
-1. https://github.com/settings/installations にアクセス
-2. インストールしたAppの「Configure」をクリック
-3. URLを確認: `https://github.com/settings/installations/12345678`
-4. この `12345678` がInstallation ID
-
-#### 方法B: gh-token拡張を使用
-
-```bash
-gh token installations \
-  --app-id YOUR_APP_ID \
-  --key ~/.config/ignite/github-app-private-key.pem
-```
-
-出力例:
-```
-ID        Account
-12345678  myfinder
-```
-
 ## 設定ファイル作成
 
 ### 1. テンプレートをコピー
@@ -154,32 +129,31 @@ cp config/github-app.yaml.example config/github-app.yaml
 ```yaml
 # config/github-app.yaml
 github_app:
-  # GitHub App ID（作成後に表示される数字）
   app_id: "123456"
-
-  # Installation ID（リポジトリにインストール後に取得）
-  installation_id: "12345678"
-
-  # Private Keyファイルのパス
   private_key_path: "~/.config/ignite/github-app-private-key.pem"
+  app_name: "your-app-name"
 ```
+
+**注意**: Installation ID は設定不要です。各操作時にリポジトリから自動的に取得されます。
 
 ## トークン取得スクリプトの使い方
 
 ### 基本的な使用方法
 
 ```bash
-# トークンを取得
-./scripts/utils/get_github_app_token.sh
+# リポジトリを指定してトークンを取得
+./scripts/utils/get_github_app_token.sh --repo owner/repo
 
 # 出力例: ghs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+Installation ID はリポジトリから自動的に取得されるため、複数の Organization/リポジトリで同じ GitHub App を使用できます。
 
 ### Bot名義でのGitHub操作
 
 ```bash
 # トークンを取得して環境変数に設定
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 
 # Bot名義でIssueにコメント
 GH_TOKEN="$BOT_TOKEN" gh issue comment 1 --repo owner/repo --body "Hello from IGNITE Bot!"
@@ -194,7 +168,7 @@ GH_TOKEN="$BOT_TOKEN" gh pr create --repo owner/repo --title "Fix bug" --body "A
 #!/bin/bash
 
 # IGNITEプロジェクトルートで実行する想定
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 
 if [[ -z "$BOT_TOKEN" ]]; then
     echo "Error: Failed to get GitHub App token"
@@ -228,7 +202,7 @@ payload:
 LeaderがIssueを確認し、処理状況をBot名義でコメント:
 
 ```bash
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "このIssueを確認しました。対応を開始します。"
 ```
 

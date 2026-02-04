@@ -368,7 +368,7 @@ Processed events older than 24 hours are automatically cleaned up.
 
 2. **Test token retrieval**
    ```bash
-   BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+   BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
    echo $BOT_TOKEN
    ```
 

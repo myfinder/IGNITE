@@ -306,8 +306,8 @@ payload:
 Bot名義でGitHubに応答する場合:
 
 ```bash
-# トークン取得
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+# トークン取得（リポジトリを指定）
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo {repo})
 
 # コメント投稿
 GH_TOKEN="$BOT_TOKEN" gh issue comment {issue_number} --repo {repo} --body "コメント内容"
@@ -368,8 +368,8 @@ github_task を受信したら、まず受付応答を投稿します：
 privateリポジトリにアクセスする場合、GitHub Appトークンを使用します：
 
 ```bash
-# トークン取得
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+# トークン取得（リポジトリを指定）
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo {repository})
 
 # clone（GitHub Appトークン使用）
 GH_TOKEN="$BOT_TOKEN" gh repo clone {repository} {target_path}

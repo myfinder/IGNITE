@@ -116,31 +116,6 @@ On your App's settings page:
 3. Select "Only select repositories" and specify target repositories
 4. Click "Install"
 
-### 2. Get Installation ID
-
-After installation, get the Installation ID using one of the following methods.
-
-#### Method A: Get from GitHub URL (Recommended)
-
-1. Go to https://github.com/settings/installations
-2. Click "Configure" on the installed App
-3. Check the URL: `https://github.com/settings/installations/12345678`
-4. The `12345678` is your Installation ID
-
-#### Method B: Use gh-token extension
-
-```bash
-gh token installations \
-  --app-id YOUR_APP_ID \
-  --key ~/.config/ignite/github-app-private-key.pem
-```
-
-Example output:
-```
-ID        Account
-12345678  myfinder
-```
-
 ## Create Configuration File
 
 ### 1. Copy Template
@@ -154,32 +129,31 @@ cp config/github-app.yaml.example config/github-app.yaml
 ```yaml
 # config/github-app.yaml
 github_app:
-  # GitHub App ID (number displayed after creation)
   app_id: "123456"
-
-  # Installation ID (obtained after installing to repository)
-  installation_id: "12345678"
-
-  # Private Key file path
   private_key_path: "~/.config/ignite/github-app-private-key.pem"
+  app_name: "your-app-name"
 ```
+
+**Note**: Installation ID is not required. It is automatically retrieved from the repository during each operation.
 
 ## Using the Token Retrieval Script
 
 ### Basic Usage
 
 ```bash
-# Get token
-./scripts/utils/get_github_app_token.sh
+# Get token by specifying repository
+./scripts/utils/get_github_app_token.sh --repo owner/repo
 
 # Output example: ghs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+Installation ID is automatically retrieved from the repository, allowing the same GitHub App to be used across multiple Organizations/repositories.
 
 ### GitHub Operations as Bot
 
 ```bash
 # Get token and set to environment variable
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 
 # Comment on Issue as Bot
 GH_TOKEN="$BOT_TOKEN" gh issue comment 1 --repo owner/repo --body "Hello from IGNITE Bot!"
@@ -194,7 +168,7 @@ GH_TOKEN="$BOT_TOKEN" gh pr create --repo owner/repo --title "Fix bug" --body "A
 #!/bin/bash
 
 # Assumes execution from IGNITE project root
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 
 if [[ -z "$BOT_TOKEN" ]]; then
     echo "Error: Failed to get GitHub App token"
@@ -228,7 +202,7 @@ payload:
 Leader checks Issue and comments on status as Bot:
 
 ```bash
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
 GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "Issue received. Starting work."
 ```
 

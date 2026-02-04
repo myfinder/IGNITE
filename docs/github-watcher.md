@@ -368,7 +368,7 @@ GitHubのIssue/PRコメントで以下のようにメンションすると、IGN
 
 2. **トークン取得テスト**
    ```bash
-   BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh)
+   BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo owner/repo)
    echo $BOT_TOKEN
    ```
 

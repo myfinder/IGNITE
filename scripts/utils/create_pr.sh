@@ -199,10 +199,11 @@ create_pull_request() {
     if [[ "$use_bot" == "true" ]]; then
         local bot_token
         # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
+        # --repo オプションでリポジトリを指定（Organization対応）
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" 2>/dev/null || echo "")
+            bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
         else
-            bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" 2>/dev/null || echo "")
+            bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
         fi
         if [[ -n "$bot_token" ]]; then
             token_prefix="GH_TOKEN=$bot_token"

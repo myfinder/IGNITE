@@ -63,9 +63,7 @@ load_config() {
     fi
 
     # YAMLから値を取得（grepとawkで簡易パース）
-    # github_app: セクション配下の値を読み取る
     APP_ID=$(grep -E '^\s*app_id:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
-    INSTALLATION_ID=$(grep -E '^\s*installation_id:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
     PRIVATE_KEY_PATH=$(grep -E '^\s*private_key_path:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
 
     # チルダをホームディレクトリに展開
@@ -74,12 +72,6 @@ load_config() {
     # 値の検証
     if [[ -z "$APP_ID" ]] || [[ "$APP_ID" == "YOUR_APP_ID" ]]; then
         error "app_id が設定されていません"
-        echo "  設定ファイル: $config_file" >&2
-        exit 1
-    fi
-
-    if [[ -z "$INSTALLATION_ID" ]] || [[ "$INSTALLATION_ID" == "YOUR_INSTALLATION_ID" ]]; then
-        error "installation_id が設定されていません"
         echo "  設定ファイル: $config_file" >&2
         exit 1
     fi
@@ -100,6 +92,42 @@ load_config() {
         echo "  4. ダウンロードした .pem ファイルを $PRIVATE_KEY_PATH に保存" >&2
         exit 1
     fi
+}
+
+# =============================================================================
+# リポジトリからInstallation IDを取得
+# =============================================================================
+
+get_installation_id_for_repo() {
+    local repo="$1"
+    local jwt_token
+    local installation_id
+
+    # JWTトークンを生成（App認証用）
+    jwt_token=$(gh token generate \
+        --app-id "$APP_ID" \
+        --key "$PRIVATE_KEY_PATH" \
+        --jwt-only 2>/dev/null | jq -r '.token // empty' 2>/dev/null)
+
+    if [[ -z "$jwt_token" ]]; then
+        error "JWTトークンの生成に失敗しました"
+        return 1
+    fi
+
+    # リポジトリのインストール情報を取得
+    installation_id=$(GH_TOKEN="$jwt_token" gh api "/repos/${repo}/installation" \
+        --jq '.id' 2>/dev/null)
+
+    if [[ -z "$installation_id" ]] || [[ "$installation_id" == "null" ]]; then
+        error "リポジトリ ${repo} のInstallation IDを取得できませんでした"
+        echo "" >&2
+        echo "確認事項:" >&2
+        echo "  - GitHub Appがリポジトリにインストールされているか" >&2
+        echo "  - Organizationリポジトリの場合、Organizationにインストールされているか" >&2
+        return 1
+    fi
+
+    echo "$installation_id"
 }
 
 # =============================================================================
@@ -149,11 +177,13 @@ show_help() {
 GitHub App Token 取得スクリプト
 
 使用方法:
-  ./scripts/utils/get_github_app_token.sh [オプション]
+  ./scripts/utils/get_github_app_token.sh --repo <owner/repo>
 
 オプション:
-  -h, --help    このヘルプを表示
-  -c, --check   前提条件のみチェック
+  -r, --repo REPO    リポジトリ（owner/repo形式）【必須】
+                     リポジトリからInstallation IDを動的に取得します
+  -c, --check        前提条件のみチェック
+  -h, --help         このヘルプを表示
 
 環境変数:
   IGNITE_GITHUB_CONFIG    設定ファイルのパス（デフォルト: config/github-app.yaml）
@@ -164,10 +194,10 @@ GitHub App Token 取得スクリプト
 
 使用例:
   # トークンを取得
-  TOKEN=$(./scripts/utils/get_github_app_token.sh)
+  TOKEN=$(./scripts/utils/get_github_app_token.sh --repo myorg/myrepo)
 
   # Bot名義でIssueにコメント
-  GH_TOKEN="$TOKEN" gh issue comment 1 --repo owner/repo --body "Hello"
+  GH_TOKEN="$TOKEN" gh issue comment 1 --repo myorg/myrepo --body "Hello"
 
   # 前提条件のチェックのみ
   ./scripts/utils/get_github_app_token.sh --check
@@ -179,28 +209,59 @@ EOF
 # =============================================================================
 
 main() {
-    case "${1:-}" in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -c|--check)
-            check_prerequisites
-            load_config
-            echo "前提条件OK: gh CLI, gh-token拡張, 設定ファイル" >&2
-            exit 0
-            ;;
-        "")
-            check_prerequisites
-            load_config
-            generate_token
-            ;;
-        *)
-            error "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-    esac
+    local repo=""
+
+    # 引数解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -c|--check)
+                check_prerequisites
+                load_config
+                echo "前提条件OK: gh CLI, gh-token拡張, 設定ファイル" >&2
+                exit 0
+                ;;
+            -r|--repo)
+                if [[ -z "${2:-}" ]]; then
+                    error "--repo オプションにはリポジトリ名が必要です（例: owner/repo）"
+                    exit 1
+                fi
+                repo="$2"
+                shift 2
+                ;;
+            "")
+                break
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+
+    # --repo は必須
+    if [[ -z "$repo" ]]; then
+        error "--repo オプションは必須です"
+        echo "" >&2
+        echo "使用方法:" >&2
+        echo "  ./scripts/utils/get_github_app_token.sh --repo owner/repo" >&2
+        exit 1
+    fi
+
+    check_prerequisites
+    load_config
+
+    # リポジトリからinstallation_idを動的取得
+    INSTALLATION_ID=$(get_installation_id_for_repo "$repo")
+    if [[ $? -ne 0 ]] || [[ -z "$INSTALLATION_ID" ]]; then
+        exit 1
+    fi
+
+    generate_token
 }
 
 main "$@"

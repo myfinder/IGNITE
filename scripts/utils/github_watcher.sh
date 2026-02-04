@@ -274,15 +274,24 @@ is_user_authorized() {
 # =============================================================================
 
 # GitHub Appトークンを取得
+# 引数: $1 - リポジトリ名（owner/repo形式、オプション）
 get_bot_token() {
+    local repo="${1:-}"
     local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
+    local repo_option=""
+
+    # リポジトリが指定されている場合は --repo オプションを使用（Organization対応）
+    if [[ -n "$repo" ]]; then
+        repo_option="--repo $repo"
+    fi
+
     if [[ -f "$token_script" ]]; then
         # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
             IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
-                "$token_script" 2>/dev/null || echo ""
+                "$token_script" $repo_option 2>/dev/null || echo ""
         else
-            "$token_script" 2>/dev/null || echo ""
+            "$token_script" $repo_option 2>/dev/null || echo ""
         fi
     else
         echo ""
