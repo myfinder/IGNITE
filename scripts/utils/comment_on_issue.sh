@@ -92,14 +92,76 @@ EOF
 }
 
 # =============================================================================
-# Bot Token 取得（リトライ機構付き）
+# Bot Token 取得（キャッシュ + リトライ機構付き）
 # =============================================================================
 
 # 設定
 BOT_TOKEN_MAX_RETRIES="${BOT_TOKEN_MAX_RETRIES:-3}"
 BOT_TOKEN_RETRY_DELAY="${BOT_TOKEN_RETRY_DELAY:-2}"
+BOT_TOKEN_CACHE_TTL="${BOT_TOKEN_CACHE_TTL:-3300}"  # 55分（トークン有効期限1時間より余裕を持たせる）
 
-get_bot_token() {
+# キャッシュディレクトリの決定
+_get_cache_dir() {
+    if [[ -n "${WORKSPACE_DIR:-}" ]]; then
+        echo "$WORKSPACE_DIR/state"
+    elif [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
+        echo "$IGNITE_WORKSPACE_DIR/state"
+    else
+        echo "/tmp/ignite-token-cache"
+    fi
+}
+
+# キャッシュからBot Tokenを取得（なければ新規取得してキャッシュ）
+get_cached_bot_token() {
+    local repo="$1"
+    local cache_dir
+    cache_dir=$(_get_cache_dir)
+    local cache_key
+    cache_key=$(echo "$repo" | tr '/' '_')
+    local cache_file="$cache_dir/.bot_token_${cache_key}"
+
+    mkdir -p "$cache_dir"
+    chmod 700 "$cache_dir" 2>/dev/null || true
+
+    # キャッシュ確認
+    if [[ -f "$cache_file" ]]; then
+        local cached_at now remaining
+        cached_at=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0)
+        now=$(date +%s)
+        remaining=$((BOT_TOKEN_CACHE_TTL - (now - cached_at)))
+
+        if (( remaining > 0 )); then
+            local cached_token
+            cached_token=$(cat "$cache_file" 2>/dev/null)
+            if [[ "$cached_token" == ghs_* ]]; then
+                log_info "キャッシュからBot Tokenを使用 (残り: ${remaining}秒)"
+                echo "$cached_token"
+                return 0
+            fi
+        else
+            # キャッシュ期限切れ
+            rm -f "$cache_file"
+        fi
+    fi
+
+    # キャッシュなし/期限切れ: 新規取得
+    local token
+    token=$(_get_bot_token_internal "$repo")
+
+    if [[ -n "$token" ]] && [[ "$token" == ghs_* ]]; then
+        echo "$token" > "$cache_file"
+        chmod 600 "$cache_file"
+        log_info "Bot Tokenを新規取得しキャッシュ (TTL: ${BOT_TOKEN_CACHE_TTL}秒)"
+        echo "$token"
+        return 0
+    fi
+
+    echo ""
+    return 1
+}
+
+# 内部用: 実際のトークン取得（リトライ機構付き）
+_get_bot_token_internal() {
     local repo="${1:-}"
     local retry_count=0
     local token=""
@@ -145,6 +207,11 @@ get_bot_token() {
     fi
     echo ""
     return 1
+}
+
+# 後方互換性のためのラッパー（get_cached_bot_token を使用）
+get_bot_token() {
+    get_cached_bot_token "$@"
 }
 
 # =============================================================================
