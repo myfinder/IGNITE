@@ -403,11 +403,12 @@ fetch_pr_reviews() {
 
     for pr_number in $open_prs; do
         local reviews_json=$(gh api "/repos/${repo}/pulls/${pr_number}/reviews" 2>/dev/null || echo "[]")
+        # bodyが空でも取得（コード行コメントのみのレビューも検知するため）
         jq -c --arg since "$since" --arg pr_number "$pr_number" \
-            '.[] | select(.submitted_at >= $since and .body != null and .body != "") | {
+            '.[] | select(.submitted_at >= $since) | {
                 id: .id,
                 pr_number: ($pr_number | tonumber),
-                body: .body,
+                body: (.body // ""),
                 author: .user.login,
                 author_type: .user.type,
                 state: .state,
@@ -415,6 +416,16 @@ fetch_pr_reviews() {
                 url: .html_url
             }' <(printf '%s' "$reviews_json") 2>/dev/null || true
     done
+}
+
+# PRレビューに紐づくコメント（コード行へのコメント）を取得
+fetch_pr_review_comments() {
+    local repo="$1"
+    local pr_number="$2"
+    local review_id="$3"
+
+    gh api "/repos/${repo}/pulls/${pr_number}/reviews/${review_id}/comments" \
+        --jq '.[] | .body' 2>/dev/null | tr '\n' ' ' || echo ""
 }
 
 # =============================================================================
@@ -941,6 +952,7 @@ process_pr_reviews() {
         [[ -z "$review" ]] && continue
 
         local id=$(echo "$review" | jq -r '.id')
+        local pr_number=$(echo "$review" | jq -r '.pr_number')
         local author_type=$(echo "$review" | jq -r '.author_type')
         local author=$(echo "$review" | jq -r '.author')
         local body=$(echo "$review" | jq -r '.body // ""')
@@ -956,10 +968,18 @@ process_pr_reviews() {
             continue
         fi
 
-        log_event "新規PRレビュー検知: #$(echo "$review" | jq -r '.pr_number') by $author"
+        log_event "新規PRレビュー検知: #${pr_number} by $author"
 
-        # トリガーパターンをチェック
-        if [[ "$body" =~ $MENTION_PATTERN ]]; then
+        # レビュー本体 + コード行コメントを結合してメンションをチェック
+        local review_comments=""
+        if [[ -z "$body" ]] || ! [[ "$body" =~ $MENTION_PATTERN ]]; then
+            # bodyが空、またはbodyにメンションがない場合、コード行コメントも取得
+            review_comments=$(fetch_pr_review_comments "$repo" "$pr_number" "$id")
+        fi
+        local all_text="${body} ${review_comments}"
+
+        # トリガーパターンをチェック（本体 + コード行コメント）
+        if [[ "$all_text" =~ $MENTION_PATTERN ]]; then
             log_event "トリガー検知: $MENTION_PATTERN (by $author)"
 
             # アクセス制御チェック
@@ -969,17 +989,30 @@ process_pr_reviews() {
                 continue
             fi
 
-            # トリガータイプを判別
+            # トリガータイプを判別（本体 + コード行コメントから）
             local trigger_type="review"
-            if [[ "$body" =~ (実装|implement) ]]; then
+            if [[ "$all_text" =~ (実装|implement) ]]; then
                 trigger_type="implement"
-            elif [[ "$body" =~ (説明|explain) ]]; then
+            elif [[ "$all_text" =~ (説明|explain) ]]; then
                 trigger_type="explain"
+            fi
+
+            # コード行コメントがある場合、reviewデータにマージ
+            if [[ -n "$review_comments" ]]; then
+                review=$(echo "$review" | jq --arg comments "$review_comments" '. + {review_comments: $comments}')
             fi
 
             local message_file=$(create_task_message "pr_review" "$repo" "$review" "$trigger_type")
             log_success "タスクメッセージ作成: $message_file"
         else
+            # トリガーなしの場合
+            # bodyもコメントも空の場合はスキップ（Approveのみ等）
+            if [[ -z "$body" ]] && [[ -z "$review_comments" ]]; then
+                log_info "PRレビュー #${pr_number} (id: $id): コメントなしのためスキップ"
+                mark_event_processed "pr_review" "$id"
+                continue
+            fi
+
             # アクセス制御チェック（トリガーなしPRレビュー）
             if ! is_user_authorized "$author"; then
                 log_info "アクセス制御: ユーザー '$author' のPRレビューをスキップ"
