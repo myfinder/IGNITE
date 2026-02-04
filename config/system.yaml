@@ -18,8 +18,13 @@ paths:
   logs: ./workspace/logs
 
 claude_code:
-  command: "claude-code --dangerously-skip-permissions"
-  startup_delay: 3  # seconds to wait after launching
+  command: "claude --dangerously-skip-permissions"
+  # エージェント起動時の待機時間設定（秒）
+  delays:
+    startup: 3        # Claude CLI 起動後の待機
+    permission: 0.5   # 権限チェック時の待機
+    init: 8           # Claude Code 初期化完了までの待機
+    prompt: 2         # プロンプト送信後の安定化待機
 
 monitoring:
   dashboard_update_interval: 5  # seconds
