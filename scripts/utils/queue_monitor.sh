@@ -42,15 +42,20 @@ send_to_agent() {
     fi
 
     # エージェント名からペインインデックスを決定
-    # IGNITE のペイン構成: 0=Leader, 1-8=Sub-agents/IGNITIANs
+    # IGNITE のペイン構成: 0=Leader, 1-5=Sub-Leaders, 6-=IGNITIANs
     case "$agent" in
         leader) pane_index=0 ;;
         strategist) pane_index=1 ;;
+        architect) pane_index=2 ;;
+        evaluator) pane_index=3 ;;
+        coordinator) pane_index=4 ;;
+        innovator) pane_index=5 ;;
         *)
             # IGNITIAN の場合は名前からインデックスを推測
-            if [[ "$agent" =~ ^ignitian-([0-9]+)$ ]]; then
+            # ignitian-N または ignitian_N 形式に対応
+            if [[ "$agent" =~ ^ignitian[-_]([0-9]+)$ ]]; then
                 local num=${BASH_REMATCH[1]}
-                pane_index=$((num + 1))
+                pane_index=$((num + 5))  # Sub-Leaders(5) + IGNITIAN番号
             else
                 log_warn "未知のエージェント: $agent"
                 return 1
@@ -168,16 +173,42 @@ monitor_queues() {
         # Leader キュー
         scan_queue "$WORKSPACE_DIR/queue/leader" "leader"
 
-        # Strategist キュー
+        # Sub-Leaders キュー
         scan_queue "$WORKSPACE_DIR/queue/strategist" "strategist"
+        scan_queue "$WORKSPACE_DIR/queue/architect" "architect"
+        scan_queue "$WORKSPACE_DIR/queue/evaluator" "evaluator"
+        scan_queue "$WORKSPACE_DIR/queue/coordinator" "coordinator"
+        scan_queue "$WORKSPACE_DIR/queue/innovator" "innovator"
 
-        # IGNITIAN キュー（複数）
-        for ignitian_dir in "$WORKSPACE_DIR/queue/ignitian-"*; do
-            if [[ -d "$ignitian_dir" ]]; then
-                local ignitian_name=$(basename "$ignitian_dir")
-                scan_queue "$ignitian_dir" "$ignitian_name"
-            fi
-        done
+        # IGNITIAN キュー（ignitians/ ディレクトリ方式）
+        # ファイル名 ignitian_N.yaml または ignitian_N_xxx.yaml からIGNITIAN番号を抽出
+        if [[ -d "$WORKSPACE_DIR/queue/ignitians" ]]; then
+            for file in "$WORKSPACE_DIR/queue/ignitians"/ignitian_*.yaml; do
+                [[ -f "$file" ]] || continue
+                local filepath="$file"
+                local filename=$(basename "$file")
+
+                # 既に処理済みならスキップ
+                if [[ -n "${PROCESSED_FILES[$filepath]:-}" ]]; then
+                    continue
+                fi
+
+                # statusがpendingのものだけ処理
+                local status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+                if [[ "$status" != "pending" ]]; then
+                    PROCESSED_FILES[$filepath]=1
+                    continue
+                fi
+
+                # ファイル名からIGNITIAN番号を抽出 (ignitian_N.yaml or ignitian_N_xxx.yaml)
+                if [[ "$filename" =~ ^ignitian_([0-9]+) ]]; then
+                    local ignitian_num=${BASH_REMATCH[1]}
+                    process_message "$file" "ignitian_${ignitian_num}"
+                    PROCESSED_FILES[$filepath]=1
+                    sed -i 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
+                fi
+            done
+        fi
 
         sleep "$POLL_INTERVAL"
     done
@@ -200,9 +231,12 @@ monitor_with_inotify() {
     local watch_dirs=()
     [[ -d "$WORKSPACE_DIR/queue/leader" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/leader")
     [[ -d "$WORKSPACE_DIR/queue/strategist" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/strategist")
-    for ignitian_dir in "$WORKSPACE_DIR/queue/ignitian-"*; do
-        [[ -d "$ignitian_dir" ]] && watch_dirs+=("$ignitian_dir")
-    done
+    [[ -d "$WORKSPACE_DIR/queue/architect" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/architect")
+    [[ -d "$WORKSPACE_DIR/queue/evaluator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/evaluator")
+    [[ -d "$WORKSPACE_DIR/queue/coordinator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/coordinator")
+    [[ -d "$WORKSPACE_DIR/queue/innovator" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/innovator")
+    # IGNITIAN キュー（ignitians/ ディレクトリ方式）
+    [[ -d "$WORKSPACE_DIR/queue/ignitians" ]] && watch_dirs+=("$WORKSPACE_DIR/queue/ignitians")
 
     if [[ ${#watch_dirs[@]} -eq 0 ]]; then
         log_error "監視対象のキューディレクトリがありません"
@@ -215,6 +249,16 @@ monitor_with_inotify() {
             # ディレクトリ名からキュー名を取得
             local queue_dir=$(dirname "$filepath")
             local queue_name=$(basename "$queue_dir")
+            local filename=$(basename "$filepath")
+
+            # ignitians/ ディレクトリの場合はファイル名からIGNITIAN番号を抽出
+            if [[ "$queue_name" == "ignitians" ]]; then
+                if [[ "$filename" =~ ^ignitian_([0-9]+) ]]; then
+                    queue_name="ignitian_${BASH_REMATCH[1]}"
+                else
+                    continue  # IGNITIAN形式でないファイルはスキップ
+                fi
+            fi
 
             # 少し待ってファイルが完全に書き込まれるのを待つ
             sleep 0.5
