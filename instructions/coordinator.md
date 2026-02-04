@@ -156,13 +156,13 @@ status: active
    - 利用可能なIGNITIANを特定
    - タスクを配分
 
-2. **完了レポートのチェック**
-   ```bash
-   find workspace/reports -name "ignitian_*.yaml" -type f
+2. **完了レポートのチェック**（ポーリング方式）
+
+   **注意**: 完了レポートはqueue_monitor経由ではなく、IGNITIANが `reports/` ディレクトリに直接書き込みます。
+   タスク通知の処理時に、未処理の完了レポートを確認してください。
+
    ```
-   または Glob ツールで:
-   ```
-   workspace/reports/ignitian_*.yaml
+   Glob: workspace/reports/ignitian_*_completed.yaml
    ```
 
 3. **レポートの処理**
