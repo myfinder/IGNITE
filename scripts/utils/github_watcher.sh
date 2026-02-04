@@ -279,6 +279,8 @@ fetch_prs() {
 
     # PRs API は since パラメータをサポートしていないので、
     # 取得後に created_at でフィルタリングする
+    # 注: updated_at は考慮していないが、既存PRへの更新（コメント追加等）は
+    #     fetch_pr_comments() で別途取得するため問題ない
     gh api "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" \
         --jq --arg since "${since:-1970-01-01T00:00:00Z}" '.[] | select(.created_at >= $since) | {
             id: .id,
