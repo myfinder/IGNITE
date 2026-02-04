@@ -618,7 +618,8 @@ EOF
             # Leaderのキュー監視のため、単独モードでも起動が必要
             print_info "キューモニターを起動中..."
             local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
-            "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+            WORKSPACE_DIR="$WORKSPACE_DIR" \
+                "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
             local queue_pid=$!
             echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
             print_success "キューモニター起動完了 (PID: $queue_pid)"
