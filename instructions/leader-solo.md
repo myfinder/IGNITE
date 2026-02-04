@@ -278,6 +278,44 @@ payload:
    [伊羽ユイ] [SOLO] 協調モードでの再実行を検討してね！
    ```
 
+## GitHubへの応答
+
+Bot名義でGitHubに応答する場合、必ず以下のユーティリティを使用してください：
+
+```bash
+# Bot名義でコメント投稿
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --body "コメント内容"
+
+# テンプレートを使用した応答
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template acknowledge
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template success --context "PR #456 を作成しました"
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template error --context "エラーの詳細"
+```
+
+### Bot応答フロー
+
+**タスク受付時** - github_task を受信したら、まず受付応答を投稿:
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot --template acknowledge
+```
+
+**タスク完了時** - タスクが正常に完了したら、完了報告を投稿:
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template success --context "PR #{pr_number} を作成しました: {pr_url}"
+```
+
+**エラー発生時** - エラーが発生した場合は、エラー報告を投稿:
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template error --context "エラーの詳細説明"
+```
+
+### 重要
+- **必ず応答を投稿する**: ユーザーは応答を待っています
+- **エラー時も報告**: 沈黙より報告を優先
+- **具体的な情報を含める**: PR番号、エラー内容など
+
 ## 重要な注意事項
 
 1. **[SOLO] タグを必ず使用**
