@@ -51,6 +51,24 @@ log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1"; }
 # 設定読み込み
 # =============================================================================
 
+# =============================================================================
+# 関数名: load_config
+# 目的: 設定ファイル(github-watcher.yaml)からGitHub Watcher設定を読み込む
+# 引数: なし（環境変数 IGNITE_WATCHER_CONFIG または IGNITE_CONFIG_DIR を参照）
+# 戻り値: なし（グローバル変数を設定）
+# 副作用:
+#   - POLL_INTERVAL: ポーリング間隔（秒）
+#   - STATE_FILE: 処理済みイベントの状態ファイルパス
+#   - REPOSITORIES: 監視対象リポジトリの配列
+#   - WATCH_*: 各イベントタイプの監視フラグ
+#   - MENTION_PATTERN: メンショントリガーパターン
+#   - WORKSPACE_DIR: ワークスペースディレクトリパス
+#   - ACCESS_CONTROL_ENABLED: アクセス制御の有効/無効
+#   - ALLOWED_USERS: 許可ユーザーの配列
+# 注意:
+#   - YAMLパーサーではなく grep/awk で簡易的にパースしている
+#   - 複雑なYAML構造には対応していない
+# =============================================================================
 load_config() {
     local config_file="${IGNITE_WATCHER_CONFIG:-${IGNITE_CONFIG_DIR}/${DEFAULT_CONFIG_FILE}}"
 
@@ -180,7 +198,18 @@ get_initialized_at() {
     jq -r '.initialized_at // empty' "$STATE_FILE" 2>/dev/null
 }
 
-# ローカル時刻をUTC形式に変換（GitHub APIはUTC形式を要求）
+# =============================================================================
+# 関数名: to_utc
+# 目的: ローカルタイムゾーンのISO 8601形式タイムスタンプをUTC形式に変換する
+# 引数:
+#   $1 - 変換元のタイムスタンプ（例: "2024-01-01T12:00:00+09:00"）
+# 戻り値: UTC形式のタイムスタンプ（例: "2024-01-01T03:00:00Z"）
+# 注意:
+#   - GitHub APIは since パラメータにUTC形式を要求するため必要
+#   - GNU date (Linux) と BSD date (macOS) の両方に対応
+#   - GNU date: date -d で入力形式を自動認識
+#   - BSD date: -j -f で入力形式を明示的に指定
+# =============================================================================
 to_utc() {
     local timestamp="$1"
     if [[ -z "$timestamp" ]]; then

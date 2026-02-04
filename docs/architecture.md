@@ -8,23 +8,27 @@ IGNITEは、claude code CLIを活用した階層型マルチエージェント�
 
 ### 階層構造
 
-```
-User
-  ↓
-Leader (伊羽ユイ) - 統率と意思決定
-  ↓
-┌──────────────────────────────────────────────┐
-│ Sub-Leaders (5つの専門領域)                  │
-├──────────┬──────────┬──────────┬─────────────┤
-│Strategist│Architect │Evaluator │Coordinator  │
-│(義賀リオ)│(祢音ナナ)│(衣結ノア)│(通瀬アイナ) │
-└──────────┴──────────┴──────────┴─────────────┘
-│Innovator │
-│(恵那ツム │
-│  ギ)     │
-└──────────┘
-  ↓
-IGNITIANS (可変並列ワーカー: 1-32)
+```mermaid
+graph TD
+    User[User] --> Leader[Leader<br/>伊羽ユイ]
+
+    Leader --> Strategist[Strategist<br/>義賀リオ]
+    Leader --> Architect[Architect<br/>祢音ナナ]
+    Leader --> Evaluator[Evaluator<br/>衣結ノア]
+    Leader --> Coordinator[Coordinator<br/>通瀬アイナ]
+    Leader --> Innovator[Innovator<br/>恵那ツムギ]
+
+    Coordinator --> IG1[IGNITIAN 1]
+    Coordinator --> IG2[IGNITIAN 2]
+    Coordinator --> IG3[IGNITIAN 3]
+    Coordinator --> IGN[IGNITIAN N...]
+
+    style Leader fill:#ff6b6b,color:#fff
+    style Strategist fill:#4ecdc4,color:#fff
+    style Architect fill:#45b7d1,color:#fff
+    style Evaluator fill:#96ceb4,color:#fff
+    style Coordinator fill:#ffeaa7,color:#333
+    style Innovator fill:#dfe6e9,color:#333
 ```
 
 ### エージェント役割
@@ -68,14 +72,27 @@ IGNITIANS (可変並列ワーカー: 1-32)
 
 ### メッセージフロー
 
-```
-User → Leader → Sub-Leaders → Coordinator → IGNITIANS
-                     ↓                ↓
-                  Evaluator ← Reports/Results
-                     ↓
-                  Innovator → Improvements
-                     ↓
-                  Leader → User
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as Leader
+    participant S as Strategist
+    participant C as Coordinator
+    participant I as IGNITIANS
+    participant E as Evaluator
+    participant N as Innovator
+
+    U->>L: user_goal
+    L->>S: strategy_request
+    S->>L: strategy_response
+    S->>C: task_list
+    C->>I: task_assignment
+    I->>C: task_completed
+    C->>E: evaluation_request
+    E->>L: evaluation_result
+    E->>N: improvement_request
+    N->>L: improvement_suggestion
+    L->>U: 最終レポート
 ```
 
 ### YAMLメッセージ形式

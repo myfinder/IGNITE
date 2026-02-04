@@ -31,6 +31,17 @@ declare -A PROCESSED_FILES
 # tmux セッションへのメッセージ送信
 # =============================================================================
 
+# =============================================================================
+# 関数名: send_to_agent
+# 目的: 指定されたエージェントのtmuxペインにメッセージを送信する
+# 引数:
+#   $1 - エージェント名（例: "leader", "strategist", "ignitian-1"）
+#   $2 - 送信するメッセージ文字列
+# 戻り値: 0=成功, 1=失敗
+# 注意:
+#   - TMUX_SESSION 環境変数が設定されている必要がある
+#   - ペインインデックスはIGNITEの固定レイアウトに基づく
+# =============================================================================
 send_to_agent() {
     local agent="$1"
     local message="$2"
@@ -41,8 +52,23 @@ send_to_agent() {
         return 1
     fi
 
-    # エージェント名からペインインデックスを決定
-    # IGNITE のペイン構成: 0=Leader, 1-5=Sub-Leaders, 6-=IGNITIANs
+    # =========================================================================
+    # ペインインデックス計算ロジック
+    # =========================================================================
+    # IGNITEのtmuxレイアウト:
+    #   ペイン 0: Leader (伊羽ユイ)
+    #   ペイン 1: Strategist (義賀リオ)
+    #   ペイン 2: Architect (祢音ナナ)
+    #   ペイン 3: Evaluator (衣結ノア)
+    #   ペイン 4: Coordinator (通瀬アイナ)
+    #   ペイン 5: Innovator (恵那ツムギ)
+    #   ペイン 6+: IGNITIANs (ワーカー)
+    #
+    # IGNITIANのペイン番号計算:
+    #   ignitian-0 → ペイン 6 (0 + 6)
+    #   ignitian-1 → ペイン 7 (1 + 6)
+    #   ignitian-N → ペイン N+6
+    # =========================================================================
     case "$agent" in
         leader) pane_index=0 ;;
         strategist) pane_index=1 ;;
@@ -55,7 +81,7 @@ send_to_agent() {
             # ignitian-N または ignitian_N 形式に対応
             if [[ "$agent" =~ ^ignitian[-_]([0-9]+)$ ]]; then
                 local num=${BASH_REMATCH[1]}
-                pane_index=$((num + 5))  # Sub-Leaders(5) + IGNITIAN番号
+                pane_index=$((num + 6))  # Sub-Leaders(6) + IGNITIAN番号
             else
                 log_warn "未知のエージェント: $agent"
                 return 1
