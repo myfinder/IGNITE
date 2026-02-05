@@ -106,7 +106,8 @@ copy_main_script() {
 
     # scripts/lib/ モジュール
     cp "$SCRIPT_DIR/lib"/*.sh "$BUILD_DIR/share/scripts/lib/"
-    local count=$(ls -1 "$BUILD_DIR/share/scripts/lib"/*.sh 2>/dev/null | wc -l)
+    local count
+    count=$(ls -1 "$BUILD_DIR/share/scripts/lib"/*.sh 2>/dev/null | wc -l)
     print_success "$count 個の lib モジュールをコピーしました"
 }
 
@@ -152,7 +153,8 @@ copy_instructions() {
     print_header "instructions のコピー"
 
     cp -r "$PROJECT_ROOT/instructions"/* "$BUILD_DIR/share/instructions/"
-    local count=$(ls -1 "$BUILD_DIR/share/instructions"/*.md 2>/dev/null | wc -l)
+    local count
+    count=$(ls -1 "$BUILD_DIR/share/instructions"/*.md 2>/dev/null | wc -l)
     print_success "$count 個の instruction ファイルをコピーしました"
 }
 
@@ -161,7 +163,8 @@ copy_utils() {
 
     cp "$SCRIPT_DIR/utils"/*.sh "$BUILD_DIR/share/scripts/utils/"
     chmod +x "$BUILD_DIR/share/scripts/utils"/*.sh
-    local count=$(ls -1 "$BUILD_DIR/share/scripts/utils"/*.sh 2>/dev/null | wc -l)
+    local count
+    count=$(ls -1 "$BUILD_DIR/share/scripts/utils"/*.sh 2>/dev/null | wc -l)
     print_success "$count 個のユーティリティスクリプトをコピーしました"
 }
 
@@ -228,7 +231,8 @@ show_summary() {
     print_header "ビルド完了"
 
     local archive_path="$DIST_DIR/${ARCHIVE_NAME}.tar.gz"
-    local archive_size=$(du -h "$archive_path" | cut -f1)
+    local archive_size
+    archive_size=$(du -h "$archive_path" | cut -f1)
 
     echo ""
     echo "出力ファイル:"
@@ -237,7 +241,8 @@ show_summary() {
     echo ""
     echo "アーカイブ内容:"
     tar -tzf "$archive_path" | head -20
-    local total=$(tar -tzf "$archive_path" | wc -l)
+    local total
+    total=$(tar -tzf "$archive_path" | wc -l)
     if [[ $total -gt 20 ]]; then
         echo "  ... 他 $((total - 20)) ファイル"
     fi

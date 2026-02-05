@@ -305,7 +305,8 @@ post_comment() {
 
     if [[ "$use_bot" == "true" ]]; then
         # リポジトリを渡してトークン取得（Organization対応）
-        local bot_token=$(get_bot_token "$repo")
+        local bot_token
+        bot_token=$(get_bot_token "$repo")
         if [[ -n "$bot_token" ]]; then
             log_info "Bot名義でコメントを投稿中..."
             GH_TOKEN="$bot_token" gh issue comment "$issue_number" --repo "$repo" --body "$body"

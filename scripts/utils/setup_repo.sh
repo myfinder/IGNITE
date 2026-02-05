@@ -160,7 +160,8 @@ get_base_branch() {
 repo_to_path() {
     local repo="$1"
     # owner/repo → owner_repo
-    local repo_name=$(echo "$repo" | tr '/' '_')
+    local repo_name
+    repo_name=$(echo "$repo" | tr '/' '_')
     if [[ -n "${IGNITE_WORKER_ID:-}" ]]; then
         echo "$REPOS_DIR/${repo_name}_ignitian_${IGNITE_WORKER_ID}"
     else
@@ -182,7 +183,8 @@ setup_repo() {
         branch=$(get_base_branch "$repo")
     fi
 
-    local repo_path=$(repo_to_path "$repo")
+    local repo_path
+    repo_path=$(repo_to_path "$repo")
 
     mkdir -p "$REPOS_DIR"
 
@@ -194,7 +196,8 @@ setup_repo() {
         git pull origin "$branch" || log_warn "pull に失敗しました（ローカル変更がある可能性）"
     else
         # per-IGNITIAN clone: primary clone が存在すればローカルから高速clone
-        local repo_name=$(echo "$repo" | tr '/' '_')
+        local repo_name
+        repo_name=$(echo "$repo" | tr '/' '_')
         local primary_path="$REPOS_DIR/$repo_name"
         if [[ -n "${IGNITE_WORKER_ID:-}" ]] && [[ -d "$primary_path/.git" ]]; then
             log_info "primary clone からローカルclone: $repo (worker ${IGNITE_WORKER_ID})"

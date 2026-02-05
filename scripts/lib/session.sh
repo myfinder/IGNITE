@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/session.sh - セッションID生成・ワークスペース管理
 [[ -n "${__LIB_SESSION_LOADED:-}" ]] && return; __LIB_SESSION_LOADED=1
 

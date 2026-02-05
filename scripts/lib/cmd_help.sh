@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_help.sh - helpコマンド
 [[ -n "${__LIB_CMD_HELP_LOADED:-}" ]] && return; __LIB_CMD_HELP_LOADED=1
 
@@ -5,6 +6,7 @@
 # help コマンド
 # =============================================================================
 
+# shellcheck disable=SC2120  # Called with arguments from other files that source this library
 cmd_help() {
     local command="${1:-}"
 

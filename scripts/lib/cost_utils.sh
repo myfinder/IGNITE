@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cost_utils.sh - コスト計算ユーティリティ
 # PRICE_INPUT, PRICE_OUTPUT 等は load_pricing() で値が設定される
 
@@ -94,7 +95,8 @@ format_number() {
 get_display_width() {
     local str="$1"
     # wc -L はターミナルの表示幅を正しく計算する（ヒアストリングで渡す）
-    local width=$(wc -L <<< "$str")
+    local width
+    width=$(wc -L <<< "$str")
     echo "$width"
 }
 
@@ -102,8 +104,10 @@ get_display_width() {
 pad_right() {
     local str="$1"
     local target_width="$2"
-    local current_width=$(get_display_width "$str")
-    local padding=$((target_width - current_width))
+    local current_width
+    current_width=$(get_display_width "$str")
+    local padding
+    padding=$((target_width - current_width))
     if [[ $padding -lt 0 ]]; then padding=0; fi
     printf "%s%*s" "$str" "$padding" ""
 }
@@ -112,8 +116,10 @@ pad_right() {
 pad_left() {
     local str="$1"
     local target_width="$2"
-    local current_width=$(get_display_width "$str")
-    local padding=$((target_width - current_width))
+    local current_width
+    current_width=$(get_display_width "$str")
+    local padding
+    padding=$((target_width - current_width))
     if [[ $padding -lt 0 ]]; then padding=0; fi
     printf "%*s%s" "$padding" "" "$str"
 }
@@ -175,7 +181,8 @@ resolve_agent_session_id() {
     esac
 
     # まずsessions-index.jsonから検索
-    local session_id=$(jq -r --arg after "$started_at" --arg pattern "$pattern" '
+    local session_id
+    session_id=$(jq -r --arg after "$started_at" --arg pattern "$pattern" '
       .entries
       | map(select(.created >= $after and (.firstPrompt | test($pattern))))
       | sort_by(.created) | last | .sessionId // empty
@@ -187,12 +194,15 @@ resolve_agent_session_id() {
     fi
 
     # インデックスに見つからない場合、セッションファイルを直接検索
-    local project_dir=$(dirname "$sessions_index")
+    local project_dir
+    project_dir=$(dirname "$sessions_index")
     for f in "$project_dir"/*.jsonl; do
         [[ -f "$f" ]] || continue
         # ファイルの更新時刻が開始時刻より後かチェック
-        local file_mtime=$(stat -c %Y "$f" 2>/dev/null)
-        local start_epoch=$(date -d "$started_at" +%s 2>/dev/null)
+        local file_mtime
+        file_mtime=$(stat -c %Y "$f" 2>/dev/null)
+        local start_epoch
+        start_epoch=$(date -d "$started_at" +%s 2>/dev/null)
         [[ -z "$file_mtime" ]] || [[ -z "$start_epoch" ]] && continue
         [[ $file_mtime -lt $start_epoch ]] && continue
 
@@ -210,21 +220,25 @@ update_sessions_yaml() {
 
     [[ ! -f "$sessions_file" ]] && return 1
 
-    local started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+    local started_at
+    started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
     [[ -z "$started_at" ]] && return 1
 
     # ISO 8601形式の開始時刻をUTCに変換（sessions-index.jsonはUTC）
     # エージェント起動はsessions.yamlのstarted_atより前に行われるため、3分前からを検索対象とする
-    local started_utc=$(date -u -d "$started_at - 3 minutes" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null)
+    local started_utc
+    started_utc=$(date -u -d "$started_at - 3 minutes" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null)
     [[ -z "$started_utc" ]] && return 1
 
     local updated=false
 
     # Sub-Leaders のセッションID解決
     for role in leader strategist architect evaluator coordinator innovator; do
-        local current_id=$(grep -A5 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+        local current_id
+        current_id=$(grep -A5 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
         if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
-            local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+            local resolved_id
+            resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
             if [[ -n "$resolved_id" ]]; then
                 sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                 updated=true
@@ -236,9 +250,11 @@ update_sessions_yaml() {
     for i in 1 2 3 4 5 6; do
         local role="ignitian_$i"
         if grep -q "^  ${role}:" "$sessions_file"; then
-            local current_id=$(grep -A3 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+            local current_id
+            current_id=$(grep -A3 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
             if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
-                local resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+                local resolved_id
+                resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
                 if [[ -n "$resolved_id" ]]; then
                     sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                     updated=true
@@ -287,9 +303,12 @@ list_cost_sessions() {
 
     for file in "$history_dir"/*.yaml; do
         if [[ -f "$file" ]]; then
-            local name=$(grep "^session_name:" "$file" | awk '{print $2}' | tr -d '"')
-            local started=$(grep "^started_at:" "$file" | awk '{print $2}' | tr -d '"' | cut -d'T' -f1,2 | tr 'T' ' ')
-            local cost=$(grep -A3 "^total:" "$file" | grep "cost_usd:" | awk '{print $2}')
+            local name
+            name=$(grep "^session_name:" "$file" | awk '{print $2}' | tr -d '"')
+            local started
+            started=$(grep "^started_at:" "$file" | awk '{print $2}' | tr -d '"' | cut -d'T' -f1,2 | tr 'T' ' ')
+            local cost
+            cost=$(grep -A3 "^total:" "$file" | grep "cost_usd:" | awk '{print $2}')
             printf "%-24s %-20s \$%.2f\n" "$name" "$started" "$cost"
         fi
     done
@@ -313,10 +332,14 @@ save_cost_history() {
     # 料金設定を読み込む
     load_pricing || return
 
-    local session_name=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
-    local started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
-    local stopped_at=$(date -Iseconds)
-    local date_suffix=$(date +%Y-%m-%d)
+    local session_name
+    session_name=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+    local started_at
+    started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+    local stopped_at
+    stopped_at=$(date -Iseconds)
+    local date_suffix
+    date_suffix=$(date +%Y-%m-%d)
 
     local history_file="$WORKSPACE_DIR/costs/history/${session_name}_${date_suffix}.yaml"
     mkdir -p "$WORKSPACE_DIR/costs/history"
@@ -342,14 +365,21 @@ EOF
 
     # 各エージェントのコストを記録
     for role in "${agents[@]}"; do
-        local session_id=$(get_agent_session_id "$role")
+        local session_id
+        session_id=$(get_agent_session_id "$role")
         if [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
-            local tokens=$(collect_session_tokens "$session_id")
-            local input=$(echo "$tokens" | jq -r '.input')
-            local output=$(echo "$tokens" | jq -r '.output')
-            local cache_read=$(echo "$tokens" | jq -r '.cache_read')
-            local cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
-            local cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
+            local tokens
+            tokens=$(collect_session_tokens "$session_id")
+            local input
+            input=$(echo "$tokens" | jq -r '.input')
+            local output
+            output=$(echo "$tokens" | jq -r '.output')
+            local cache_read
+            cache_read=$(echo "$tokens" | jq -r '.cache_read')
+            local cache_creation
+            cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
+            local cost
+            cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
 
             cat >> "$history_file" <<EOF
   ${role}:
@@ -390,12 +420,18 @@ EOF
             elif [[ "$line" =~ ^[[:space:]]*session_id:[[:space:]]*\"?([^\"]+)\"? ]] && [[ -n "$current_ignitian" ]]; then
                 local session_id="${BASH_REMATCH[1]}"
                 if [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
-                    local tokens=$(collect_session_tokens "$session_id")
-                    local input=$(echo "$tokens" | jq -r '.input')
-                    local output=$(echo "$tokens" | jq -r '.output')
-                    local cache_read=$(echo "$tokens" | jq -r '.cache_read')
-                    local cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
-                    local cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
+                    local tokens
+                    tokens=$(collect_session_tokens "$session_id")
+                    local input
+                    input=$(echo "$tokens" | jq -r '.input')
+                    local output
+                    output=$(echo "$tokens" | jq -r '.output')
+                    local cache_read
+                    cache_read=$(echo "$tokens" | jq -r '.cache_read')
+                    local cache_creation
+                    cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
+                    local cost
+                    cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
 
                     cat >> "$history_file" <<EOF
   ${current_ignitian}:

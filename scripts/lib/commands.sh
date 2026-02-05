@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/commands.sh - その他コマンド群（activate, notify, attach, logs, clean, list, watcher）
 [[ -n "${__LIB_COMMANDS_LOADED:-}" ]] && return; __LIB_COMMANDS_LOADED=1
 
@@ -151,11 +152,13 @@ cmd_notify() {
         exit 1
     fi
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     # メッセージファイル作成
-    local timestamp=$(date -Iseconds)
-    local message_id=$(date +%s%6N)
+    local timestamp
+    timestamp=$(date -Iseconds)
+    local message_id
+    message_id=$(date +%s%6N)
     local escaped_message="${message//\"/\\\"}"
     mkdir -p "$WORKSPACE_DIR/queue/${target}/processed"
     local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.yaml"
@@ -241,7 +244,7 @@ cmd_logs() {
     # ワークスペースを設定
     setup_workspace
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     if [[ ! -d "$WORKSPACE_DIR/logs" ]] || [[ -z "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
         print_warning "ログファイルが見つかりません"
@@ -298,7 +301,7 @@ cmd_clean() {
     setup_session_name
     setup_workspace
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     print_header "IGNITE workspaceクリア"
     echo ""

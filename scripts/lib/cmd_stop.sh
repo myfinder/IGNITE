@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_stop.sh - stopコマンド
 [[ -n "${__LIB_CMD_STOP_LOADED:-}" ]] && return; __LIB_CMD_STOP_LOADED=1
 
@@ -59,7 +60,8 @@ cmd_stop() {
 
     # GitHub Watcher を停止
     if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
-        local watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        local watcher_pid
+        watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
         if kill -0 "$watcher_pid" 2>/dev/null; then
             print_info "GitHub Watcherを停止中..."
             kill "$watcher_pid" 2>/dev/null || true
@@ -70,7 +72,8 @@ cmd_stop() {
 
     # キューモニターを停止
     if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
-        local queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        local queue_pid
+        queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
         if kill -0 "$queue_pid" 2>/dev/null; then
             print_info "キューモニターを停止中..."
             kill "$queue_pid" 2>/dev/null || true

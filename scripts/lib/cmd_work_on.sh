@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_work_on.sh - work-onコマンド
 [[ -n "${__LIB_CMD_WORK_ON_LOADED:-}" ]] && return; __LIB_CMD_WORK_ON_LOADED=1
 
@@ -102,16 +103,21 @@ cmd_work_on() {
         exit 1
     fi
 
-    local issue_title=$(echo "$issue_info" | jq -r '.title')
-    local issue_body=$(echo "$issue_info" | jq -r '.body // ""' | head -c 2000)
-    local issue_url=$(echo "$issue_info" | jq -r '.html_url')
+    local issue_title
+    issue_title=$(echo "$issue_info" | jq -r '.title')
+    local issue_body
+    issue_body=$(echo "$issue_info" | jq -r '.body // ""' | head -c 2000)
+    local issue_url
+    issue_url=$(echo "$issue_info" | jq -r '.html_url')
 
     print_success "Issue: $issue_title"
     echo ""
 
     # タイムスタンプとメッセージID生成
-    local timestamp=$(date -Iseconds)
-    local message_id=$(date +%s%6N)
+    local timestamp
+    timestamp=$(date -Iseconds)
+    local message_id
+    message_id=$(date +%s%6N)
 
     # github_taskメッセージを作成
     mkdir -p "$WORKSPACE_DIR/queue/leader/processed"

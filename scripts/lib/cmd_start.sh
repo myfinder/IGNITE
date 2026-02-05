@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_start.sh - startコマンド
 # 注意: print_error (core.sh) に依存する trap ERR あり
 
@@ -96,7 +97,7 @@ cmd_start() {
     fi
     echo ""
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     # 既存のセッションチェック
     if session_exists; then
@@ -195,7 +196,8 @@ EOF
 
     # 初期メッセージの送信
     print_info "Leaderに初期化メッセージを送信中..."
-    local init_message_file="$WORKSPACE_DIR/queue/leader/system_init_$(date +%s%6N).yaml"
+    local init_message_file
+    init_message_file="$WORKSPACE_DIR/queue/leader/system_init_$(date +%s%6N).yaml"
     cat > "$init_message_file" <<EOF
 type: system_init
 from: system
@@ -284,7 +286,8 @@ EOF
     print_info "コスト追跡用のセッション情報を記録中..."
     mkdir -p "$WORKSPACE_DIR/costs/history"
 
-    local started_timestamp=$(date -Iseconds)
+    local started_timestamp
+    started_timestamp=$(date -Iseconds)
     cat > "$WORKSPACE_DIR/costs/sessions.yaml" <<EOF
 # IGNITE セッション情報（コスト追跡用）
 # このファイルはシステム起動時に自動的に生成されます
@@ -379,10 +382,10 @@ EOF
             print_info "GitHub Watcherを起動中..."
             # ログ出力先を設定してバックグラウンド起動
             local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
-            IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml" \
-                IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR" \
-                IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR" \
-                "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
+            export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
+            export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
             print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
@@ -392,8 +395,8 @@ EOF
             # Leaderのキュー監視のため、単独モードでも起動が必要
             print_info "キューモニターを起動中..."
             local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
-            WORKSPACE_DIR="$WORKSPACE_DIR" \
-                "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+            export WORKSPACE_DIR="$WORKSPACE_DIR"
+            "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
             local queue_pid=$!
             echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
             print_success "キューモニター起動完了 (PID: $queue_pid)"

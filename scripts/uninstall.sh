@@ -113,7 +113,8 @@ uninstall_data() {
             find "$DATA_DIR" -type f | head -10 | while read f; do
                 echo "  - $f"
             done
-            local count=$(find "$DATA_DIR" -type f | wc -l)
+            local count
+            count=$(find "$DATA_DIR" -type f | wc -l)
             if [[ $count -gt 10 ]]; then
                 echo "  ... 他 $((count - 10)) ファイル"
             fi

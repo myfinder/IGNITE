@@ -99,7 +99,8 @@ rebase_pr() {
     cd "$repo_path"
 
     # 現在のブランチを保存
-    local current_branch=$(git branch --show-current)
+    local current_branch
+    current_branch=$(git branch --show-current)
     log_info "現在のブランチ: $current_branch"
     log_info "ベースブランチ: $base_branch"
 
@@ -231,7 +232,8 @@ push() {
 
     cd "$repo_path"
 
-    local current_branch=$(git branch --show-current)
+    local current_branch
+    current_branch=$(git branch --show-current)
     log_info "ブランチ $current_branch をプッシュ中..."
 
     git push
@@ -245,7 +247,8 @@ force_push() {
 
     cd "$repo_path"
 
-    local current_branch=$(git branch --show-current)
+    local current_branch
+    current_branch=$(git branch --show-current)
     log_info "ブランチ $current_branch を force push 中..."
 
     git push --force-with-lease

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_cost.sh - costコマンド
 
 [[ -n "${__LIB_CMD_COST_LOADED:-}" ]] && return; __LIB_CMD_COST_LOADED=1
@@ -78,7 +79,8 @@ cmd_cost() {
         else
             # 現在のセッションファイルを確認
             if [[ -f "$sessions_file" ]]; then
-                local current_session=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+                local current_session
+                current_session=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
                 if [[ "$current_session" != "$target_session" ]]; then
                     print_error "セッション '$target_session' が見つかりません"
                     echo ""
@@ -105,16 +107,22 @@ cmd_cost() {
     if [[ -z "$started_at" ]]; then
         started_at=$(grep "^started_at:" "$sessions_file" | awk '{print $2}' | tr -d '"')
     fi
-    local session_name=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
+    local session_name
+    session_name=$(grep "^session_name:" "$sessions_file" | awk '{print $2}' | tr -d '"')
 
     # 経過時間を計算
     local elapsed=""
     if [[ -n "$started_at" ]]; then
-        local start_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
-        local now_epoch=$(date +%s)
-        local diff=$((now_epoch - start_epoch))
-        local hours=$((diff / 3600))
-        local minutes=$(((diff % 3600) / 60))
+        local start_epoch
+        start_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
+        local now_epoch
+        now_epoch=$(date +%s)
+        local diff
+        diff=$((now_epoch - start_epoch))
+        local hours
+        hours=$((diff / 3600))
+        local minutes
+        minutes=$(((diff % 3600) / 60))
         elapsed="${hours}h ${minutes}m"
     fi
 
@@ -144,14 +152,21 @@ cmd_cost() {
             continue
         fi
 
-        local session_id=$(get_agent_session_id "$role")
+        local session_id
+        session_id=$(get_agent_session_id "$role")
         if [[ -n "$session_id" ]]; then
-            local tokens=$(collect_session_tokens "$session_id")
-            local input=$(echo "$tokens" | jq -r '.input')
-            local output=$(echo "$tokens" | jq -r '.output')
-            local cache_read=$(echo "$tokens" | jq -r '.cache_read')
-            local cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
-            local cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
+            local tokens
+            tokens=$(collect_session_tokens "$session_id")
+            local input
+            input=$(echo "$tokens" | jq -r '.input')
+            local output
+            output=$(echo "$tokens" | jq -r '.output')
+            local cache_read
+            cache_read=$(echo "$tokens" | jq -r '.cache_read')
+            local cache_creation
+            cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
+            local cost
+            cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
 
             agent_input[$role]=$input
             agent_output[$role]=$output
@@ -191,12 +206,18 @@ cmd_cost() {
             elif [[ "$line" =~ ^[[:space:]]*session_id:[[:space:]]*\"?([^\"]+)\"? ]] && [[ -n "$current_ignitian" ]]; then
                 local session_id="${BASH_REMATCH[1]}"
                 if [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
-                    local tokens=$(collect_session_tokens "$session_id")
-                    local input=$(echo "$tokens" | jq -r '.input')
-                    local output=$(echo "$tokens" | jq -r '.output')
-                    local cache_read=$(echo "$tokens" | jq -r '.cache_read')
-                    local cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
-                    local cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
+                    local tokens
+                    tokens=$(collect_session_tokens "$session_id")
+                    local input
+                    input=$(echo "$tokens" | jq -r '.input')
+                    local output
+                    output=$(echo "$tokens" | jq -r '.output')
+                    local cache_read
+                    cache_read=$(echo "$tokens" | jq -r '.cache_read')
+                    local cache_creation
+                    cache_creation=$(echo "$tokens" | jq -r '.cache_creation')
+                    local cost
+                    cost=$(calculate_cost "$input" "$output" "$cache_read" "$cache_creation")
 
                     ignitian_data[$current_ignitian]="$input:$output:$cache_read:$cache_creation:$cost"
 
@@ -236,7 +257,8 @@ cmd_cost() {
         json_agents+=",\"ignitians\":{\"count\":$ignitian_count,\"input\":$ignitian_input,\"output\":$ignitian_output,\"cache_read\":$ignitian_cache_read,\"cache_creation\":$ignitian_cache_creation,\"cost\":$ignitian_cost}"
         json_agents+="}"
 
-        local jpy_cost=$(echo "$total_cost * $EXCHANGE_RATE" | bc)
+        local jpy_cost
+        jpy_cost=$(echo "$total_cost * $EXCHANGE_RATE" | bc)
         echo "{\"session\":\"$session_name\",\"started_at\":\"$started_at\",\"elapsed\":\"$elapsed\",\"agents\":$json_agents,\"total\":{\"input\":$total_input,\"output\":$total_output,\"cache_read\":$total_cache_read,\"cache_creation\":$total_cache_creation,\"cost\":$total_cost,\"cost_jpy\":$jpy_cost}}"
         return 0
     fi
@@ -249,7 +271,8 @@ cmd_cost() {
         echo -e "${BLUE}セッション:${NC} $session_name"
     fi
     if [[ -n "$started_at" ]]; then
-        local started_display=$(echo "$started_at" | tr 'T' ' ' | cut -d'+' -f1)
+        local started_display
+        started_display=$(echo "$started_at" | tr 'T' ' ' | cut -d'+' -f1)
         echo -e "${BLUE}セッション開始:${NC} $started_display"
     fi
     if [[ -n "$elapsed" ]]; then
@@ -284,12 +307,17 @@ cmd_cost() {
         fi
 
         if [[ -n "${agent_input[$role]:-}" ]]; then
-            local input_fmt=$(format_number "${agent_input[$role]}")
-            local output_fmt=$(format_number "${agent_output[$role]}")
-            local cache_r=$(echo "scale=1; ${agent_cache_read[$role]:-0} / 1000000" | bc)
-            local cache_c=$(echo "scale=1; ${agent_cache_creation[$role]:-0} / 1000000" | bc)
+            local input_fmt
+            input_fmt=$(format_number "${agent_input[$role]}")
+            local output_fmt
+            output_fmt=$(format_number "${agent_output[$role]}")
+            local cache_r
+            cache_r=$(echo "scale=1; ${agent_cache_read[$role]:-0} / 1000000" | bc)
+            local cache_c
+            cache_c=$(echo "scale=1; ${agent_cache_creation[$role]:-0} / 1000000" | bc)
             local cache_fmt="${cache_r}/${cache_c}M"
-            local cost_fmt=$(printf "\$%8.2f" "${agent_cost[$role]}")
+            local cost_fmt
+            cost_fmt=$(printf "\$%8.2f" "${agent_cost[$role]}")
             printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                 "$(pad_right "$name" $col1_width)" \
                 "$(pad_left "$input_fmt" $col2_width)" \
@@ -308,18 +336,29 @@ cmd_cost() {
                 # 詳細表示: 各IGNITIANを個別に表示
                 for key in $(echo "${!ignitian_data[@]}" | tr ' ' '\n' | sort -V); do
                     local data="${ignitian_data[$key]}"
-                    local input=$(echo "$data" | cut -d: -f1)
-                    local output=$(echo "$data" | cut -d: -f2)
-                    local cache_read=$(echo "$data" | cut -d: -f3)
-                    local cache_create=$(echo "$data" | cut -d: -f4)
-                    local cost=$(echo "$data" | cut -d: -f5)
-                    local input_fmt=$(format_number "$input")
-                    local output_fmt=$(format_number "$output")
-                    local cache_r=$(echo "scale=1; ${cache_read:-0} / 1000000" | bc)
-                    local cache_c=$(echo "scale=1; ${cache_create:-0} / 1000000" | bc)
+                    local input
+                    input=$(echo "$data" | cut -d: -f1)
+                    local output
+                    output=$(echo "$data" | cut -d: -f2)
+                    local cache_read
+                    cache_read=$(echo "$data" | cut -d: -f3)
+                    local cache_create
+                    cache_create=$(echo "$data" | cut -d: -f4)
+                    local cost
+                    cost=$(echo "$data" | cut -d: -f5)
+                    local input_fmt
+                    input_fmt=$(format_number "$input")
+                    local output_fmt
+                    output_fmt=$(format_number "$output")
+                    local cache_r
+                    cache_r=$(echo "scale=1; ${cache_read:-0} / 1000000" | bc)
+                    local cache_c
+                    cache_c=$(echo "scale=1; ${cache_create:-0} / 1000000" | bc)
                     local cache_fmt="${cache_r}/${cache_c}M"
-                    local cost_fmt=$(printf "\$%8.2f" "$cost")
-                    local display_name=$(echo "$key" | sed 's/ignitian_/IGNITIAN-/')
+                    local cost_fmt
+                    cost_fmt=$(printf "\$%8.2f" "$cost")
+                    local display_name
+                    display_name=$(echo "$key" | sed 's/ignitian_/IGNITIAN-/')
                     printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                         "$(pad_right "$display_name" $col1_width)" \
                         "$(pad_left "$input_fmt" $col2_width)" \
@@ -329,12 +368,17 @@ cmd_cost() {
                 done
             else
                 # 集計表示
-                local ignitian_input_fmt=$(format_number "$ignitian_input")
-                local ignitian_output_fmt=$(format_number "$ignitian_output")
-                local ign_cache_r=$(echo "scale=1; ${ignitian_cache_read:-0} / 1000000" | bc)
-                local ign_cache_c=$(echo "scale=1; ${ignitian_cache_creation:-0} / 1000000" | bc)
+                local ignitian_input_fmt
+                ignitian_input_fmt=$(format_number "$ignitian_input")
+                local ignitian_output_fmt
+                ignitian_output_fmt=$(format_number "$ignitian_output")
+                local ign_cache_r
+                ign_cache_r=$(echo "scale=1; ${ignitian_cache_read:-0} / 1000000" | bc)
+                local ign_cache_c
+                ign_cache_c=$(echo "scale=1; ${ignitian_cache_creation:-0} / 1000000" | bc)
                 local ignitian_cache_fmt="${ign_cache_r}/${ign_cache_c}M"
-                local ignitian_cost_fmt=$(printf "\$%8.2f" "$ignitian_cost")
+                local ignitian_cost_fmt
+                ignitian_cost_fmt=$(printf "\$%8.2f" "$ignitian_cost")
                 local ignitian_label="IGNITIANs ($ignitian_count)"
                 printf "│ %s │ %s │ %s │ %s │ %s │\n" \
                     "$(pad_right "$ignitian_label" $col1_width)" \
@@ -349,13 +393,19 @@ cmd_cost() {
     # 合計
     if [[ -z "$target_agent" ]]; then
         echo "├────────────────┼──────────────┼──────────────┼───────────────┼─────────────┤"
-        local total_input_fmt=$(format_number "$total_input")
-        local total_output_fmt=$(format_number "$total_output")
-        local total_cache_r=$(echo "scale=1; ${total_cache_read:-0} / 1000000" | bc)
-        local total_cache_c=$(echo "scale=1; ${total_cache_creation:-0} / 1000000" | bc)
+        local total_input_fmt
+        total_input_fmt=$(format_number "$total_input")
+        local total_output_fmt
+        total_output_fmt=$(format_number "$total_output")
+        local total_cache_r
+        total_cache_r=$(echo "scale=1; ${total_cache_read:-0} / 1000000" | bc)
+        local total_cache_c
+        total_cache_c=$(echo "scale=1; ${total_cache_creation:-0} / 1000000" | bc)
         local total_cache_fmt="${total_cache_r}/${total_cache_c}M"
-        local total_cost_fmt=$(printf "\$%8.2f" "$total_cost")
-        local jpy_cost=$(printf "%.0f" "$(echo "$total_cost * $EXCHANGE_RATE" | bc)")
+        local total_cost_fmt
+        total_cost_fmt=$(printf "\$%8.2f" "$total_cost")
+        local jpy_cost
+        jpy_cost=$(printf "%.0f" "$(echo "$total_cost * $EXCHANGE_RATE" | bc)")
         printf "│ %s │ %s │ %s │ %s │ %s │\n" \
             "$(pad_right "合計" $col1_width)" \
             "$(pad_left "$total_input_fmt" $col2_width)" \

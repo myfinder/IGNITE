@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/agent.sh - エージェント起動・セッション管理
 [[ -n "${__LIB_AGENT_LOADED:-}" ]] && return; __LIB_AGENT_LOADED=1
 
@@ -5,7 +6,8 @@
 get_watcher_auto_start() {
     local config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
     if [[ -f "$config_file" ]]; then
-        local enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
+        local enabled
+        enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
         [[ "$enabled" == "true" ]]
     else
         return 1

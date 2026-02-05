@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/core.sh - 定数・カラー定義・出力ヘルパー
 [[ -n "${__LIB_CORE_LOADED:-}" ]] && return; __LIB_CORE_LOADED=1
 

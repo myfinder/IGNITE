@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_plan.sh - planコマンド
 [[ -n "${__LIB_CMD_PLAN_LOADED:-}" ]] && return; __LIB_CMD_PLAN_LOADED=1
 
@@ -56,7 +57,7 @@ cmd_plan() {
         exit 1
     fi
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     # セッションの存在確認
     if ! session_exists; then
@@ -77,8 +78,10 @@ cmd_plan() {
     echo ""
 
     # タイムスタンプとメッセージID生成
-    local timestamp=$(date -Iseconds)
-    local message_id=$(date +%s%6N)
+    local timestamp
+    timestamp=$(date -Iseconds)
+    local message_id
+    message_id=$(date +%s%6N)
     local escaped_goal="${goal//\"/\\\"}"
 
     # Leaderへメッセージ送信

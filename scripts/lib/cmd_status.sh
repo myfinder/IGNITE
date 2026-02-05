@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/cmd_status.sh - statusコマンド
 [[ -n "${__LIB_CMD_STATUS_LOADED:-}" ]] && return; __LIB_CMD_STATUS_LOADED=1
 
@@ -28,7 +29,7 @@ cmd_status() {
     setup_session_name
     setup_workspace
 
-    cd "$WORKSPACE_DIR"
+    cd "$WORKSPACE_DIR" || return 1
 
     print_header "IGNITE システム状態"
     echo ""
@@ -91,8 +92,10 @@ cmd_status() {
 
     for queue_dir in "$WORKSPACE_DIR/queue"/*; do
         if [[ -d "$queue_dir" ]]; then
-            local queue_name=$(basename "$queue_dir")
-            local message_count=$(find "$queue_dir" -name "*.yaml" -type f 2>/dev/null | wc -l)
+            local queue_name
+            queue_name=$(basename "$queue_dir")
+            local message_count
+            message_count=$(find "$queue_dir" -name "*.yaml" -type f 2>/dev/null | wc -l)
 
             if [[ "$message_count" -gt 0 ]]; then
                 echo -e "${YELLOW}  $queue_name: $message_count メッセージ${NC}"
@@ -107,7 +110,8 @@ cmd_status() {
     # GitHub Watcher状態
     print_header "GitHub Watcher"
     if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
-        local watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        local watcher_pid
+        watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
         if kill -0 "$watcher_pid" 2>/dev/null; then
             print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
         else
@@ -120,7 +124,8 @@ cmd_status() {
     # キューモニター状態
     print_header "キューモニター"
     if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
-        local queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        local queue_pid
+        queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
         if kill -0 "$queue_pid" 2>/dev/null; then
             print_success "キューモニター: 実行中 (PID: $queue_pid)"
         else
