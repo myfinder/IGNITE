@@ -35,9 +35,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# ログ出力
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+# ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
+log_info() { echo -e "${BLUE}[INFO]${NC} $1" >&2; }
+log_success() { echo -e "${GREEN}[OK]${NC} $1" >&2; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 

@@ -40,12 +40,12 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# ログ出力
-log_info() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[OK]${NC} $1"; }
-log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[ERROR]${NC} $1"; }
-log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1"; }
+# ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
+log_info() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[INFO]${NC} $1" >&2; }
+log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[OK]${NC} $1" >&2; }
+log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[WARN]${NC} $1" >&2; }
+log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[ERROR]${NC} $1" >&2; }
+log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1" >&2; }
 
 # =============================================================================
 # 設定読み込み
