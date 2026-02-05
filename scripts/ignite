@@ -51,10 +51,6 @@ SUB_LEADER_NAMES=("義賀リオ" "祢音ナナ" "衣結ノア" "通瀬アイナ"
 # デフォルト設定
 DEFAULT_WORKER_COUNT=8
 
-# Claude セッションデータのパス（PROJECT_ROOT から動的に生成）
-# Claude Code は /path/to/project を -path-to-project に変換してディレクトリ名にする
-CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')"
-
 # カラー定義
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -108,11 +104,27 @@ setup_session_name() {
     fi
 }
 
+# WORKSPACE_DIR 基準で Claude セッションディレクトリを計算
+# Claude Code は CWD を基準にセッションデータを保存するため、
+# WORKSPACE_DIR から計算する必要がある
+compute_claude_projects_dir() {
+    local normalized
+    if [[ -d "$WORKSPACE_DIR" ]]; then
+        normalized=$(cd "$WORKSPACE_DIR" && pwd)
+    else
+        # 未作成ディレクトリ: トレーリングスラッシュと /. を除去
+        normalized="${WORKSPACE_DIR%/}"
+        normalized="${normalized%/.}"
+    fi
+    CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(echo "$normalized" | sed 's|/|-|g')"
+}
+
 # ワークスペースの設定（指定がなければデフォルト）
 setup_workspace() {
     if [[ -z "$WORKSPACE_DIR" ]]; then
         WORKSPACE_DIR=$(get_default_workspace)
     fi
+    compute_claude_projects_dir
 }
 
 # 実行中の全IGNITEセッションを一覧表示
@@ -902,6 +914,7 @@ cmd_stop() {
     if [[ -z "$WORKSPACE_DIR" ]]; then
         setup_workspace
     fi
+    compute_claude_projects_dir
 
     # GitHub Watcher を停止
     if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
@@ -1784,7 +1797,13 @@ get_agent_session_id() {
     fi
 
     # session_id は role: の後 4行以内にある
-    grep -A5 "^  ${agent_role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"'
+    local result
+    result=$(grep -A5 "^  ${agent_role}:" "$sessions_file" 2>/dev/null \
+        | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+    # YAML の null リテラルをフィルタ
+    if [[ -n "$result" ]] && [[ "$result" != "null" ]]; then
+        echo "$result"
+    fi
 }
 
 # コスト一覧を表示（セッション履歴）
