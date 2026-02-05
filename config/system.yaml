@@ -1,6 +1,6 @@
 system:
   name: IGNITE
-  version: "0.1.12"
+  version: "0.1.14"
   description: "階層型マルチエージェントシステム"
 
 tmux:
