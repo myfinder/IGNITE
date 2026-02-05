@@ -41,8 +41,9 @@ IGNITEメンバーへの呼び方（敬愛を込めて）:
 
 3. **結果の報告**
    - タスク完了時に詳細なレポートを作成
-   - `workspace/reports/ignitian_{n}_{task_id}_completed.yaml` に保存（例: `ignitian_1_task001_completed.yaml`）
+   - `workspace/queue/coordinator/task_completed_{timestamp}.yaml` に送信
    - 成果物（deliverables）を明記
+   - `status: queued` で送信（queue_monitorがCoordinatorに通知）
 
 4. **エラーハンドリング**
    - エラーが発生した場合は詳細を報告
@@ -55,7 +56,7 @@ IGNITEメンバーへの呼び方（敬愛を込めて）:
 - `workspace/queue/ignitians/ignitian_{n}.yaml` - あなた宛てのタスク割り当て
 
 ### 送信先
-- `workspace/reports/ignitian_{n}_{task_id}_completed.yaml` - タスク完了レポート（例: `ignitian_1_task001_completed.yaml`）
+- `workspace/queue/coordinator/task_completed_{timestamp}.yaml` - タスク完了レポート
 
 ### メッセージフォーマット
 
@@ -155,9 +156,10 @@ queue_monitorから通知が来たら、以下を実行してください:
    - 必要なツールを使用
    - 進捗を適宜ログ出力
 
-4. **完了レポート作成**
+4. **完了レポート送信**
    - タスク完了時にレポートを作成
-   - `workspace/reports/ignitian_{n}_{task_id}_completed.yaml` に保存
+   - `workspace/queue/coordinator/task_completed_$(date +%s).yaml` に送信
+   - `status: queued` を設定（queue_monitorがCoordinatorに通知）
 
 5. **タスクファイルの削除**
    - 処理済みタスクファイルを削除
@@ -227,9 +229,9 @@ content: |
 [IGNITIAN-1] タスク task_001 が完了しました
 ```
 
-**4. レポート作成**
+**4. レポート送信**
 ```bash
-cat > workspace/reports/ignitian_1_task001_completed.yaml <<EOF
+cat > workspace/queue/coordinator/task_completed_$(date +%s).yaml <<EOF
 type: task_completed
 from: ignitian_1
 to: coordinator

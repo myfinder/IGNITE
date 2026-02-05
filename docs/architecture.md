@@ -181,8 +181,7 @@ ignite/
 │   └── ignitians.yaml   # IGNITIANS設定
 │
 ├── workspace/           # 実行時ワークスペース（.gitignore）
-│   ├── queue/           # メッセージキュー
-│   ├── reports/         # 完了レポート
+│   ├── queue/           # メッセージキュー（タスク完了レポート含む）
 │   ├── context/         # コンテキスト
 │   ├── logs/            # ログファイル
 │   └── dashboard.md     # 進捗ダッシュボード

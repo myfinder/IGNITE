@@ -71,5 +71,5 @@ agents:
     base_pane: 6
     instruction_file: "ignitian.md"
     queue_dir: "workspace/queue/ignitians"
-    report_dir: "workspace/reports"
+    report_queue: "workspace/queue/coordinator"
     default_count: 8

@@ -377,7 +377,6 @@ cmd_start() {
     # workspaceの初期化
     print_info "workspaceを初期化中..."
     mkdir -p "$WORKSPACE_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
-    mkdir -p "$WORKSPACE_DIR/reports"
     mkdir -p "$WORKSPACE_DIR/context"
     mkdir -p "$WORKSPACE_DIR/logs"
     mkdir -p "$WORKSPACE_DIR/state"  # Watcher用ステートファイル保存先
@@ -1277,14 +1276,6 @@ cmd_status() {
 
     echo ""
 
-    # レポート状態
-    if [[ -d "$WORKSPACE_DIR/reports" ]]; then
-        local report_count=$(find "$WORKSPACE_DIR/reports" -name "*.yaml" -type f 2>/dev/null | wc -l)
-        print_header "レポート"
-        echo "  完了レポート: ${report_count} 件"
-        echo ""
-    fi
-
     # GitHub Watcher状態
     print_header "GitHub Watcher"
     if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
@@ -1470,7 +1461,6 @@ cmd_clean() {
     if [[ "$skip_confirm" == false ]]; then
         echo "以下のディレクトリがクリアされます:"
         echo "  - $WORKSPACE_DIR/queue/*"
-        echo "  - $WORKSPACE_DIR/reports/*"
         echo "  - $WORKSPACE_DIR/logs/*"
         echo "  - $WORKSPACE_DIR/context/*"
         echo "  - $WORKSPACE_DIR/state/*"
@@ -1496,7 +1486,6 @@ cmd_clean() {
     rm -rf "$WORKSPACE_DIR/queue"/*/
     mkdir -p "$WORKSPACE_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator,ignitians}
 
-    rm -rf "$WORKSPACE_DIR/reports"/*
     rm -rf "$WORKSPACE_DIR/logs"/*
     rm -rf "$WORKSPACE_DIR/context"/*
     rm -f "$WORKSPACE_DIR/dashboard.md"

@@ -209,7 +209,7 @@ bash scripts/ignite_plan.sh \
 **4. 結果確認**
 
 分析結果は以下に記録されます:
-- `workspace/reports/` - 各IGNITIANの分析レポート
+- `workspace/queue/coordinator/` - 各IGNITIANの完了レポート
 - `workspace/dashboard.md` - 進捗と概要
 - Innovatorからの改善提案メッセージ
 
@@ -430,9 +430,9 @@ rm workspace/queue/*/pending_*.yaml
 
 ### エラーメッセージが出る
 
-レポートを確認:
+完了レポートを確認:
 ```bash
-cat workspace/reports/ignitian_*_report.yaml | grep error
+cat workspace/queue/coordinator/task_completed_*.yaml | grep error
 ```
 
 ### システムが起動しない

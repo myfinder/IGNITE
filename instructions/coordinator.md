@@ -158,19 +158,15 @@ queue_monitorから通知が来たら、以下を実行してください:
    - 利用可能なIGNITIANを特定
    - タスクを配分
 
-2. **完了レポートのチェック**（通知処理時のみ）
-
-   **注意**: 完了レポートはqueue_monitor経由ではなく、IGNITIANが `reports/` ディレクトリに直接書き込みます。
-   タスク通知の処理時に、未処理の完了レポートを確認してください。
-
-   ```
-   Glob: workspace/reports/ignitian_*_completed.yaml
-   ```
+2. **完了レポートの受信**
+   - queue_monitorから `task_completed` メッセージの通知を受信
+   - 通知で指定されたファイルをReadツールで読み込む
 
 3. **レポートの処理**
    - 完了したタスクを記録
    - ダッシュボードを更新
-   - 次のタスクを割り当て
+   - 次のタスクを割り当て（依存関係を確認）
+   - 処理後、ファイルを `processed/` に移動
 
 4. **ダッシュボード更新**
    - 進捗状況を反映
@@ -189,7 +185,6 @@ queue_monitorから通知が来たら、以下を実行してください:
 - **自発的なキューポーリング**: `workspace/queue/coordinator/` を定期的にチェックしない
 - **待機ループの実行**: 「通知を待つ」ためのループを実行しない
 - **Globによる定期チェック**: 定期的にGlobでキューを検索しない
-- **定期的なレポートチェック**: `workspace/reports/` を定期的にチェックしない（通知処理時のみ確認）
 
 処理が完了したら、単にそこで終了してください。次の通知はqueue_monitorが送信します。
 
@@ -305,7 +300,7 @@ ignitians:
 
 1. **レポート検出**
    ```yaml
-   # workspace/reports/ignitian_1_task001_completed.yaml
+   # workspace/queue/coordinator/task_completed_1738712345.yaml
    type: task_completed
    from: ignitian_1
    to: coordinator

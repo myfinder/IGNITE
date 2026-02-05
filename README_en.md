@@ -369,7 +369,6 @@ ignite/
 │   │   ├── coordinator/
 │   │   ├── innovator/
 │   │   └── ignitians/
-│   ├── reports/                # Task completion reports
 │   ├── context/                # Project context
 │   ├── logs/                   # Log files
 │   └── dashboard.md            # Real-time progress dashboard
