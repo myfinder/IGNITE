@@ -172,6 +172,60 @@ cleanup_processed_files() {
     fi
 }
 
+# ファイル名を {type}_{timestamp}.yaml パターンに正規化
+# 正規化が不要な場合はそのままのパスを返す
+normalize_filename() {
+    local file="$1"
+    local filename=$(basename "$file")
+    local dir=$(dirname "$file")
+
+    # {任意の文字列}_{数字16桁}.yaml パターンに一致すれば正規化不要
+    if [[ "$filename" =~ ^.+_[0-9]{16}\.yaml$ ]]; then
+        echo "$file"
+        return
+    fi
+
+    # YAMLから type と timestamp を読み取り
+    local msg_type=$(grep -E '^type:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    if [[ -z "$msg_type" ]]; then
+        # type フィールドがない場合はファイル名からベスト・エフォートで推測
+        msg_type="${filename%.yaml}"
+    fi
+
+    # YAML timestamp からエポックマイクロ秒を算出（元の時系列順を保持）
+    local yaml_ts=$(grep -E '^timestamp:' "$file" 2>/dev/null | head -1 | sed 's/^timestamp: *"\?\([^"]*\)"\?/\1/')
+    local epoch_usec=""
+    if [[ -n "$yaml_ts" ]]; then
+        local epoch_sec=$(date -d "$yaml_ts" +%s 2>/dev/null)
+        if [[ -n "$epoch_sec" ]]; then
+            # マイクロ秒部分はファイルのハッシュから生成（ユニーク性確保）
+            local micro=$(echo "${file}${yaml_ts}" | md5sum | tr -dc '0-9' | head -c 6)
+            epoch_usec="${epoch_sec}${micro}"
+        fi
+    fi
+    # フォールバック: 現在時刻ベース
+    if [[ -z "$epoch_usec" ]]; then
+        epoch_usec=$(date +%s%6N)
+    fi
+
+    # 衝突回避: 同名ファイルが存在する場合は連番サフィックス
+    local new_path="${dir}/${msg_type}_${epoch_usec}.yaml"
+    if [[ -f "$new_path" ]]; then
+        local suffix=1
+        while [[ -f "${dir}/${msg_type}_${epoch_usec}_${suffix}.yaml" ]]; do
+            ((suffix++))
+        done
+        new_path="${dir}/${msg_type}_${epoch_usec}_${suffix}.yaml"
+    fi
+
+    local from=$(grep -E '^from:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    local to=$(grep -E '^to:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    log_warn "ファイル名を正規化: ${filename} → $(basename "$new_path") (from: ${from:-unknown}, to: ${to:-unknown})"
+
+    mv "$file" "$new_path" 2>/dev/null || { echo "$file"; return; }
+    echo "$new_path"
+}
+
 scan_queue() {
     local queue_dir="$1"
     local queue_name="$2"
@@ -184,6 +238,10 @@ scan_queue() {
     for file in "$queue_dir"/*.yaml; do
         [[ -f "$file" ]] || continue
 
+        # ファイル名が {type}_{timestamp}.yaml パターンに一致しない場合は正規化
+        file=$(normalize_filename "$file")
+        [[ -f "$file" ]] || continue
+
         local filepath="$file"
 
         # 既に処理済みならスキップ
@@ -191,12 +249,29 @@ scan_queue() {
             continue
         fi
 
-        # statusがqueuedのものだけ処理
+        # statusを読み取り、挙動を分岐
         local status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-        if [[ "$status" != "queued" ]]; then
-            PROCESSED_FILES[$filepath]=1
-            continue
-        fi
+        case "$status" in
+            queued)
+                # 正常 — そのまま処理
+                ;;
+            processing)
+                # queue_monitor自身が設定した送信済みマーク — スキップ
+                PROCESSED_FILES[$filepath]=1
+                continue
+                ;;
+            *)
+                # プロトコル違反 — 自動修正して処理
+                local from=$(grep -E '^from:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+                local to=$(grep -E '^to:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+                log_warn "プロトコル違反を自動修正: $(basename "$file") (from: ${from:-unknown}, to: ${to:-unknown}) — status: '${status:-なし}' → 'queued' に修正"
+                if grep -qE '^status:' "$file" 2>/dev/null; then
+                    sed -i "s/^status:.*/status: queued/" "$file" 2>/dev/null || true
+                else
+                    echo "status: queued" >> "$file"
+                fi
+                ;;
+        esac
 
         # 処理
         process_message "$file" "$queue_name"
