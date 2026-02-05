@@ -458,7 +458,6 @@ priority: high
 payload:
   message: "システムが起動しました。初期化を完了してください。"
   action: "initialize_dashboard"
-status: queued
 EOF
 
     echo ""
@@ -821,9 +820,8 @@ cmd_notify() {
     local timestamp=$(date -Iseconds)
     local message_id=$(date +%s%6N)
     local escaped_message="${message//\"/\\\"}"
-    local message_file="$WORKSPACE_DIR/queue/${target}/notify_${message_id}.yaml"
-
-    mkdir -p "$WORKSPACE_DIR/queue/${target}"
+    mkdir -p "$WORKSPACE_DIR/queue/${target}/processed"
+    local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.yaml"
 
     cat > "$message_file" <<EOF
 type: notification
@@ -833,13 +831,12 @@ timestamp: "${timestamp}"
 priority: normal
 payload:
   message: "${escaped_message}"
-status: processing
 EOF
 
     print_success "メッセージを送信しました: $message_file"
 
     tmux send-keys -t "$SESSION_NAME:ignite.$pane_num" \
-        "$WORKSPACE_DIR/queue/${target}/ に新しいメッセージがあります。確認してください。" Enter
+        "$WORKSPACE_DIR/queue/${target}/processed/ に新しいメッセージがあります。${message_file} を確認してください。" Enter
 
     print_success "pane $pane_num に通知を送信しました"
 }
@@ -1159,7 +1156,8 @@ cmd_plan() {
     local escaped_goal="${goal//\"/\\\"}"
 
     # Leaderへメッセージ送信
-    local message_file="$WORKSPACE_DIR/queue/leader/user_goal_${message_id}.yaml"
+    mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
+    local message_file="$WORKSPACE_DIR/queue/leader/processed/user_goal_${message_id}.yaml"
 
     if [[ -n "$context" ]]; then
         local escaped_context="${context//\"/\\\"}"
@@ -1172,7 +1170,6 @@ priority: high
 payload:
   goal: "${escaped_goal}"
   context: "${escaped_context}"
-status: processing
 EOF
     else
         cat > "$message_file" <<EOF
@@ -1183,7 +1180,6 @@ timestamp: "${timestamp}"
 priority: high
 payload:
   goal: "${escaped_goal}"
-status: processing
 EOF
     fi
 
@@ -1192,7 +1188,7 @@ EOF
     # Leaderに通知（自然言語プロンプトで送信）- pane 0 を明示的に指定
     sleep 0.5
     tmux send-keys -t "$SESSION_NAME:ignite.0" \
-        "$WORKSPACE_DIR/queue/leader/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
+        "$WORKSPACE_DIR/queue/leader/processed/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
     sleep 0.3
     tmux send-keys -t "$SESSION_NAME:ignite.0" C-m
 
@@ -2632,7 +2628,8 @@ cmd_work_on() {
     local message_id=$(date +%s%6N)
 
     # github_taskメッセージを作成
-    local message_file="$WORKSPACE_DIR/queue/leader/github_task_${message_id}.yaml"
+    mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
+    local message_file="$WORKSPACE_DIR/queue/leader/processed/github_task_${message_id}.yaml"
 
     cat > "$message_file" <<EOF
 type: github_task
@@ -2651,7 +2648,6 @@ $(echo "$issue_body" | sed 's/^/    /')
   trigger_comment: "work-onコマンドによる手動トリガー"
   branch_prefix: "ignite/"
   url: "${issue_url}"
-status: processing
 EOF
 
     print_success "タスクメッセージを作成しました: $message_file"
@@ -2659,7 +2655,7 @@ EOF
     # Leaderに通知
     sleep 0.5
     tmux send-keys -t "$SESSION_NAME:ignite.0" \
-        "$WORKSPACE_DIR/queue/leader/ に新しいタスクがあります。Issue #${issue_number}「${issue_title}」の実装を開始してください。"
+        "$WORKSPACE_DIR/queue/leader/processed/ に新しいタスクがあります。${message_file} を確認してください。Issue #${issue_number}「${issue_title}」の実装を開始してください。"
     sleep 0.3
     tmux send-keys -t "$SESSION_NAME:ignite.0" C-m
 

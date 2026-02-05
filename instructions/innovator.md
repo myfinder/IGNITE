@@ -72,7 +72,6 @@ payload:
       severity: "minor"
       location: "README.md:5"
       suggested_fix: "'システs' を 'システム' に修正"
-status: queued
 ```
 
 **受信メッセージ例（レビュー依頼）:**
@@ -89,7 +88,6 @@ payload:
     - "コード品質"
     - "プロセス効率"
   request: "改善の余地を探して提案してください"
-status: queued
 ```
 
 **受信メッセージ例（Strategistからのインサイト依頼）:**
@@ -111,7 +109,6 @@ payload:
       - phase: 3
         name: "レビューと最終調整"
   question: "より良いアプローチや最新の手法があれば教えてください"
-status: queued
 ```
 
 **送信メッセージ例（改善提案）:**
@@ -156,7 +153,6 @@ payload:
   priority: "medium"
   estimated_effort: "2-3 時間"
 
-status: queued
 ```
 
 **送信メッセージ例（改善完了）:**
@@ -173,7 +169,6 @@ payload:
       file: "README.md"
       changes: "'システs' → 'システム'"
   result: "成功"
-status: queued
 ```
 
 **送信メッセージ例（Strategistへのインサイト回答）:**
@@ -200,7 +195,6 @@ payload:
   recommendations:
     - "現在のアプローチで問題ありません"
     - "Phase 2でバッジ追加を検討してください"
-status: queued
 ```
 
 ## 使用可能なツール
