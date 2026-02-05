@@ -381,7 +381,7 @@ main() {
     # Co-Author（Bot使用時）
     local co_author=""
     if [[ "$use_bot" == "true" ]]; then
-        co_author="IGNITE Bot <noreply@ignite.local>"
+        co_author="IGNITE AI Team <noreply@ignite.local>"
     fi
 
     # ブランチ作成
