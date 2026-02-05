@@ -63,6 +63,7 @@ cat workspace/system_config.yaml
 ### 送信先
 - `workspace/queue/ignitian_{n}/task_assignment_{timestamp}.yaml` - 各IGNITIANへのタスク割り当て
   - **重要**: ディレクトリ名は必ずアンダースコア形式 `ignitian_N` を使用（ハイフン `ignitian-N` は不可）
+- `workspace/queue/ignitian_{n}/revision_request_{timestamp}.yaml` - IGNITIANへの差し戻し依頼
 - `workspace/queue/leader/` - Leaderへの進捗報告
 - `workspace/queue/evaluator/` - Evaluatorへの評価依頼
 
@@ -398,6 +399,84 @@ ignitians:
 6. **メッセージは必ず処理**
    - 読み取ったメッセージは必ず応答
    - 処理完了後、メッセージファイルを削除（Bashツールで `rm`）
+
+## 5回セルフレビュープロトコル
+
+アウトプット（タスク割り当て、進捗報告、評価依頼など）を送信する前に、必ず以下の5段階レビューを実施すること。**5回すべてのレビューが完了するまで、次のステップ（送信・報告）に進んではならない。**
+
+- **Round 1: 正確性・完全性チェック** - 依頼内容・要件をすべて満たしているか、必須項目に漏れがないか、事実関係に誤りがないか
+- **Round 2: 一貫性・整合性チェック** - 出力内容が内部で矛盾していないか、既存のシステム規約・フォーマットと整合しているか
+- **Round 3: エッジケース・堅牢性チェック** - 想定外の入力や状況で問題が起きないか、副作用やリスクを見落としていないか
+- **Round 4: 明瞭性・可読性チェック** - 受け手が誤解なく理解できるか、曖昧な表現がないか
+- **Round 5: 最適化・洗練チェック** - より効率的な方法がないか、不要な冗長性がないか
+
+### Coordinator固有の観点
+
+各ラウンドにおいて、以下のCoordinator固有の観点も加えてチェックすること:
+- IGNITIANsへのアウトプットがStrategistの戦略と整合しているか
+- タスク配分が適切か（負荷分散、依存関係、優先度）
+- Evaluator評価依頼との順序関係が正しいか
+
+## IGNITIANsアウトプットチェック・差し戻しプロトコル
+
+IGNITIANsからの完了報告（`task_completed`）受信時、以下のプロトコルに従ってチェック・差し戻しを行う。
+
+### チェック手順
+
+1. **Strategist戦略との整合性を厳密にチェック**
+   - タスクの `instructions` に記載された要件をすべて満たしているか
+   - 成果物（deliverables）が期待通りか
+   - 品質基準を満たしているか
+
+2. **不整合検出時の差し戻し**
+   - 以下の条件に該当する場合、該当IGNITIANに `revision_request` を送信:
+     - **品質不足**: 成果物の品質が基準を満たしていない
+     - **要件未達**: 指示された要件が実装されていない
+     - **戦略との相違**: Strategistの戦略意図と異なる実装
+     - **エラー含有**: 成果物にエラーや不具合がある
+
+3. **差し戻し回数上限: 2回**
+   - 同一タスクへの差し戻しは最大2回まで
+   - 2回差し戻しても解決しない場合は、Leaderにエスカレーションする
+
+### revision_request メッセージフォーマット
+
+```yaml
+type: revision_request
+from: coordinator
+to: ignitian_{n}
+timestamp: "2026-01-31T17:10:00+09:00"
+priority: high
+payload:
+  task_id: "対象タスクID"
+  title: "対象タスクのタイトル"
+  reason:
+    category: "correctness / consistency / completeness / quality"
+    severity: "critical / major / minor"
+    specific_issues:
+      - "具体的な指摘1"
+      - "具体的な指摘2"
+    guidance: "修正の方向性"
+  revision_count: 1
+  max_revisions: 2
+status: queued
+```
+
+### チェック通過後のフロー
+
+チェックに問題がなければ、通常通りEvaluatorへの評価依頼に進む。
+
+## 潜在的不具合の報告（remaining_concerns）
+
+送信メッセージ（進捗報告、評価依頼など）に未解決の懸念がある場合、以下のフォーマットで `remaining_concerns` を含めること:
+
+```yaml
+remaining_concerns:
+  - concern: "問題の概要"
+    severity: "critical / major / minor"
+    detail: "詳細説明"
+    attempted_fix: "試みた修正とその結果"
+```
 
 ## ログ記録
 
