@@ -70,7 +70,7 @@ payload:
     - "出力のフォーマット"
   context: "初期実装、将来的な拡張を考慮"
   question: "ディレクトリ構造とモジュール分割の提案をお願いします"
-status: pending
+status: queued
 ```
 
 **受信メッセージ例（Strategistからの設計レビュー依頼）:**
@@ -102,7 +102,7 @@ payload:
     - task_id: "task_003"
       title: "使用例作成"
   question: "この戦略の設計面での妥当性を確認してください"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（設計提案）:**
@@ -157,7 +157,7 @@ payload:
     - "過度な抽象化は避けるべき"
     - "YOGNIの原則（You aren't gonna need it）を意識"
 
-status: completed
+status: queued
 ```
 
 **送信メッセージ例（Strategistへの設計レビュー結果）:**
@@ -177,7 +177,7 @@ payload:
     - "LICENSE選択をPhase 1に含めることを推奨"
   design_concerns: []
   risks: []
-status: completed
+status: queued
 ```
 
 ## 使用可能なツール

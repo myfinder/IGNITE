@@ -92,7 +92,7 @@ payload:
       description: "使用方法とサンプルコードを記載"
       priority: normal
       estimated_time: 120
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（タスク割り当て）:**
@@ -117,7 +117,7 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
-status: pending
+status: queued
 ```
 
 **進捗報告メッセージ例:**
@@ -136,7 +136,7 @@ payload:
     - IGNITIAN-1: task_001 完了
     - IGNITIAN-2: task_002 実行中
     - IGNITIAN-3: task_003 実行中
-status: active
+status: queued
 ```
 
 ## 使用可能なツール
@@ -405,6 +405,47 @@ ignitians:
      mkdir -p workspace/queue/coordinator/processed
      mv workspace/queue/coordinator/{filename} workspace/queue/coordinator/processed/
      ```
+
+## ログ記録
+
+主要なアクション時にログを記録してください。
+
+### 記録タイミング
+- 起動時
+- タスクリストを受信した時
+- IGNITIANsにタスクを割り当てた時
+- 完了レポートを受信した時
+- 進捗報告をLeaderに送信した時
+- エラー発生時
+
+### 記録方法
+
+**1. ダッシュボードに追記:**
+```bash
+TIME=$(date -Iseconds)
+sed -i '/^## 最新ログ$/a\['"$TIME"'] [通瀬アイナ] メッセージ' workspace/dashboard.md
+```
+
+**2. ログファイルに追記:**
+```bash
+echo "[$(date -Iseconds)] メッセージ" >> workspace/logs/coordinator.log
+```
+
+### ログ出力例
+
+**ダッシュボード:**
+```
+[2026-02-01T14:35:00+09:00] [通瀬アイナ] タスクリストを受信しました（3タスク）
+[2026-02-01T14:35:30+09:00] [通瀬アイナ] IGNITIAN-1, 2, 3にタスクを割り当てました
+[2026-02-01T14:40:00+09:00] [通瀬アイナ] IGNITIAN-1がtask_001を完了しました
+```
+
+**ログファイル（coordinator.log）:**
+```
+[2026-02-01T14:35:00+09:00] タスクリストを受信しました: 3タスク
+[2026-02-01T14:35:30+09:00] タスク割り当て: IGNITIAN-1=task_001, IGNITIAN-2=task_002, IGNITIAN-3=task_003
+[2026-02-01T14:40:00+09:00] 完了レポート受信: IGNITIAN-1, task_001, success
+```
 
 ## 起動時の初期化
 

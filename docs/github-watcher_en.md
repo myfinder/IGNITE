@@ -16,26 +16,28 @@ GitHub Watcher monitors events (Issues, PRs, comments) in GitHub repositories an
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      IGNITE System                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌─────────────┐    workspace/queue/leader/                │
-│   │ GitHub      │─────────────────────┐                     │
-│   │ Watcher     │  github_event_*.yaml│                     │
-│   │             │                     ▼                     │
-│   └─────────────┘              ┌─────────────┐              │
-│         │                      │   Leader    │              │
-│         │ gh api               │  (Yui Iha)  │              │
-│         │ polling              └──────┬──────┘              │
-│         ▼                             │                     │
-│   ┌───────────┐                       │ Existing flow       │
-│   │ GitHub    │                       ▼                     │
-│   │ API       │◀───────────── Sub-Leaders / IGNITIANs       │
-│   └───────────┘   Bot response                              │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph IGNITE["IGNITE System"]
+        GW[GitHub Watcher]
+        Leader[Leader<br/>Yui Iha]
+        SubLeaders[Sub-Leaders / IGNITIANs]
+
+        GW -->|"github_event_*.yaml<br/>workspace/queue/leader/"| Leader
+        Leader -->|Existing flow| SubLeaders
+    end
+
+    subgraph External["External"]
+        GitHubAPI[GitHub API]
+    end
+
+    GW -->|"gh api<br/>polling"| GitHubAPI
+    SubLeaders -->|Bot response| GitHubAPI
+
+    style GW fill:#4ecdc4,color:#fff
+    style Leader fill:#ff6b6b,color:#fff
+    style SubLeaders fill:#ffeaa7,color:#333
+    style GitHubAPI fill:#dfe6e9,color:#333
 ```
 
 ## Prerequisites
@@ -210,7 +212,7 @@ payload:
     Error occurs during login.
     Steps to reproduce: ...
   url: "https://github.com/owner/repo/issues/123"
-status: pending
+status: queued
 ```
 
 **On Issue comment:**
@@ -230,7 +232,7 @@ payload:
   body: |
     I have additional information about this issue.
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: pending
+status: queued
 ```
 
 ### Task Messages (github_task)
@@ -255,7 +257,7 @@ payload:
     @ignite-gh-app implement this issue
   branch_prefix: "ignite/"
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: pending
+status: queued
 ```
 
 ## Using Triggers

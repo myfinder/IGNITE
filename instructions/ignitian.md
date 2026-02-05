@@ -81,7 +81,7 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（完了レポート）:**
@@ -101,7 +101,7 @@ payload:
       location: "./README.md"
   execution_time: 90
   notes: "指示通りに基本構造を作成。セクションは後続タスクで埋める予定"
-status: completed
+status: queued
 ```
 
 **エラーレポート例:**
@@ -121,7 +121,7 @@ payload:
     details: "README.md への書き込みが拒否されました"
   execution_time: 30
   notes: "権限の確認が必要です"
-status: completed
+status: queued
 ```
 
 ## 使用可能なツール
@@ -245,7 +245,7 @@ payload:
       location: "./README.md"
   execution_time: 90
   notes: "指示通りに基本構造を作成"
-status: completed
+status: queued
 EOF
 ```
 
@@ -428,7 +428,7 @@ payload:
   deliverables:
     - "src/auth/login.ts（修正後）"
   skills_required: ["typescript", "error_handling"]
-status: pending
+status: queued
 ```
 
 ### 外部リポジトリでの作業手順

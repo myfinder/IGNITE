@@ -198,40 +198,74 @@ cat workspace/dashboard.md
 
 ### エージェント階層
 
-```
-                    User
-                     ↓
-        ┌─────────────────────────┐
-        │   Leader (伊羽ユイ)      │
-        │   - 全体統率・意思決定   │
-        └─────────────────────────┘
-                     ↓
-    ┌────────────────┴────────────────┐
-    │    Sub-Leaders (5名の専門家)    │
-    └─────────────────────────────────┘
-    ↓       ↓       ↓       ↓       ↓
-Strategist Architect Evaluator Coordinator Innovator
-義賀リオ   祢音ナナ   衣結ノア   通瀬アイナ   恵那ツムギ
-戦略立案   設計判断   品質評価   進行管理     改善提案
-                     ↓
-        ┌─────────────────────────┐
-        │ IGNITIANS (1-32並列)     │
-        │ - タスク実行ワーカー     │
-        └─────────────────────────┘
+```mermaid
+graph TD
+    User[User] --> Leader[Leader<br/>伊羽ユイ]
+
+    Leader --> Strategist[Strategist<br/>義賀リオ<br/>戦略立案]
+    Leader --> Architect[Architect<br/>祢音ナナ<br/>設計判断]
+    Leader --> Evaluator[Evaluator<br/>衣結ノア<br/>品質評価]
+    Leader --> Coordinator[Coordinator<br/>通瀬アイナ<br/>進行管理]
+    Leader --> Innovator[Innovator<br/>恵那ツムギ<br/>改善提案]
+
+    Coordinator --> IG1[IGNITIAN-1]
+    Coordinator --> IG2[IGNITIAN-2]
+    Coordinator --> IGN[IGNITIAN-N...]
+
+    style Leader fill:#ff6b6b,color:#fff
+    style Strategist fill:#4ecdc4,color:#fff
+    style Architect fill:#45b7d1,color:#fff
+    style Evaluator fill:#96ceb4,color:#fff
+    style Coordinator fill:#ffeaa7,color:#333
+    style Innovator fill:#dfe6e9,color:#333
 ```
 
 ### 通信フロー
 
-1. **User** がタスクを投入
-2. **Leader** が目標を理解し、**Strategist** に戦略立案を依頼
-3. **Strategist** がタスクを分解し、**Coordinator** にタスクリストを送信
-4. **Coordinator** が利用可能な **IGNITIANS** にタスクを配分
-5. **IGNITIANS** が並列でタスクを実行し、結果を報告
-6. **Evaluator** が結果を評価・検証
-7. **Innovator** が改善点を提案
-8. **Leader** が最終判断を下し、ユーザーに報告
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as Leader
+    participant S as Strategist
+    participant A as Architect
+    participant E as Evaluator
+    participant I as Innovator
+    participant C as Coordinator
+    participant IG as IGNITIANs
 
-必要に応じて **Architect** が設計判断を提供します。
+    U->>L: user_goal (queued)
+    L->>S: strategy_request (queued)
+
+    par Strategistが3人のSub-Leadersに並行依頼
+        S->>A: design_review_request (queued)
+        S->>E: quality_plan_request (queued)
+        S->>I: insight_request (queued)
+    end
+
+    A->>S: design_review_response (queued)
+    E->>S: quality_plan_response (queued)
+    I->>S: insight_response (queued)
+
+    S->>L: strategy_response (queued)
+    S->>C: task_list (queued)
+
+    C->>IG: task_assignment (queued)
+    IG->>C: task_completed (queued)
+
+    C->>E: evaluation_request (queued)
+    C->>L: progress_update (queued)
+
+    E->>L: evaluation_result (queued)
+    E->>I: improvement_request (queued)
+    I->>L: improvement_completed (queued)
+
+    L->>U: 最終レポート
+```
+
+**ポイント:**
+- すべてのメッセージは `status: queued` で送信
+- queue_monitorが検知し、tmux経由で受信側に通知
+- 受信側は処理後、ファイルを `processed/` に移動
 
 ## 👥 メンバー紹介
 
@@ -750,7 +784,7 @@ priority: high               # 優先度（high/normal/low）
 payload:                     # メッセージ本体
   goal: "READMEファイルを作成する"
   context: "プロジェクト説明が必要"
-status: pending              # 状態（pending/processing/completed）
+status: queued              # 状態（queued/processing/completed）
 ```
 
 ### 主要なメッセージタイプ

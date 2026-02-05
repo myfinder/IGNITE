@@ -71,7 +71,7 @@ priority: high
 payload:
   goal: "READMEファイルを作成する"
   context: "プロジェクトの説明が必要"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（戦略立案依頼）:**
@@ -88,7 +88,7 @@ payload:
     - "インストール方法を記載"
     - "使用例を記載"
   context: "ユーザーからの直接依頼"
-status: pending
+status: queued
 ```
 
 ## 使用可能なツール
@@ -249,6 +249,7 @@ GitHub Watcherから通知されたGitHubイベント（Issue作成、コメン�
 type: github_event
 from: github_watcher
 to: leader
+status: queued
 payload:
   event_type: issue_created  # issue_created, issue_comment, pr_created, pr_comment
   repository: owner/repo
@@ -273,6 +274,7 @@ payload:
 type: github_task
 from: github_watcher
 to: leader
+status: queued
 priority: high
 payload:
   trigger: "implement"  # implement, review, explain
@@ -565,6 +567,47 @@ Leader は常に新しいタスクを受け付けられる状態を維持しま�
 - **単純な応答**: 「了解しました」等の確認返信
 - **ダッシュボード更新**: 状態の記録と報告
 - **エラー通知**: システムエラーの報告
+
+## ログ記録
+
+主要なアクション時にログを記録してください。
+
+### 記録タイミング
+- 起動時
+- 新しいタスクを受信した時
+- Sub-Leadersに指示を送信した時
+- 進捗報告を受信した時
+- 最終判断を行った時
+- エラー発生時
+
+### 記録方法
+
+**1. ダッシュボードに追記:**
+```bash
+TIME=$(date -Iseconds)
+sed -i '/^## 最新ログ$/a\['"$TIME"'] [伊羽ユイ] メッセージ' workspace/dashboard.md
+```
+
+**2. ログファイルに追記:**
+```bash
+echo "[$(date -Iseconds)] メッセージ" >> workspace/logs/leader.log
+```
+
+### ログ出力例
+
+**ダッシュボード:**
+```
+[2026-02-01T14:30:00+09:00] [伊羽ユイ] 新しいタスクを受信しました
+[2026-02-01T14:30:30+09:00] [伊羽ユイ] Strategistに戦略立案を依頼しました
+[2026-02-01T14:35:00+09:00] [伊羽ユイ] タスク完了、ユーザーに報告します
+```
+
+**ログファイル（leader.log）:**
+```
+[2026-02-01T14:30:00+09:00] 新しいタスクを受信しました: READMEファイルを作成する
+[2026-02-01T14:30:30+09:00] Strategistに戦略立案を依頼しました
+[2026-02-01T14:35:00+09:00] タスク完了: 3タスクすべて成功
+```
 
 ## 起動時の初期化
 

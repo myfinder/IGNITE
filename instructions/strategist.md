@@ -71,7 +71,7 @@ payload:
     - "インストール方法を記載"
     - "使用例を記載"
   context: "ユーザーからの直接依頼"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（戦略提案）:**
@@ -101,7 +101,7 @@ payload:
     - "要件が曖昧な場合、追加確認が必要"
   recommendations:
     - "Architectに設計方針を確認することを推奨"
-status: completed
+status: queued
 ```
 
 **送信メッセージ例（タスクリスト）:**
@@ -147,7 +147,7 @@ payload:
       skills_required: ["documentation", "code_examples"]
       deliverables:
         - "README.md (使用例セクション完成)"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（設計レビュー依頼 - Architect宛）:**
@@ -179,7 +179,7 @@ payload:
     - task_id: "task_003"
       title: "使用例作成"
   question: "この戦略の設計面での妥当性を確認してください"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（品質プラン依頼 - Evaluator宛）:**
@@ -202,7 +202,7 @@ payload:
       title: "使用例作成"
       deliverables: ["README.md (使用例セクション完成)"]
   question: "各タスクの品質確認基準と評価方法を策定してください"
-status: pending
+status: queued
 ```
 
 **送信メッセージ例（インサイト依頼 - Innovator宛）:**
@@ -224,7 +224,7 @@ payload:
       - phase: 3
         name: "レビューと最終調整"
   question: "より良いアプローチや最新の手法があれば教えてください"
-status: pending
+status: queued
 ```
 
 **受信メッセージ例（設計レビュー結果 - Architectから）:**
@@ -243,7 +243,7 @@ payload:
   suggestions:
     - "LICENSE選択をPhase 1に含めることを推奨"
   risks: []
-status: completed
+status: queued
 ```
 
 **受信メッセージ例（品質プラン結果 - Evaluatorから）:**
@@ -271,7 +271,7 @@ payload:
         - "サンプルコードが動作する"
         - "説明が分かりやすい"
       evaluation_method: "コード実行テスト"
-status: completed
+status: queued
 ```
 
 **受信メッセージ例（インサイト結果 - Innovatorから）:**
@@ -289,7 +289,7 @@ payload:
   alternative_approaches: []
   recommendations:
     - "現在のアプローチで問題ありません"
-status: completed
+status: queued
 ```
 
 ## 使用可能なツール

@@ -176,9 +176,9 @@ scan_queue() {
             continue
         fi
 
-        # statusがpendingのものだけ処理
+        # statusがqueuedのものだけ処理
         local status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-        if [[ "$status" != "pending" ]]; then
+        if [[ "$status" != "queued" ]]; then
             PROCESSED_FILES[$filepath]=1
             continue
         fi
@@ -188,7 +188,7 @@ scan_queue() {
         PROCESSED_FILES[$filepath]=1
 
         # statusをprocessingに更新
-        sed -i 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
+        sed -i 's/^status: queued/status: processing/' "$file" 2>/dev/null || true
     done
 }
 
@@ -219,9 +219,9 @@ monitor_queues() {
                     continue
                 fi
 
-                # statusがpendingのものだけ処理
+                # statusがqueuedのものだけ処理
                 local status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-                if [[ "$status" != "pending" ]]; then
+                if [[ "$status" != "queued" ]]; then
                     PROCESSED_FILES[$filepath]=1
                     continue
                 fi
@@ -231,7 +231,7 @@ monitor_queues() {
                     local ignitian_num=${BASH_REMATCH[1]}
                     process_message "$file" "ignitian_${ignitian_num}"
                     PROCESSED_FILES[$filepath]=1
-                    sed -i 's/^status: pending/status: processing/' "$file" 2>/dev/null || true
+                    sed -i 's/^status: queued/status: processing/' "$file" 2>/dev/null || true
                 fi
             done
         fi
@@ -289,11 +289,11 @@ monitor_with_inotify() {
             # 少し待ってファイルが完全に書き込まれるのを待つ
             sleep 0.5
 
-            # statusがpendingか確認
+            # statusがqueuedか確認
             local status=$(grep -E '^status:' "$filepath" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-            if [[ "$status" == "pending" ]]; then
+            if [[ "$status" == "queued" ]]; then
                 process_message "$filepath" "$queue_name"
-                sed -i 's/^status: pending/status: processing/' "$filepath" 2>/dev/null || true
+                sed -i 's/^status: queued/status: processing/' "$filepath" 2>/dev/null || true
             fi
         fi
     done

@@ -173,41 +173,74 @@ You can monitor each agent's activity in real-time across panes.
 
 ### Agent Hierarchy
 
-```
-                    User
-                     ↓
-        ┌─────────────────────────┐
-        │   Leader (Yui Iha)      │
-        │   - Overall Command     │
-        └─────────────────────────┘
-                     ↓
-    ┌────────────────┴────────────────┐
-    │    Sub-Leaders (5 Specialists)  │
-    └─────────────────────────────────┘
-    ↓       ↓       ↓       ↓       ↓
-Strategist Architect Evaluator Coordinator Innovator
-Rio Giga   Nana Neon Noah Iyui Aina Tsuse  Tsumugi Ena
-Strategy   Design    Quality   Progress    Improvement
-Planning   Decisions Evaluation Management Proposals
-                     ↓
-        ┌─────────────────────────┐
-        │ IGNITIANS (1-32 parallel)│
-        │ - Task Execution Workers │
-        └─────────────────────────┘
+```mermaid
+graph TD
+    User[User] --> Leader[Leader<br/>Yui Iha]
+
+    Leader --> Strategist[Strategist<br/>Rio Giga<br/>Strategy Planning]
+    Leader --> Architect[Architect<br/>Nana Neon<br/>Design Decisions]
+    Leader --> Evaluator[Evaluator<br/>Noah Iyui<br/>Quality Evaluation]
+    Leader --> Coordinator[Coordinator<br/>Aina Tsuse<br/>Progress Management]
+    Leader --> Innovator[Innovator<br/>Tsumugi Ena<br/>Improvement Proposals]
+
+    Coordinator --> IG1[IGNITIAN-1]
+    Coordinator --> IG2[IGNITIAN-2]
+    Coordinator --> IGN[IGNITIAN-N...]
+
+    style Leader fill:#ff6b6b,color:#fff
+    style Strategist fill:#4ecdc4,color:#fff
+    style Architect fill:#45b7d1,color:#fff
+    style Evaluator fill:#96ceb4,color:#fff
+    style Coordinator fill:#ffeaa7,color:#333
+    style Innovator fill:#dfe6e9,color:#333
 ```
 
 ### Communication Flow
 
-1. **User** submits a task
-2. **Leader** understands the goal and requests strategy from **Strategist**
-3. **Strategist** breaks down tasks and sends task list to **Coordinator**
-4. **Coordinator** distributes tasks to available **IGNITIANS**
-5. **IGNITIANS** execute tasks in parallel and report results
-6. **Evaluator** evaluates and verifies results
-7. **Innovator** suggests improvements
-8. **Leader** makes final decisions and reports to user
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as Leader
+    participant S as Strategist
+    participant A as Architect
+    participant E as Evaluator
+    participant I as Innovator
+    participant C as Coordinator
+    participant IG as IGNITIANs
 
-**Architect** provides design decisions as needed.
+    U->>L: user_goal (queued)
+    L->>S: strategy_request (queued)
+
+    par Strategist sends parallel requests to 3 Sub-Leaders
+        S->>A: design_review_request (queued)
+        S->>E: quality_plan_request (queued)
+        S->>I: insight_request (queued)
+    end
+
+    A->>S: design_review_response (queued)
+    E->>S: quality_plan_response (queued)
+    I->>S: insight_response (queued)
+
+    S->>L: strategy_response (queued)
+    S->>C: task_list (queued)
+
+    C->>IG: task_assignment (queued)
+    IG->>C: task_completed (queued)
+
+    C->>E: evaluation_request (queued)
+    C->>L: progress_update (queued)
+
+    E->>L: evaluation_result (queued)
+    E->>I: improvement_request (queued)
+    I->>L: improvement_completed (queued)
+
+    L->>U: Final Report
+```
+
+**Key Points:**
+- All messages are sent with `status: queued`
+- queue_monitor detects and notifies recipient via tmux
+- Recipient moves file to `processed/` after handling
 
 ## 👥 Team Members
 
@@ -690,7 +723,7 @@ priority: high               # Priority (high/normal/low)
 payload:                     # Message body
   goal: "Create a README file"
   context: "Project description needed"
-status: pending              # Status (pending/processing/completed)
+status: queued              # Status (queued/processing/completed)
 ```
 
 ### Primary Message Types

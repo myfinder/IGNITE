@@ -84,8 +84,8 @@ date -Iseconds
 メッセージの処理状態。
 
 **有効な値:**
-- `pending` - 未処理
-- `processing` - 処理中
+- `queued` - キュー待ち（新規メッセージ）
+- `processing` - 処理中（通知済み）
 - `completed` - 完了
 - `error` - エラー
 
@@ -104,7 +104,7 @@ priority: high
 payload:
   goal: "目標の説明"
   context: "追加のコンテキスト（オプション）"
-status: pending
+status: queued
 ```
 
 ### strategy_request
@@ -123,7 +123,7 @@ payload:
     - "要件1"
     - "要件2"
   context: "背景情報"
-status: pending
+status: queued
 ```
 
 ### strategy_response
@@ -150,7 +150,7 @@ payload:
     - "リスク1"
   recommendations:
     - "推奨事項1"
-status: completed
+status: queued
 ```
 
 ### task_list
@@ -179,7 +179,7 @@ payload:
         - "skill2"
       deliverables:
         - "成果物1"
-status: pending
+status: queued
 ```
 
 ### task_assignment
@@ -203,7 +203,7 @@ payload:
   skills_required:
     - "skill1"
   estimated_time: 60
-status: pending
+status: queued
 ```
 
 ### task_completed
@@ -227,7 +227,7 @@ payload:
       location: "パス"
   execution_time: 90
   notes: "追加情報"
-status: completed
+status: queued
 ```
 
 **エラー時:**
@@ -247,7 +247,7 @@ payload:
     details: "詳細"
   execution_time: 30
   notes: "追加情報"
-status: completed
+status: queued
 ```
 
 ### evaluation_request
@@ -272,7 +272,7 @@ payload:
   criteria:
     - "基準1"
     - "基準2"
-status: pending
+status: queued
 ```
 
 ### evaluation_result
@@ -307,7 +307,7 @@ payload:
 
   next_action: "approve"  # approve, request_revision, reject
 
-status: completed
+status: queued
 ```
 
 ### improvement_request
@@ -328,7 +328,7 @@ payload:
       severity: "minor"
       location: "場所"
       suggested_fix: "修正案"
-status: pending
+status: queued
 ```
 
 ### improvement_suggestion
@@ -365,7 +365,7 @@ payload:
   priority: "medium"  # low, medium, high
   estimated_effort: "工数見積もり"
 
-status: pending
+status: queued
 ```
 
 ### progress_update
@@ -385,7 +385,7 @@ payload:
   pending: 0
   summary: |
     進捗の要約
-status: active
+status: queued
 ```
 
 ## ファイル命名規則
@@ -438,7 +438,7 @@ workspace/queue/
    priority: ${PRIORITY}
    payload:
      ${PAYLOAD}
-   status: pending
+   status: queued
    EOF
    ```
 

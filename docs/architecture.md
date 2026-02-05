@@ -77,23 +77,50 @@ sequenceDiagram
     participant U as User
     participant L as Leader
     participant S as Strategist
-    participant C as Coordinator
-    participant I as IGNITIANS
+    participant A as Architect
     participant E as Evaluator
     participant N as Innovator
+    participant C as Coordinator
+    participant I as IGNITIANS
 
-    U->>L: user_goal
-    L->>S: strategy_request
-    S->>L: strategy_response
-    S->>C: task_list
-    C->>I: task_assignment
-    I->>C: task_completed
-    C->>E: evaluation_request
-    E->>L: evaluation_result
-    E->>N: improvement_request
-    N->>L: improvement_suggestion
+    U->>L: user_goal (queued)
+    L->>S: strategy_request (queued)
+
+    par Strategistが3人のSub-Leadersに並行依頼
+        S->>A: design_review_request (queued)
+        S->>E: quality_plan_request (queued)
+        S->>N: insight_request (queued)
+    end
+
+    A->>S: design_review_response (queued)
+    E->>S: quality_plan_response (queued)
+    N->>S: insight_response (queued)
+
+    S->>L: strategy_response (queued)
+    S->>C: task_list (queued)
+
+    C->>I: task_assignment (queued)
+    I->>C: task_completed (queued)
+
+    C->>E: evaluation_request (queued)
+    C->>L: progress_update (queued)
+
+    E->>L: evaluation_result (queued)
+    E->>N: improvement_request (queued)
+    N->>L: improvement_completed (queued)
+
     L->>U: 最終レポート
 ```
+
+### キューステータスの運用ルール
+
+| ステータス | 意味 | 使用タイミング |
+|------------|------|----------------|
+| `queued` | キュー待ち | 新規メッセージ作成時（送信時） |
+| `processing` | 処理中 | queue_monitorが通知後に自動設定 |
+| `completed` | 処理完了 | 受信側が処理完了後に設定（または削除/移動） |
+
+**重要**: キューに新しいメッセージを送信する場合、常に `status: queued` を使用する。
 
 ### YAMLメッセージ形式
 
@@ -107,7 +134,7 @@ timestamp: {ISO8601}
 priority: {high|normal|low}
 payload:
   {key}: {value}
-status: {pending|processing|completed}
+status: {queued|processing|completed}
 ```
 
 ### 主要メッセージタイプ
