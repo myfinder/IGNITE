@@ -208,37 +208,32 @@ sequenceDiagram
     participant C as Coordinator
     participant IG as IGNITIANs
 
-    U->>L: user_goal (queued)
-    L->>S: strategy_request (queued)
+    U->>L: user_goal
+    L->>S: strategy_request
 
     par Strategist sends parallel requests to 3 Sub-Leaders
-        S->>A: design_review_request (queued)
-        S->>E: quality_plan_request (queued)
-        S->>I: insight_request (queued)
+        S->>A: design_review_request
+        S->>E: quality_plan_request
+        S->>I: insight_request
     end
 
-    A->>S: design_review_response (queued)
-    E->>S: quality_plan_response (queued)
-    I->>S: insight_response (queued)
-
-    S->>L: strategy_response (queued)
-    S->>C: task_list (queued)
-
-    C->>IG: task_assignment (queued)
-    IG->>C: task_completed (queued)
-
-    C->>E: evaluation_request (queued)
-    C->>L: progress_update (queued)
-
-    E->>L: evaluation_result (queued)
-    E->>I: improvement_request (queued)
-    I->>L: improvement_completed (queued)
-
+    A->>S: design_review_response
+    E->>S: quality_plan_response
+    I->>S: insight_response
+    S->>L: strategy_response
+    S->>C: task_list
+    C->>IG: task_assignment
+    IG->>C: task_completed
+    C->>E: evaluation_request
+    C->>L: progress_update
+    E->>L: evaluation_result
+    E->>I: improvement_request
+    I->>L: improvement_completed
     L->>U: Final Report
 ```
 
 **Key Points:**
-- All messages are sent with `status: queued`
+- Messages are written as files to queue directories
 - queue_monitor detects and notifies recipient via tmux
 - Recipient deletes file after handling
 
@@ -724,7 +719,6 @@ priority: high               # Priority (high/normal/low)
 payload:                     # Message body
   goal: "Create a README file"
   context: "Project description needed"
-status: queued              # Status (queued/processing)
 ```
 
 ### Primary Message Types

@@ -545,7 +545,6 @@ payload:
   body: |
 $(echo "$issue_body" | sed 's/^/    /')
   url: "${url}"
-status: queued
 EOF
             ;;
 
@@ -573,7 +572,6 @@ payload:
   body: |
 $(echo "$body" | sed 's/^/    /')
   url: "${url}"
-status: queued
 EOF
             ;;
 
@@ -605,7 +603,6 @@ payload:
   body: |
 $(echo "$pr_body" | sed 's/^/    /')
   url: "${url}"
-status: queued
 EOF
             ;;
 
@@ -633,7 +630,6 @@ payload:
   body: |
 $(echo "$body" | sed 's/^/    /')
   url: "${url}"
-status: queued
 EOF
             ;;
 
@@ -663,7 +659,6 @@ payload:
   body: |
 $(echo "$body" | sed 's/^/    /')
   url: "${url}"
-status: queued
 EOF
             ;;
     esac
@@ -725,7 +720,6 @@ $(echo "$issue_body" | sed 's/^/    /')
 $(echo "$body" | sed 's/^/    /')
   branch_prefix: "ignite/"
   url: "${url}"
-status: queued
 EOF
 
     echo "$message_file"

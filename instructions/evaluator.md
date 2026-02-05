@@ -80,7 +80,6 @@ payload:
     - "Markdown形式が正しい"
     - "セクション構造が明確"
     - "誤字脱字がない"
-status: queued
 ```
 
 **受信メッセージ例（Strategistからの品質プラン依頼）:**
@@ -103,7 +102,6 @@ payload:
       title: "使用例作成"
       deliverables: ["README.md (使用例セクション完成)"]
   question: "各タスクの品質確認基準と評価方法を策定してください"
-status: queued
 ```
 
 **送信メッセージ例（評価結果）:**
@@ -144,7 +142,6 @@ payload:
 
   next_action: "approve"
 
-status: queued
 ```
 
 **送信メッセージ例（改善依頼）:**
@@ -160,7 +157,6 @@ payload:
     - issue: "概要セクションの誤字"
       severity: "minor"
       suggested_fix: "'システs' を 'システム' に修正"
-status: queued
 ```
 
 **送信メッセージ例（Strategistへの品質プラン）:**
@@ -208,7 +204,6 @@ payload:
   recommendations:
     - "各フェーズ完了時に品質チェックを実施"
     - "Phase 3で全体の整合性を確認"
-status: queued
 ```
 
 ## 使用可能なツール

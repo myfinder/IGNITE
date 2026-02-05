@@ -233,37 +233,32 @@ sequenceDiagram
     participant C as Coordinator
     participant IG as IGNITIANs
 
-    U->>L: user_goal (queued)
-    L->>S: strategy_request (queued)
+    U->>L: user_goal
+    L->>S: strategy_request
 
     par Strategistが3人のSub-Leadersに並行依頼
-        S->>A: design_review_request (queued)
-        S->>E: quality_plan_request (queued)
-        S->>I: insight_request (queued)
+        S->>A: design_review_request
+        S->>E: quality_plan_request
+        S->>I: insight_request
     end
 
-    A->>S: design_review_response (queued)
-    E->>S: quality_plan_response (queued)
-    I->>S: insight_response (queued)
-
-    S->>L: strategy_response (queued)
-    S->>C: task_list (queued)
-
-    C->>IG: task_assignment (queued)
-    IG->>C: task_completed (queued)
-
-    C->>E: evaluation_request (queued)
-    C->>L: progress_update (queued)
-
-    E->>L: evaluation_result (queued)
-    E->>I: improvement_request (queued)
-    I->>L: improvement_completed (queued)
-
+    A->>S: design_review_response
+    E->>S: quality_plan_response
+    I->>S: insight_response
+    S->>L: strategy_response
+    S->>C: task_list
+    C->>IG: task_assignment
+    IG->>C: task_completed
+    C->>E: evaluation_request
+    C->>L: progress_update
+    E->>L: evaluation_result
+    E->>I: improvement_request
+    I->>L: improvement_completed
     L->>U: 最終レポート
 ```
 
 **ポイント:**
-- すべてのメッセージは `status: queued` で送信
+- メッセージはキューディレクトリにファイルとして書き出し
 - queue_monitorが検知し、tmux経由で受信側に通知
 - 受信側は処理後、ファイルを削除
 
@@ -785,7 +780,6 @@ priority: high               # 優先度（high/normal/low）
 payload:                     # メッセージ本体
   goal: "READMEファイルを作成する"
   context: "プロジェクト説明が必要"
-status: queued              # 状態（queued/processing）
 ```
 
 ### 主要なメッセージタイプ

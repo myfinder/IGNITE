@@ -71,7 +71,6 @@ priority: high
 payload:
   goal: "READMEファイルを作成する"
   context: "プロジェクトの説明が必要"
-status: queued
 ```
 
 **送信メッセージ例（戦略立案依頼）:**
@@ -88,7 +87,6 @@ payload:
     - "インストール方法を記載"
     - "使用例を記載"
   context: "ユーザーからの直接依頼"
-status: queued
 ```
 
 ## 使用可能なツール
@@ -251,7 +249,6 @@ GitHub Watcherから通知されたGitHubイベント（Issue作成、コメン�
 type: github_event
 from: github_watcher
 to: leader
-status: queued
 payload:
   event_type: issue_created  # issue_created, issue_comment, pr_created, pr_comment
   repository: owner/repo
@@ -276,7 +273,6 @@ payload:
 type: github_task
 from: github_watcher
 to: leader
-status: queued
 priority: high
 payload:
   trigger: "implement"  # implement, review, explain

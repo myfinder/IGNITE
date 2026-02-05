@@ -94,7 +94,6 @@ payload:
       description: "使用方法とサンプルコードを記載"
       priority: normal
       estimated_time: 120
-status: queued
 ```
 
 **送信メッセージ例（タスク割り当て）:**
@@ -119,7 +118,6 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
-status: queued
 ```
 
 **進捗報告メッセージ例:**
@@ -138,7 +136,6 @@ payload:
     - IGNITIAN-1: task_001 完了
     - IGNITIAN-2: task_002 実行中
     - IGNITIAN-3: task_003 実行中
-status: queued
 ```
 
 ## 使用可能なツール
@@ -459,7 +456,6 @@ payload:
     guidance: "修正の方向性"
   revision_count: 1
   max_revisions: 2
-status: queued
 ```
 
 ### チェック通過後のフロー

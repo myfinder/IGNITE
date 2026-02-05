@@ -212,7 +212,6 @@ payload:
     ログイン時にエラーが発生します。
     再現手順: ...
   url: "https://github.com/owner/repo/issues/123"
-status: queued
 ```
 
 **Issueコメント時:**
@@ -232,7 +231,6 @@ payload:
   body: |
     この問題について追加情報があります。
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: queued
 ```
 
 ### タスクメッセージ（github_task）
@@ -257,7 +255,6 @@ payload:
     @ignite-gh-app このIssueを実装して
   branch_prefix: "ignite/"
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: queued
 ```
 
 ## トリガーの使い方

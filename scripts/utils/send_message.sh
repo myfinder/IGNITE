@@ -44,7 +44,6 @@ timestamp: "${TIMESTAMP}"
 priority: ${PRIORITY}
 payload:
   ${PAYLOAD}
-status: queued
 EOF
 
 echo "✓ メッセージを送信しました: $MESSAGE_FILE"

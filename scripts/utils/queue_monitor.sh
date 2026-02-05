@@ -25,9 +25,6 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}"
 POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
 TMUX_SESSION="${IGNITE_TMUX_SESSION:-}"
 
-# 処理済みファイルを追跡
-declare -A PROCESSED_FILES
-
 # =============================================================================
 # tmux セッションへのメッセージ送信
 # =============================================================================
@@ -158,20 +155,6 @@ process_message() {
 # キュー監視
 # =============================================================================
 
-# PROCESSED_FILES のクリーンアップ（存在しないファイルのエントリを削除）
-cleanup_processed_files() {
-    local removed=0
-    for filepath in "${!PROCESSED_FILES[@]}"; do
-        if [[ ! -f "$filepath" ]]; then
-            unset 'PROCESSED_FILES[$filepath]'
-            ((removed++)) || true
-        fi
-    done
-    if [[ $removed -gt 0 ]]; then
-        log_info "PROCESSED_FILES クリーンアップ: ${removed}件削除（残: ${#PROCESSED_FILES[@]}件）"
-    fi
-}
-
 # ファイル名を {type}_{timestamp}.yaml パターンに正規化
 # 正規化が不要な場合はそのままのパスを返す
 normalize_filename() {
@@ -230,11 +213,12 @@ scan_queue() {
     local queue_dir="$1"
     local queue_name="$2"
 
-    if [[ ! -d "$queue_dir" ]]; then
-        return
-    fi
+    [[ -d "$queue_dir" ]] || return
 
-    # 新しいYAMLファイルを検索（processedディレクトリは除く）
+    # processed/ ディレクトリを確保（処理済みファイルの移動先）
+    mkdir -p "$queue_dir/processed"
+
+    # キューディレクトリ直下の .yaml ファイル = 未処理メッセージ
     for file in "$queue_dir"/*.yaml; do
         [[ -f "$file" ]] || continue
 
@@ -242,49 +226,19 @@ scan_queue() {
         file=$(normalize_filename "$file")
         [[ -f "$file" ]] || continue
 
-        local filepath="$file"
+        local filename=$(basename "$file")
+        local dest="$queue_dir/processed/$filename"
 
-        # 既に処理済みならスキップ
-        if [[ -n "${PROCESSED_FILES[$filepath]:-}" ]]; then
-            continue
-        fi
+        # at-most-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
+        mv "$file" "$dest" 2>/dev/null || continue
 
-        # statusを読み取り、挙動を分岐
-        local status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-        case "$status" in
-            queued)
-                # 正常 — そのまま処理
-                ;;
-            processing)
-                # queue_monitor自身が設定した送信済みマーク — スキップ
-                PROCESSED_FILES[$filepath]=1
-                continue
-                ;;
-            *)
-                # プロトコル違反 — 自動修正して処理
-                local from=$(grep -E '^from:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-                local to=$(grep -E '^to:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
-                log_warn "プロトコル違反を自動修正: $(basename "$file") (from: ${from:-unknown}, to: ${to:-unknown}) — status: '${status:-なし}' → 'queued' に修正"
-                if grep -qE '^status:' "$file" 2>/dev/null; then
-                    sed -i "s/^status:.*/status: queued/" "$file" 2>/dev/null || true
-                else
-                    echo "status: queued" >> "$file"
-                fi
-                ;;
-        esac
-
-        # 処理
-        process_message "$file" "$queue_name"
-        PROCESSED_FILES[$filepath]=1
-
-        # statusをprocessingに更新
-        sed -i 's/^status: queued/status: processing/' "$file" 2>/dev/null || true
+        # 処理（processed/ 内のパスを渡す）
+        process_message "$dest" "$queue_name"
     done
 }
 
 monitor_queues() {
     log_info "キュー監視を開始します（間隔: ${POLL_INTERVAL}秒）"
-    local poll_count=0
 
     while true; do
         # Leader キュー
@@ -303,12 +257,6 @@ monitor_queues() {
             local dirname=$(basename "$ignitian_dir")
             scan_queue "$ignitian_dir" "$dirname"
         done
-
-        # 定期的なメモリクリーンアップ（100ポーリングごと）
-        ((poll_count++)) || true
-        if (( poll_count % 100 == 0 )); then
-            cleanup_processed_files
-        fi
 
         sleep "$POLL_INTERVAL"
     done

@@ -83,46 +83,37 @@ sequenceDiagram
     participant C as Coordinator
     participant I as IGNITIANS
 
-    U->>L: user_goal (queued)
-    L->>S: strategy_request (queued)
+    U->>L: user_goal
+    L->>S: strategy_request
 
     par Strategistが3人のSub-Leadersに並行依頼
-        S->>A: design_review_request (queued)
-        S->>E: quality_plan_request (queued)
-        S->>N: insight_request (queued)
+        S->>A: design_review_request
+        S->>E: quality_plan_request
+        S->>N: insight_request
     end
 
-    A->>S: design_review_response (queued)
-    E->>S: quality_plan_response (queued)
-    N->>S: insight_response (queued)
-
-    S->>L: strategy_response (queued)
-    S->>C: task_list (queued)
-
-    C->>I: task_assignment (queued)
-    I->>C: task_completed (queued)
-
-    C->>E: evaluation_request (queued)
-    C->>L: progress_update (queued)
-
-    E->>L: evaluation_result (queued)
-    E->>N: improvement_request (queued)
-    N->>L: improvement_completed (queued)
-
+    A->>S: design_review_response
+    E->>S: quality_plan_response
+    N->>S: insight_response
+    S->>L: strategy_response
+    S->>C: task_list
+    C->>I: task_assignment
+    I->>C: task_completed
+    C->>E: evaluation_request
+    C->>L: progress_update
+    E->>L: evaluation_result
+    E->>N: improvement_request
+    N->>L: improvement_completed
     L->>U: 最終レポート
 ```
 
-### キューステータスの運用ルール
+### メッセージライフサイクル
 
-| ステータス | 意味 | 使用タイミング |
-|------------|------|----------------|
-| `queued` | キュー待ち | エージェント間メッセージ作成時（queue_monitor経由で通知） |
-| `processing` | 処理中 | queue_monitorが通知後に自動設定、またはCLIが直接通知時に初期設定 |
-
-**ステータスの使い分け:**
-- **エージェント間通信**: `status: queued` で作成 → queue_monitorが検知・通知・`processing`に変更
-- **CLI直接通知**（plan/notify/work-on/start）: `status: processing` で作成 → CLIがtmux経由で直接通知
-- **処理完了後**: エージェントがファイルを削除（ステータスを変更するのではなくファイル自体を削除）
+| 状態 | 表現 | 説明 |
+|------|------|------|
+| 未処理 | キューディレクトリにファイルが存在 | 新規メッセージ |
+| 配信済み | queue_monitorが検知・通知済み | エージェントが処理中 |
+| 処理完了 | ファイル削除済み | エージェントが処理後に削除 |
 
 ### YAMLメッセージ形式
 
@@ -136,7 +127,6 @@ timestamp: {ISO8601}
 priority: {high|normal|low}
 payload:
   {key}: {value}
-status: {queued|processing}
 ```
 
 ### 主要メッセージタイプ
@@ -306,7 +296,7 @@ Coordinatorが以下を考慮してタスク配分:
 ### メッセージキューの効率化
 - 定期的なポーリング（デフォルト10秒間隔）
 - ファイルシステムベースのシンプルな実装
-- PROCESSED_FILESの定期クリーンアップによるメモリ管理
+- ファイル存在ベースのメッセージ管理（処理済みファイルは削除）
 
 ### 並列実行の最大化
 - 依存関係のないタスクは完全並列

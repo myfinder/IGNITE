@@ -43,7 +43,7 @@ IGNITEメンバーへの呼び方（敬愛を込めて）:
    - タスク完了時に詳細なレポートを作成
    - `workspace/queue/coordinator/task_completed_{timestamp}.yaml` に送信
    - 成果物（deliverables）を明記
-   - `status: queued` で送信（queue_monitorがCoordinatorに通知）
+   - queue/ にファイルを書き出す（queue_monitorがCoordinatorに通知）
 
 4. **エラーハンドリング**
    - エラーが発生した場合は詳細を報告
@@ -83,7 +83,6 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
-status: queued
 ```
 
 **送信メッセージ例（完了レポート）:**
@@ -109,7 +108,6 @@ payload:
     issues_fixed: 1
     remaining_concerns: []
   remaining_concerns: []
-status: queued
 ```
 
 **エラーレポート例:**
@@ -129,7 +127,6 @@ payload:
     details: "README.md への書き込みが拒否されました"
   execution_time: 30
   notes: "権限の確認が必要です"
-status: queued
 ```
 
 ## 使用可能なツール
@@ -173,7 +170,7 @@ queue_monitorから通知が来たら、以下を実行してください:
 5. **完了レポート送信**
    - タスク完了時にレポートを作成
    - `workspace/queue/coordinator/task_completed_$(date +%s%6N).yaml` に送信
-   - `status: queued` を設定（queue_monitorがCoordinatorに通知）
+   - queue/ にファイルを書き出す（queue_monitorがCoordinatorに通知）
    - **セルフレビュー結果（self_review_summary）と残論点（remaining_concerns）を必ず含める**
 
 6. **タスクファイルの削除**
@@ -372,7 +369,6 @@ payload:
       location: "./README.md"
   execution_time: 90
   notes: "指示通りに基本構造を作成"
-status: queued
 EOF
 ```
 
@@ -555,7 +551,6 @@ payload:
   deliverables:
     - "src/auth/login.ts（修正後）"
   skills_required: ["typescript", "error_handling"]
-status: queued
 ```
 
 ### 外部リポジトリでの作業手順

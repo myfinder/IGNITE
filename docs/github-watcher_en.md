@@ -212,7 +212,6 @@ payload:
     Error occurs during login.
     Steps to reproduce: ...
   url: "https://github.com/owner/repo/issues/123"
-status: queued
 ```
 
 **On Issue comment:**
@@ -232,7 +231,6 @@ payload:
   body: |
     I have additional information about this issue.
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: queued
 ```
 
 ### Task Messages (github_task)
@@ -257,7 +255,6 @@ payload:
     @ignite-gh-app implement this issue
   branch_prefix: "ignite/"
   url: "https://github.com/owner/repo/issues/123#issuecomment-456789"
-status: queued
 ```
 
 ## Using Triggers

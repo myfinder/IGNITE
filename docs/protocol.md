@@ -16,7 +16,6 @@ timestamp: {ISO8601}          # タイムスタンプ（必須）
 priority: {priority_level}    # 優先度（必須）
 payload:                      # ペイロード（必須）
   {key}: {value}
-status: {status}              # ステータス（必須）
 ```
 
 ### フィールド仕様
@@ -80,12 +79,18 @@ date -Iseconds
 #### payload
 メッセージの本体。メッセージタイプによって構造が異なる。
 
-#### status
-メッセージの処理状態。
+#### メッセージライフサイクル
 
-**有効な値:**
-- `queued` - キュー待ち（新規メッセージ）
-- `processing` - 処理中（通知済み）
+メッセージの処理状態は、ファイルの存在と位置で管理されます。
+**statusフィールドは使用しません。**
+
+| 状態 | 表現 |
+|------|------|
+| 未処理 | `queue/<agent>/` にファイルが存在 |
+| 配信済み | queue_monitorが `processed/` に移動後、エージェントに通知 |
+| 処理完了 | エージェントがファイルを削除 |
+
+> **後方互換性:** statusフィールドが存在しても無視されます。
 
 ## メッセージタイプ別仕様
 
@@ -102,7 +107,6 @@ priority: high
 payload:
   goal: "目標の説明"
   context: "追加のコンテキスト（オプション）"
-status: queued
 ```
 
 ### strategy_request
@@ -121,7 +125,6 @@ payload:
     - "要件1"
     - "要件2"
   context: "背景情報"
-status: queued
 ```
 
 ### strategy_response
@@ -148,7 +151,6 @@ payload:
     - "リスク1"
   recommendations:
     - "推奨事項1"
-status: queued
 ```
 
 ### task_list
@@ -177,7 +179,6 @@ payload:
         - "skill2"
       deliverables:
         - "成果物1"
-status: queued
 ```
 
 ### task_assignment
@@ -201,7 +202,6 @@ payload:
   skills_required:
     - "skill1"
   estimated_time: 60
-status: queued
 ```
 
 ### task_completed
@@ -225,7 +225,6 @@ payload:
       location: "パス"
   execution_time: 90
   notes: "追加情報"
-status: queued
 ```
 
 **エラー時:**
@@ -245,7 +244,6 @@ payload:
     details: "詳細"
   execution_time: 30
   notes: "追加情報"
-status: queued
 ```
 
 ### evaluation_request
@@ -270,7 +268,6 @@ payload:
   criteria:
     - "基準1"
     - "基準2"
-status: queued
 ```
 
 ### evaluation_result
@@ -305,7 +302,6 @@ payload:
 
   next_action: "approve"  # approve, request_revision, reject
 
-status: queued
 ```
 
 ### improvement_request
@@ -326,7 +322,6 @@ payload:
       severity: "minor"
       location: "場所"
       suggested_fix: "修正案"
-status: queued
 ```
 
 ### improvement_suggestion
@@ -363,7 +358,6 @@ payload:
   priority: "medium"  # low, medium, high
   estimated_effort: "工数見積もり"
 
-status: queued
 ```
 
 ### progress_update
@@ -383,7 +377,6 @@ payload:
   pending: 0
   summary: |
     進捗の要約
-status: queued
 ```
 
 ## ファイル命名規則
@@ -413,15 +406,24 @@ MESSAGE_FILE="workspace/queue/${TO}/${TYPE}_$(date +%s%6N).yaml"
 ```
 workspace/queue/
 ├── leader/           # Leader宛て
+│   └── processed/    # 配信済みメッセージ
 ├── strategist/       # Strategist宛て
+│   └── processed/
 ├── architect/        # Architect宛て
+│   └── processed/
 ├── evaluator/        # Evaluator宛て
+│   └── processed/
 ├── coordinator/      # Coordinator宛て
+│   └── processed/
 ├── innovator/        # Innovator宛て
+│   └── processed/
 ├── ignitian_1/       # IGNITIAN-1宛て
+│   ├── processed/
 │   └── task_assignment_1770263544123456.yaml
 ├── ignitian_2/       # IGNITIAN-2宛て
+│   └── processed/
 └── ignitian_3/       # IGNITIAN-3宛て
+    └── processed/
 ```
 
 ## メッセージ処理フロー
@@ -438,7 +440,6 @@ workspace/queue/
    priority: ${PRIORITY}
    payload:
      ${PAYLOAD}
-   status: queued
    EOF
    ```
 
@@ -554,3 +555,10 @@ find workspace/queue -name "*.yaml" | wc -l
 ## まとめ
 
 IGNITEの通信プロトコルは、シンプルで拡張性の高いファイルベースメッセージングシステムです。YAML形式により可読性が高く、デバッグが容易です。各エージェントは独立して動作し、メッセージキューを通じて協調します。
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|------------|----------|
+| v2 | statusフィールド廃止、ファイル存在モデルへ移行（Issue #116） |
+| v1 | 初版 |
