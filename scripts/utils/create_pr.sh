@@ -132,6 +132,12 @@ create_branch() {
     # 既存のブランチがあるか確認
     if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
         log_warn "ブランチが既に存在します: $branch_name"
+        if [[ ! -t 0 ]]; then
+            # 非対話環境: 既存ブランチに自動切り替え
+            log_info "非対話環境のため、既存ブランチに自動切り替えします"
+            git checkout "$branch_name"
+            return 0
+        fi
         read -p "既存のブランチに切り替えますか? (Y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
