@@ -156,11 +156,16 @@ get_base_branch() {
 }
 
 # リポジトリ名からローカルパスを生成
+# IGNITE_WORKER_ID が設定されている場合は per-IGNITIAN パスを返す
 repo_to_path() {
     local repo="$1"
     # owner/repo → owner_repo
     local repo_name=$(echo "$repo" | tr '/' '_')
-    echo "$REPOS_DIR/$repo_name"
+    if [[ -n "${IGNITE_WORKER_ID:-}" ]]; then
+        echo "$REPOS_DIR/${repo_name}_ignitian_${IGNITE_WORKER_ID}"
+    else
+        echo "$REPOS_DIR/$repo_name"
+    fi
 }
 
 # =============================================================================
@@ -188,21 +193,31 @@ setup_repo() {
         git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch"
         git pull origin "$branch" || log_warn "pull に失敗しました（ローカル変更がある可能性）"
     else
-        log_info "リポジトリをclone中: $repo"
-        # privateリポジトリ対応：GitHub App Tokenを使用
-        local bot_token
-        # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
-        # --repo オプションでリポジトリを指定（Organization対応）
-        if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
+        # per-IGNITIAN clone: primary clone が存在すればローカルから高速clone
+        local repo_name=$(echo "$repo" | tr '/' '_')
+        local primary_path="$REPOS_DIR/$repo_name"
+        if [[ -n "${IGNITE_WORKER_ID:-}" ]] && [[ -d "$primary_path/.git" ]]; then
+            log_info "primary clone からローカルclone: $repo (worker ${IGNITE_WORKER_ID})"
+            git clone --no-hardlinks --branch "$branch" "$primary_path" "$repo_path"
+            # origin URL をGitHubに再設定（ローカルcloneだとoriginがローカルパスになるため）
+            git -C "$repo_path" remote set-url origin "https://github.com/${repo}.git"
         else
-            bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
-        fi
-        if [[ -n "$bot_token" ]]; then
-            log_info "GitHub App Token を使用してclone"
-            GH_TOKEN="$bot_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
-        else
-            gh repo clone "$repo" "$repo_path" -- --branch "$branch" || git clone "https://github.com/${repo}.git" "$repo_path" --branch "$branch"
+            log_info "リポジトリをclone中: $repo"
+            # privateリポジトリ対応：GitHub App Tokenを使用
+            local bot_token
+            # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
+            # --repo オプションでリポジトリを指定（Organization対応）
+            if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
+                bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
+            else
+                bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>/dev/null || echo "")
+            fi
+            if [[ -n "$bot_token" ]]; then
+                log_info "GitHub App Token を使用してclone"
+                GH_TOKEN="$bot_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
+            else
+                gh repo clone "$repo" "$repo_path" -- --branch "$branch" || git clone "https://github.com/${repo}.git" "$repo_path" --branch "$branch"
+            fi
         fi
         cd "$repo_path"
     fi

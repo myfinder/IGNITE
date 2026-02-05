@@ -229,9 +229,9 @@ start_ignitian() {
         tmux split-window -t "$SESSION_NAME:ignite" -h
         tmux select-layout -t "$SESSION_NAME:ignite" tiled
 
-        # Claude CLI 起動（ワークスペースディレクトリで実行）
+        # IGNITE_WORKER_ID を設定して Claude CLI 起動（per-IGNITIAN リポジトリ分離用）
         tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-            "cd '$WORKSPACE_DIR' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
+            "export IGNITE_WORKER_ID=${id} && cd '$WORKSPACE_DIR' && claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions" Enter
         sleep 3
 
         # 権限確認通過

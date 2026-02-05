@@ -531,6 +531,37 @@ echo "[$(date -Iseconds)] メッセージ" >> workspace/logs/ignitian_{n}.log
 [IGNITIAN-{n}] タスク待機中...推しの役に立てる瞬間が楽しみです！
 ```
 
+## Per-IGNITIAN リポジトリ分離
+
+### IGNITE_WORKER_ID 環境変数
+
+各 IGNITIAN には `IGNITE_WORKER_ID` 環境変数が自動的に設定されます（`scripts/ignite` の `start_ignitian()` で `export IGNITE_WORKER_ID=${id}` が実行されます）。
+
+この環境変数により、複数の IGNITIAN が同一リポジトリの異なる Issue に並列で作業しても、リポジトリの競合が発生しません。
+
+### per-IGNITIAN クローンの動作
+
+`setup_repo.sh` は `IGNITE_WORKER_ID` の設定有無に応じて以下の動作をします:
+
+- **IGNITE_WORKER_ID が設定されている場合（通常のIGNITIAN動作）**:
+  - `repo_to_path()` が `${repo_name}_ignitian_${IGNITE_WORKER_ID}` のパスを返す
+  - 例: `IGNITE_WORKER_ID=1` → `workspace/repos/owner_repo_ignitian_1`
+  - primary clone（`workspace/repos/owner_repo`）が存在する場合、`git clone --no-hardlinks` でローカルから高速 clone
+  - clone 後、`git remote set-url origin` で origin URL を GitHub に再設定
+  - `.git` ディレクトリが primary clone と完全に独立（`--no-hardlinks` による）
+
+- **IGNITE_WORKER_ID が未設定の場合（leader-solo mode 等）**:
+  - 従来通り `workspace/repos/owner_repo` パスを使用
+  - 後方互換性を完全に維持
+
+### 競合解消の仕組み
+
+| シナリオ | 解決方法 |
+|---|---|
+| 異なる Issue（IGNITIAN-1=Issue#100, IGNITIAN-2=Issue#200） | 別パスで独立（`_ignitian_1`, `_ignitian_2`） |
+| 同一 Issue 異タスク | 同じ per-IGNITIAN パスだがブランチが同一で安全 |
+| git lock ファイル競合 | `.git` ディレクトリが `--no-hardlinks` で完全に独立 |
+
 ## 外部リポジトリでの作業
 
 ### タスクメッセージに `repo_path` が含まれている場合
