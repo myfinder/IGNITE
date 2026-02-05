@@ -124,6 +124,7 @@ get_issue_info() {
 create_branch() {
     local branch_name="$1"
     local base_branch="$2"
+    local non_interactive="${3:-false}"
 
     # ベースブランチを更新
     log_info "ベースブランチを更新中: $base_branch"
@@ -132,7 +133,7 @@ create_branch() {
     # 既存のブランチがあるか確認
     if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
         log_warn "ブランチが既に存在します: $branch_name"
-        if [[ ! -t 0 ]]; then
+        if [[ "$non_interactive" == "true" ]] || [[ ! -t 0 ]]; then
             # 非対話環境: 既存ブランチに自動切り替え
             log_info "非対話環境のため、既存ブランチに自動切り替えします"
             git checkout "$branch_name"
@@ -385,7 +386,7 @@ main() {
     fi
 
     # ブランチ作成
-    create_branch "$branch_name" "$base_branch"
+    create_branch "$branch_name" "$base_branch" "$use_bot"
 
     # 変更がある場合のみコミット
     if ! git diff --cached --quiet || ! git diff --quiet; then
