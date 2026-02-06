@@ -535,6 +535,38 @@ watcher:
       # base_branch 未指定 → リポジトリのデフォルトブランチを使用
 ```
 
+### ワイルドカードパターン指定
+
+`pattern:` キーを使うと、Organization内のリポジトリをglobパターンで一括指定できます:
+
+```yaml
+repositories:
+  # 固定指定
+  - repo: myorg/specific-repo
+
+  # ワイルドカード指定（Organization APIで自動展開）
+  - pattern: "myorg/backend-*"
+  - pattern: "myorg/frontend-app-*"
+```
+
+**動作**:
+- 起動時にパターンを展開し、マッチするリポジトリを監視対象に追加します
+- デーモンモードでは定期的にパターンを再展開し、新しく追加されたリポジトリも自動検知します
+- リフレッシュ間隔は `pattern_refresh_interval`（デフォルト: 60サイクル ≈ 1時間）で設定可能です
+- 新リポジトリのイベントはWatcher起動時刻以降が対象となるため、起動後に追加されたリポジトリのイベントも漏れなく取得されます
+
+**パターン構文**:
+- `*` は任意の文字列にマッチします（bash glob準拠）
+- `?` は任意の1文字にマッチします
+
+**API**:
+- Organization API (`/orgs/{org}/repos`) でリポジトリ一覧を取得し、パターンでフィルタします
+- Organization でなくユーザーの場合は `/users/{user}/repos` にフォールバックします
+
+**その他**:
+- 固定指定 (`repo:`) とパターン指定 (`pattern:`) は混在可能です
+- 重複するリポジトリは自動的に除外されます
+
 ## 関連ドキュメント
 
 - [GitHub App設定ガイド](./github-app-setup.md) - Bot用GitHub Appの作成手順
