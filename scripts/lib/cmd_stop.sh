@@ -69,7 +69,7 @@ cmd_stop() {
             local wait_count=0
             while kill -0 "$watcher_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
                 sleep 0.5
-                ((wait_count++))
+                wait_count=$((wait_count + 1))
             done
             if kill -0 "$watcher_pid" 2>/dev/null; then
                 kill -9 "$watcher_pid" 2>/dev/null || true
@@ -90,7 +90,7 @@ cmd_stop() {
             local wait_count=0
             while kill -0 "$queue_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
                 sleep 0.5
-                ((wait_count++))
+                wait_count=$((wait_count + 1))
             done
             if kill -0 "$queue_pid" 2>/dev/null; then
                 kill -9 "$queue_pid" 2>/dev/null || true

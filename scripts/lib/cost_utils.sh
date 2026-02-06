@@ -238,10 +238,10 @@ update_sessions_yaml() {
     # Sub-Leaders のセッションID解決
     for role in leader strategist architect evaluator coordinator innovator; do
         local current_id
-        current_id=$(grep -A5 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+        current_id=$(grep -A5 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"' || true)
         if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
             local resolved_id
-            resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+            resolved_id=$(resolve_agent_session_id "$role" "$started_utc" || true)
             if [[ -n "$resolved_id" ]]; then
                 sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                 updated=true
@@ -254,10 +254,10 @@ update_sessions_yaml() {
         local role="ignitian_$i"
         if grep -q "^  ${role}:" "$sessions_file"; then
             local current_id
-            current_id=$(grep -A3 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"')
+            current_id=$(grep -A3 "^  ${role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"' || true)
             if [[ -z "$current_id" ]] || [[ "$current_id" == "null" ]]; then
                 local resolved_id
-                resolved_id=$(resolve_agent_session_id "$role" "$started_utc")
+                resolved_id=$(resolve_agent_session_id "$role" "$started_utc" || true)
                 if [[ -n "$resolved_id" ]]; then
                     sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                     updated=true
@@ -279,7 +279,7 @@ get_agent_session_id() {
     fi
 
     # session_id は role: の後 4行以内にある
-    grep -A5 "^  ${agent_role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"'
+    grep -A5 "^  ${agent_role}:" "$sessions_file" 2>/dev/null | grep "session_id:" | head -1 | awk '{print $2}' | tr -d '"' || true
 }
 
 # =============================================================================
