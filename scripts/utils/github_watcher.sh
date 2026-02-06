@@ -98,8 +98,12 @@ load_config() {
     IGNORE_BOT=$(grep -E '^\s*ignore_bot:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
     IGNORE_BOT=${IGNORE_BOT:-true}
 
+    PATTERN_REFRESH_INTERVAL=$(grep -E '^\s*pattern_refresh_interval:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    PATTERN_REFRESH_INTERVAL=${PATTERN_REFRESH_INTERVAL:-60}
+
     # 監視対象リポジトリを取得
     REPOSITORIES=()
+    REPO_PATTERNS=()   # グローバル（定期リフレッシュで再利用）
     local in_repos=false
     while IFS= read -r line; do
         if [[ "$line" =~ ^[[:space:]]*repositories: ]]; then
@@ -107,7 +111,12 @@ load_config() {
             continue
         fi
         if [[ "$in_repos" == true ]]; then
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
+            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*pattern:[[:space:]]*(.+) ]]; then
+                # - pattern: "org/prefix-*" 形式（ワイルドカード）
+                local pat="${BASH_REMATCH[1]}"
+                pat=$(echo "$pat" | tr -d '"' | tr -d "'" | xargs)
+                REPO_PATTERNS+=("$pat")
+            elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
                 # - repo: owner/repo 形式
                 local repo="${BASH_REMATCH[1]}"
                 repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
@@ -176,6 +185,57 @@ load_config() {
             fi
         fi
     done < "$config_file"
+
+    # ワイルドカードパターンを展開
+    if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+        expand_patterns "${REPO_PATTERNS[@]}"
+    fi
+}
+
+# ワイルドカードパターンをリポジトリ一覧に展開
+# グローバル REPOSITORIES 配列に追加する
+expand_patterns() {
+    local patterns=("$@")
+
+    for pat in "${patterns[@]}"; do
+        # owner/pattern 形式からorgを抽出
+        local org="${pat%%/*}"
+        local name_pattern="${pat#*/}"
+
+        log_info "パターン展開中: $pat"
+
+        # Organization API でリポジトリ一覧を取得（org → user フォールバック）
+        local repos=""
+        repos=$(gh api "/orgs/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || \
+        repos=$(gh api "/users/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || {
+            log_warn "リポジトリ一覧の取得に失敗: $org"
+            continue
+        }
+
+        # glob マッチングでフィルタ
+        local match_count=0
+        while IFS= read -r repo; do
+            [[ -z "$repo" ]] && continue
+            local repo_name="${repo#*/}"
+            # shellcheck disable=SC2053  # 意図的な glob マッチング
+            if [[ "$repo_name" == $name_pattern ]]; then
+                # 重複チェック
+                local dup=false
+                for existing in "${REPOSITORIES[@]}"; do
+                    if [[ "$existing" == "$repo" ]]; then
+                        dup=true
+                        break
+                    fi
+                done
+                if [[ "$dup" == false ]]; then
+                    REPOSITORIES+=("$repo")
+                    match_count=$((match_count + 1))
+                fi
+            fi
+        done <<< "$repos"
+
+        log_info "パターン '$pat' → ${match_count} リポジトリにマッチ"
+    done
 }
 
 # =============================================================================
@@ -1163,6 +1223,11 @@ run_daemon() {
     log_info "監視間隔: ${POLL_INTERVAL}秒"
     log_info "監視対象リポジトリ: ${REPOSITORIES[*]}"
     log_info "ステートファイル: $STATE_FILE"
+    if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+        log_info "パターンリフレッシュ間隔: ${PATTERN_REFRESH_INTERVAL}サイクル"
+    fi
+
+    local refresh_counter=0
 
     while true; do
         # tmuxセッション生存チェック（環境変数が設定されている場合のみ）
@@ -1170,6 +1235,17 @@ run_daemon() {
             if ! tmux has-session -t "$IGNITE_TMUX_SESSION" 2>/dev/null; then
                 log_warn "tmux セッションが消滅しました。Watcherを終了します"
                 exit 0
+            fi
+        fi
+
+        # パターンの定期リフレッシュ
+        if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+            refresh_counter=$((refresh_counter + 1))
+            if [[ $refresh_counter -ge $PATTERN_REFRESH_INTERVAL ]]; then
+                refresh_counter=0
+                log_info "パターンリフレッシュ実行中..."
+                expand_patterns "${REPO_PATTERNS[@]}"
+                log_info "現在の監視対象: ${REPOSITORIES[*]}"
             fi
         fi
 

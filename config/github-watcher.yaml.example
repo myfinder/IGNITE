@@ -21,12 +21,20 @@ watcher:
     #   base_branch: develop
     # - repo: organization/repo3
     #   base_branch: main
+    #
+    # ワイルドカードパターン指定（Organization API で展開）
+    # Organization内の命名規則に一致するリポジトリを一括監視
+    # 起動時に展開され、デーモンモードでは定期的にリフレッシュされる
+    # - pattern: "organization/project-*"
+    # - pattern: "organization/backend-service-*"
 
   # ポーリング間隔（秒）
   # GitHub API レート制限に注意してください
   # 認証済みの場合: 5000 requests/hour
   # 推奨: 60秒以上
   interval: 60
+  # パターンリフレッシュ間隔（ポーリング回数。デフォルト: 60 ≈ 約1時間）
+  # pattern_refresh_interval: 60
 
   # 監視するイベントタイプ
   events:
