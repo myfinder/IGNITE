@@ -58,7 +58,7 @@ brew install tmux
 
 ```bash
 cd /path/to/ignite
-./scripts/ignite start
+ignite start
 ```
 
 On first startup, the system automatically:
@@ -72,13 +72,13 @@ After startup completes, you'll be prompted to attach to the tmux session.
 **Options:**
 ```bash
 # Don't auto-attach after startup
-./scripts/ignite start --no-attach
+ignite start --no-attach
 
 # Force restart by terminating existing session
-./scripts/ignite start -f
+ignite start -f
 
 # Start with custom session ID and workspace
-./scripts/ignite start -s my-session -w /path/to/workspace
+ignite start -s my-session -w /path/to/workspace
 ```
 
 Using `-s`/`--session` and `-w`/`--workspace` options allows you to run multiple projects in parallel. See the "Running Multiple Projects in Parallel" section for details.
@@ -88,12 +88,12 @@ Using `-s`/`--session` and `-w`/`--workspace` options allows you to run multiple
 From another terminal, or after detaching from tmux session (`Ctrl+b d`):
 
 ```bash
-./scripts/ignite plan "Create a README file"
+ignite plan "Create a README file"
 ```
 
 To add context:
 ```bash
-./scripts/ignite plan "Create a README file" -c "Include project overview, installation instructions, and usage examples"
+ignite plan "Create a README file" -c "Include project overview, installation instructions, and usage examples"
 ```
 
 ### 3. Check Progress
@@ -101,17 +101,17 @@ To add context:
 #### Via Status Command (Recommended)
 
 ```bash
-./scripts/ignite status
+ignite status
 ```
 
 #### Via Dashboard
 
 ```bash
 # Check via status command (recommended)
-./scripts/ignite status
+ignite status
 
 # Real-time monitoring (adjust path if using custom workspace)
-watch -n 5 ./scripts/ignite status
+watch -n 5 ignite status
 
 # Or display dashboard file directly
 cat workspace/dashboard.md
@@ -121,19 +121,19 @@ cat workspace/dashboard.md
 
 ```bash
 # Show recent logs
-./scripts/ignite logs
+ignite logs
 
 # Real-time monitoring
-./scripts/ignite logs -f
+ignite logs -f
 
 # Specify number of lines
-./scripts/ignite logs -n 50
+ignite logs -n 50
 ```
 
 #### Direct tmux Session View
 
 ```bash
-./scripts/ignite attach
+ignite attach
 ```
 
 You can monitor each agent's activity in real-time across panes.
@@ -141,32 +141,32 @@ You can monitor each agent's activity in real-time across panes.
 ### 4. Stop the System
 
 ```bash
-./scripts/ignite stop
+ignite stop
 
 # Skip confirmation
-./scripts/ignite stop -y
+ignite stop -y
 ```
 
 ### 5. Check Costs
 
 ```bash
 # Show token usage and costs
-./scripts/ignite cost
+ignite cost
 
 # Detailed view (individual IGNITIANs)
-./scripts/ignite cost -d
+ignite cost -d
 
 # JSON output
-./scripts/ignite cost -j
+ignite cost -j
 ```
 
 ### 6. Clear Workspace
 
 ```bash
-./scripts/ignite clean
+ignite clean
 
 # Skip confirmation
-./scripts/ignite clean -y
+ignite clean -y
 ```
 
 ## 🏗 System Architecture
@@ -387,20 +387,20 @@ ignite/
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `start` | Start system | `./scripts/ignite start` |
-| `stop` | Stop system | `./scripts/ignite stop` |
-| `plan` | Submit task | `./scripts/ignite plan "goal"` |
-| `status` | Check status | `./scripts/ignite status` |
-| `attach` | Connect to tmux session | `./scripts/ignite attach` |
-| `logs` | View logs | `./scripts/ignite logs` |
-| `clean` | Clear workspace | `./scripts/ignite clean` |
-| `cost` | Show token usage and costs | `./scripts/ignite cost` |
-| `work-on` | Start implementation for Issue | `./scripts/ignite work-on 123 --repo owner/repo` |
-| `watcher` | Manage GitHub Watcher | `./scripts/ignite watcher start` |
-| `list` | List sessions | `./scripts/ignite list` |
-| `help` | Show help | `./scripts/ignite help` |
+| `start` | Start system | `ignite start` |
+| `stop` | Stop system | `ignite stop` |
+| `plan` | Submit task | `ignite plan "goal"` |
+| `status` | Check status | `ignite status` |
+| `attach` | Connect to tmux session | `ignite attach` |
+| `logs` | View logs | `ignite logs` |
+| `clean` | Clear workspace | `ignite clean` |
+| `cost` | Show token usage and costs | `ignite cost` |
+| `work-on` | Start implementation for Issue | `ignite work-on 123 --repo owner/repo` |
+| `watcher` | Manage GitHub Watcher | `ignite watcher start` |
+| `list` | List sessions | `ignite list` |
+| `help` | Show help | `ignite help` |
 
-For detailed help, use `./scripts/ignite help <command>`.
+For detailed help, use `ignite help <command>`.
 
 ### Running Multiple Projects in Parallel
 
@@ -408,25 +408,25 @@ You can run multiple projects simultaneously by specifying session ID and worksp
 
 ```bash
 # Start project A
-./scripts/ignite start -s proj-a -w /tmp/workspace-a
+ignite start -s proj-a -w /tmp/workspace-a
 
 # Start project B in a separate session
-./scripts/ignite start -s proj-b -w /tmp/workspace-b
+ignite start -s proj-b -w /tmp/workspace-b
 
 # List all sessions
-./scripts/ignite list
+ignite list
 
 # Submit tasks to each project
-./scripts/ignite plan "Feature A" -s proj-a -w /tmp/workspace-a
-./scripts/ignite plan "Feature B" -s proj-b -w /tmp/workspace-b
+ignite plan "Feature A" -s proj-a -w /tmp/workspace-a
+ignite plan "Feature B" -s proj-b -w /tmp/workspace-b
 
 # Check status of each project
-./scripts/ignite status -s proj-a -w /tmp/workspace-a
-./scripts/ignite status -s proj-b -w /tmp/workspace-b
+ignite status -s proj-a -w /tmp/workspace-a
+ignite status -s proj-b -w /tmp/workspace-b
 
 # Attach to each project
-./scripts/ignite attach -s proj-a
-./scripts/ignite attach -s proj-b
+ignite attach -s proj-a
+ignite attach -s proj-b
 ```
 
 **Notes:**
@@ -439,7 +439,7 @@ You can run multiple projects simultaneously by specifying session ID and worksp
 #### 1. Documentation Creation
 
 ```bash
-./scripts/ignite plan "Create project documentation"
+ignite plan "Create project documentation"
 ```
 
 **Processing Flow:**
@@ -453,7 +453,7 @@ You can run multiple projects simultaneously by specifying session ID and worksp
 #### 2. Code Implementation
 
 ```bash
-./scripts/ignite plan "Implement a task management CLI tool" -c "add, list, complete, delete commands. Store data in YAML"
+ignite plan "Implement a task management CLI tool" -c "add, list, complete, delete commands. Store data in YAML"
 ```
 
 **Processing Flow:**
@@ -467,7 +467,7 @@ You can run multiple projects simultaneously by specifying session ID and worksp
 #### 3. Data Analysis
 
 ```bash
-./scripts/ignite plan "Analyze the project codebase and identify improvements"
+ignite plan "Analyze the project codebase and identify improvements"
 ```
 
 **Processing Flow:**
@@ -501,8 +501,8 @@ ignitians:
 
 Restart the system after changes:
 ```bash
-./scripts/ignite stop -y
-./scripts/ignite start
+ignite stop -y
+ignite start
 ```
 
 ### tmux Session Operations
@@ -511,7 +511,7 @@ Restart the system after changes:
 
 ```bash
 # Attach to session (recommended)
-./scripts/ignite attach
+ignite attach
 
 # Or use tmux command directly (session name is the one specified at startup)
 tmux attach -t ignite-session
@@ -545,16 +545,16 @@ q                 # Exit scroll mode
 
 ```bash
 # General help
-./scripts/ignite help
-./scripts/ignite --help
+ignite help
+ignite --help
 
 # Command-specific help
-./scripts/ignite help start
-./scripts/ignite help plan
-./scripts/ignite start --help
+ignite help start
+ignite help plan
+ignite start --help
 
 # Version check
-./scripts/ignite --version
+ignite --version
 ```
 
 ### Understanding the Dashboard
@@ -610,7 +610,7 @@ Goal: Create a README file
 tmux ls
 
 # Force restart
-./scripts/ignite start -f
+ignite start -f
 ```
 
 **Cause 2: claude not found**
@@ -638,10 +638,10 @@ brew install tmux
 
 ```bash
 # Check queue status
-./scripts/ignite status
+ignite status
 
 # If messages exist, check that agent's pane
-./scripts/ignite attach
+ignite attach
 # Navigate to the relevant pane and check logs
 ```
 
@@ -649,27 +649,27 @@ brew install tmux
 
 ```bash
 # Real-time log monitoring
-./scripts/ignite logs -f
+ignite logs -f
 
 # Or display at once
-./scripts/ignite logs -n 50
+ignite logs -n 50
 ```
 
 **Cause 3: Blocked by dependencies**
 
 ```bash
 # Check dependencies via status
-./scripts/ignite status
+ignite status
 ```
 
 ### IGNITIANS Not Responding
 
 ```bash
 # Check queue status
-./scripts/ignite status
+ignite status
 
 # Check the relevant IGNITIAN's pane
-./scripts/ignite attach
+ignite attach
 Ctrl+b q    # Check pane numbers
 Ctrl+b q 6  # Go to IGNITIAN-1's pane
 ```
@@ -698,10 +698,10 @@ EOF
 
 ```bash
 # Clear workspace (Warning: also deletes in-progress tasks)
-./scripts/ignite clean
+ignite clean
 
 # Skip confirmation
-./scripts/ignite clean -y
+ignite clean -y
 ```
 
 ## 📊 Communication Protocol
@@ -743,12 +743,12 @@ See [docs/protocol.md](docs/protocol.md) for details.
 
 **Good Example:**
 ```bash
-./scripts/ignite plan "Implement user authentication feature" -c "JWT authentication, /login, /logout, /refresh endpoints, session management"
+ignite plan "Implement user authentication feature" -c "JWT authentication, /login, /logout, /refresh endpoints, session management"
 ```
 
 **Bad Example:**
 ```bash
-./scripts/ignite plan "authentication"
+ignite plan "authentication"
 # → Unclear what should be done
 ```
 
@@ -757,7 +757,7 @@ See [docs/protocol.md](docs/protocol.md) for details.
 For complex tasks, provide context via the `-c` option:
 
 ```bash
-./scripts/ignite plan "Improve performance" -c "Database query optimization, introduce caching, resolve N+1 problem"
+ignite plan "Improve performance" -c "Database query optimization, introduce caching, resolve N+1 problem"
 ```
 
 ### 3. Choose Appropriate Parallelism
@@ -774,13 +774,13 @@ Default parallelism is 3. Presets can be configured in `config/ignitians.yaml`.
 
 ```bash
 # Check status
-./scripts/ignite status
+ignite status
 
 # Monitor status every 5 seconds
-watch -n 5 ./scripts/ignite status
+watch -n 5 ignite status
 
 # Real-time log monitoring
-./scripts/ignite logs -f
+ignite logs -f
 ```
 
 ### 5. Utilize Logs
@@ -789,13 +789,13 @@ When problems occur, check logs first:
 
 ```bash
 # Show recent logs
-./scripts/ignite logs
+ignite logs
 
 # Real-time monitoring
-./scripts/ignite logs -f
+ignite logs -f
 
 # Show more lines
-./scripts/ignite logs -n 100
+ignite logs -n 100
 ```
 
 ## 📚 Learn More

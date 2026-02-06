@@ -141,10 +141,10 @@ IGNITEシステム起動時に、GitHub Watcherも一緒に起動することが
 
 ```bash
 # Watcherも一緒に起動
-./scripts/ignite start --with-watcher
+ignite start --with-watcher
 
 # Watcherを起動しない（設定で有効でも）
-./scripts/ignite start --no-watcher
+ignite start --no-watcher
 ```
 
 #### 設定ファイルでの自動起動
@@ -159,18 +159,18 @@ auto_start:
   enabled: true
 ```
 
-この設定を有効にすると、`./scripts/ignite start` だけでWatcherも自動起動します。
+この設定を有効にすると、`ignite start` だけでWatcherも自動起動します。
 
 #### 状態確認
 
 ```bash
 # Watcherの状態を含むシステム状態を表示
-./scripts/ignite status
+ignite status
 ```
 
 #### 停止
 
-`./scripts/ignite stop` を実行すると、Watcherも自動的に停止します。
+`ignite stop` を実行すると、Watcherも自動的に停止します。
 
 **注意事項:**
 - セッションごとにWatcherが起動されます（各ワークスペースにPIDとログを保存）
@@ -182,7 +182,7 @@ IGNITEとは別に手動でWatcherを起動する場合:
 
 ```bash
 # ターミナル1: IGNITEシステム起動
-./scripts/ignite start
+ignite start
 
 # ターミナル2: GitHub Watcher起動
 ./scripts/utils/github_watcher.sh
@@ -310,10 +310,10 @@ GitHubのIssue/PRコメントで以下のようにメンションすると、IGN
 
 ```bash
 # Issue番号で指定
-./scripts/ignite work-on 123 --repo owner/repo
+ignite work-on 123 --repo owner/repo
 
 # Issue URLで指定
-./scripts/ignite work-on https://github.com/owner/repo/issues/123
+ignite work-on https://github.com/owner/repo/issues/123
 ```
 
 ## ステート管理
@@ -437,10 +437,10 @@ IGNITEには、Issueへのコメント投稿を簡単に行うためのユーテ
 
 ```bash
 # コメント投稿
-./scripts/ignite watcher comment 123 --repo owner/repo --bot --body "メッセージ"
+ignite watcher comment 123 --repo owner/repo --bot --body "メッセージ"
 
 # 受付応答を投稿（テンプレート使用）
-./scripts/ignite watcher ack 123 owner/repo
+ignite watcher ack 123 owner/repo
 ```
 
 ## 外部リポジトリでの作業

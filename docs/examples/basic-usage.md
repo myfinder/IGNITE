@@ -14,7 +14,7 @@
 
 ```bash
 cd /path/to/ignite
-./scripts/ignite start
+ignite start
 ```
 
 出力例:
@@ -37,7 +37,7 @@ Leaderに初期化メッセージを送信中...
 次のステップ:
   1. tmuxセッションに接続: tmux attach -t ignite-session
   2. ダッシュボード確認: cat workspace/dashboard.md
-  3. タスク投入: ./scripts/ignite plan "目標"
+  3. タスク投入: ignite plan "目標"
 
 tmuxセッションにアタッチしますか? (Y/n):
 ```
@@ -47,7 +47,7 @@ tmuxセッションにアタッチしますか? (Y/n):
 別のターミナルで:
 
 ```bash
-./scripts/ignite plan "READMEファイルを作成する"
+ignite plan "READMEファイルを作成する"
 ```
 
 出力例:
@@ -62,7 +62,7 @@ tmuxセッションにアタッチしますか? (Y/n):
 
 次のステップ:
   1. ダッシュボード確認: cat workspace/dashboard.md
-  2. ステータス確認: ./scripts/ignite status
+  2. ステータス確認: ignite status
   3. tmuxセッション表示: tmux attach -t ignite-session
 ```
 
@@ -123,7 +123,7 @@ tmux attach -t ignite-session
 **5. ステータス確認**
 
 ```bash
-./scripts/ignite status
+ignite status
 ```
 
 出力例:
@@ -165,7 +165,7 @@ cat README.md
 **7. システム停止**
 
 ```bash
-./scripts/ignite stop
+ignite stop
 ```
 
 ---
@@ -181,13 +181,13 @@ cat README.md
 **1. システム起動**
 
 ```bash
-./scripts/ignite start
+ignite start
 ```
 
 **2. 分析タスク投入**
 
 ```bash
-./scripts/ignite plan \
+ignite plan \
   "プロジェクト全体を分析して改善提案を作成する" \
   -c "パフォーマンス、コード品質、保守性の観点から"
 ```
@@ -228,13 +228,13 @@ cat README.md
 **1. システム起動**
 
 ```bash
-./scripts/ignite start
+ignite start
 ```
 
 **2. 実装タスク投入**
 
 ```bash
-./scripts/ignite plan \
+ignite plan \
   "タスク管理CLIツールを実装する" \
   -c "コマンド: add, list, complete, delete。YAMLファイルでデータ保存"
 ```
@@ -251,8 +251,8 @@ ignitians:
 
 再起動:
 ```bash
-./scripts/ignite stop
-./scripts/ignite start
+ignite stop
+ignite start
 ```
 
 **4. プロセス**
@@ -323,13 +323,13 @@ ignitians:
 **2. システム起動**
 
 ```bash
-./scripts/ignite start
+ignite start
 ```
 
 **3. データ処理タスク投入**
 
 ```bash
-./scripts/ignite plan \
+ignite plan \
   "data/ディレクトリ内の全JSONファイルを処理して集計する" \
   -c "各ファイルのidフィールドをカウント、結果をsummary.jsonに出力"
 ```
@@ -356,14 +356,14 @@ cat summary.json
 
 **良い例:**
 ```bash
-./scripts/ignite plan \
+ignite plan \
   "READMEファイルを作成する" \
   -c "プロジェクト概要、インストール手順、使用例を含める"
 ```
 
 **悪い例:**
 ```bash
-./scripts/ignite plan "ドキュメント作成"
+ignite plan "ドキュメント作成"
 # → 曖昧すぎて、何を作成すべきか不明
 ```
 
@@ -442,7 +442,7 @@ grep -i error workspace/logs/*.log
 既存セッションを削除:
 ```bash
 tmux kill-session -t ignite-session
-./scripts/ignite start
+ignite start
 ```
 
 ---

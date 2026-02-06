@@ -141,10 +141,10 @@ You can start GitHub Watcher together with the IGNITE system.
 
 ```bash
 # Start with Watcher
-./scripts/ignite start --with-watcher
+ignite start --with-watcher
 
 # Start without Watcher (even if enabled in config)
-./scripts/ignite start --no-watcher
+ignite start --no-watcher
 ```
 
 #### Auto-start via Configuration File
@@ -159,18 +159,18 @@ auto_start:
   enabled: true
 ```
 
-With this setting enabled, Watcher will auto-start with just `./scripts/ignite start`.
+With this setting enabled, Watcher will auto-start with just `ignite start`.
 
 #### Status Check
 
 ```bash
 # Show system status including Watcher status
-./scripts/ignite status
+ignite status
 ```
 
 #### Stopping
 
-Running `./scripts/ignite stop` will automatically stop the Watcher as well.
+Running `ignite stop` will automatically stop the Watcher as well.
 
 **Notes:**
 - Watcher is started per session (PID and logs are saved in each workspace)
@@ -182,7 +182,7 @@ To start Watcher separately from IGNITE:
 
 ```bash
 # Terminal 1: Start IGNITE system
-./scripts/ignite start
+ignite start
 
 # Terminal 2: Start GitHub Watcher
 ./scripts/utils/github_watcher.sh
@@ -310,10 +310,10 @@ You can start work on an Issue directly from the `ignite` command:
 
 ```bash
 # Specify by Issue number
-./scripts/ignite work-on 123 --repo owner/repo
+ignite work-on 123 --repo owner/repo
 
 # Specify by Issue URL
-./scripts/ignite work-on https://github.com/owner/repo/issues/123
+ignite work-on https://github.com/owner/repo/issues/123
 ```
 
 ## State Management
@@ -437,10 +437,10 @@ IGNITE provides a utility script for easily posting comments to Issues.
 
 ```bash
 # Post comment
-./scripts/ignite watcher comment 123 --repo owner/repo --bot --body "Message"
+ignite watcher comment 123 --repo owner/repo --bot --body "Message"
 
 # Post acknowledgment (using template)
-./scripts/ignite watcher ack 123 owner/repo
+ignite watcher ack 123 owner/repo
 ```
 
 ## Working with External Repositories

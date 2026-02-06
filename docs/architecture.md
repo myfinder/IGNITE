@@ -222,7 +222,7 @@ claude-code --dangerously-skip-permissions
 
 1. **ユーザーがタスクを投入**
    ```bash
-   ./scripts/ignite plan "READMEファイルを作成する"
+   ignite plan "READMEファイルを作成する"
    ```
 
 2. **Leaderが受信・理解**
@@ -325,7 +325,7 @@ Coordinatorが以下を考慮してタスク配分:
 
 ### ステータス確認
 ```bash
-./scripts/ignite status
+ignite status
 ```
 
 ### tmuxセッション確認
