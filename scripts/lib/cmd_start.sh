@@ -149,6 +149,23 @@ EOF
     print_success "workspace初期化完了"
     echo ""
 
+    # 旧デーモンプロセスをクリーンアップ（前セッションの残骸対策）
+    if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+        local old_pid
+        old_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        kill "$old_pid" 2>/dev/null || true
+        rm -f "$WORKSPACE_DIR/github_watcher.pid"
+    fi
+    if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
+        local old_pid
+        old_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        kill "$old_pid" 2>/dev/null || true
+        rm -f "$WORKSPACE_DIR/queue_monitor.pid"
+    fi
+    pkill -f "queue_monitor.sh" 2>/dev/null || true
+    pkill -f "github_watcher.sh" 2>/dev/null || true
+    sleep 1
+
     # tmuxセッション作成
     print_info "tmuxセッションを作成中..."
     tmux new-session -d -s "$SESSION_NAME" -n ignite
@@ -374,17 +391,14 @@ EOF
     # GitHub Watcher の起動
     if [[ "$start_watcher" == true ]]; then
         if [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
-            # 既存のWatcher/モニターをクリーンアップ（前セッションの残骸対策）
-            pkill -f "github_watcher.sh" 2>/dev/null || true
-            pkill -f "queue_monitor.sh" 2>/dev/null || true
-            sleep 1
-
             print_info "GitHub Watcherを起動中..."
             # ログ出力先を設定してバックグラウンド起動
             local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
+            echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$watcher_log"
             export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
             export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
             export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+            export IGNITE_TMUX_SESSION="$SESSION_NAME"
             "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
@@ -395,6 +409,7 @@ EOF
             # Leaderのキュー監視のため、単独モードでも起動が必要
             print_info "キューモニターを起動中..."
             local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
+            echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
             export WORKSPACE_DIR="$WORKSPACE_DIR"
             "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
             local queue_pid=$!

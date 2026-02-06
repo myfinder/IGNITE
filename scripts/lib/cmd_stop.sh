@@ -65,6 +65,15 @@ cmd_stop() {
         if kill -0 "$watcher_pid" 2>/dev/null; then
             print_info "GitHub Watcherを停止中..."
             kill "$watcher_pid" 2>/dev/null || true
+            # プロセス終了を最大3秒待機
+            local wait_count=0
+            while kill -0 "$watcher_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+                sleep 0.5
+                ((wait_count++))
+            done
+            if kill -0 "$watcher_pid" 2>/dev/null; then
+                kill -9 "$watcher_pid" 2>/dev/null || true
+            fi
             print_success "GitHub Watcher停止完了"
         fi
         rm -f "$WORKSPACE_DIR/github_watcher.pid"
@@ -77,10 +86,23 @@ cmd_stop() {
         if kill -0 "$queue_pid" 2>/dev/null; then
             print_info "キューモニターを停止中..."
             kill "$queue_pid" 2>/dev/null || true
+            # プロセス終了を最大3秒待機
+            local wait_count=0
+            while kill -0 "$queue_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+                sleep 0.5
+                ((wait_count++))
+            done
+            if kill -0 "$queue_pid" 2>/dev/null; then
+                kill -9 "$queue_pid" 2>/dev/null || true
+            fi
             print_success "キューモニター停止完了"
         fi
         rm -f "$WORKSPACE_DIR/queue_monitor.pid"
     fi
+
+    # フォールバック: PIDファイルが消えていてもプロセスが残っている場合
+    pkill -f "queue_monitor.sh.*${SESSION_NAME}" 2>/dev/null || true
+    pkill -f "github_watcher.sh" 2>/dev/null || true
 
     # コスト履歴を保存
     save_cost_history

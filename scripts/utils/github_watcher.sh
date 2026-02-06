@@ -1165,6 +1165,14 @@ run_daemon() {
     log_info "ステートファイル: $STATE_FILE"
 
     while true; do
+        # tmuxセッション生存チェック（環境変数が設定されている場合のみ）
+        if [[ -n "${IGNITE_TMUX_SESSION:-}" ]]; then
+            if ! tmux has-session -t "$IGNITE_TMUX_SESSION" 2>/dev/null; then
+                log_warn "tmux セッションが消滅しました。Watcherを終了します"
+                exit 0
+            fi
+        fi
+
         process_events
 
         # 定期的に古いイベントをクリーンアップ
@@ -1262,6 +1270,10 @@ main() {
 
     # ステート初期化
     init_state
+
+    # グレースフル停止用の trap
+    trap 'log_info "シグナル受信: 停止します"; exit 0' SIGTERM SIGINT
+    trap 'log_info "GitHub Watcher を終了しました"' EXIT
 
     # 実行モード
     case "$mode" in

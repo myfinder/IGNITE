@@ -256,6 +256,12 @@ monitor_queues() {
     log_info "キュー監視を開始します（間隔: ${POLL_INTERVAL}秒）"
 
     while true; do
+        # tmuxセッション生存チェック
+        if ! tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+            log_warn "tmux セッション '$TMUX_SESSION' が消滅しました。監視を終了します"
+            exit 0
+        fi
+
         # Leader キュー
         scan_queue "$WORKSPACE_DIR/queue/leader" "leader"
 
@@ -344,6 +350,10 @@ main() {
         log_error "tmux セッションが見つかりません: $TMUX_SESSION"
         exit 1
     fi
+
+    # グレースフル停止用の trap
+    trap 'log_info "シグナル受信: 停止します"; exit 0' SIGTERM SIGINT
+    trap 'log_info "キュー監視を終了しました"' EXIT
 
     log_info "tmux セッション: $TMUX_SESSION"
 
