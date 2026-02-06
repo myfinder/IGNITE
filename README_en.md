@@ -52,12 +52,75 @@ sudo apt install tmux
 brew install tmux
 ```
 
+## 📦 Installation
+
+### Install from GitHub Release (Recommended)
+
+```bash
+# Download the latest release
+gh release download --repo myfinder/IGNITE --pattern "ignite-*.tar.gz"
+
+# Extract the archive
+tar xzf ignite-*.tar.gz
+
+# Run the installer
+cd ignite-*
+./install.sh
+```
+
+### Installation Paths
+
+By default, IGNITE is installed to the following locations:
+
+| Path | Description |
+|------|-------------|
+| `~/.local/bin/` | Executable (`ignite` command) |
+| `~/.config/ignite/` | Configuration files |
+| `~/.local/share/ignite/` | Data files (instructions, scripts) |
+
+### PATH Configuration
+
+If `~/.local/bin` is not in your PATH, add the following to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload your shell:
+```bash
+source ~/.bashrc  # or source ~/.zshrc
+```
+
+### Upgrade
+
+To upgrade an existing installation:
+
+```bash
+./install.sh --upgrade
+```
+
+This will update binaries and data files while preserving your configuration.
+
+### Development Mode (Run from Source)
+
+If you want to run IGNITE directly from the source code:
+
+```bash
+# Clone the repository
+git clone https://github.com/myfinder/IGNITE.git
+cd IGNITE
+
+# Run directly using the scripts directory
+./scripts/ignite start
+```
+
+When running from source, use `./scripts/ignite` instead of `ignite`.
+
 ## 🚀 Quick Start
 
 ### 1. Start the System
 
 ```bash
-cd /path/to/ignite
 ignite start
 ```
 
@@ -79,9 +142,19 @@ ignite start -f
 
 # Start with custom session ID and workspace
 ignite start -s my-session -w /path/to/workspace
+
+# Start with GitHub Watcher
+ignite start --with-watcher
+
+# Start in Leader-only mode (solo mode)
+ignite start -a leader
+# or
+ignite start --agents leader
 ```
 
 Using `-s`/`--session` and `-w`/`--workspace` options allows you to run multiple projects in parallel. See the "Running Multiple Projects in Parallel" section for details.
+
+Using `-a`/`--agents` option with `leader` starts in Leader-only solo mode. See the "Leader-only Mode" section for details.
 
 ### 2. Submit a Task
 
@@ -158,6 +231,21 @@ ignite cost -d
 
 # JSON output
 ignite cost -j
+```
+
+**Example Output:**
+```
+┌────────────────┬──────────────┬───────────────┬───────────────┬─────────────┐
+│ Agent          │ Input Tokens │ Output Tokens │    Cache(R/W) │  Cost (USD) │
+├────────────────┼──────────────┼───────────────┼───────────────┼─────────────┤
+│ Yui Iha        │          236 │           339 │       1.7/.2M │   $    2.57 │
+│ ...            │              │               │               │             │
+├────────────────┼──────────────┼───────────────┼───────────────┼─────────────┤
+│ Total          │       22,322 │        14,302 │    139.6/3.7M │   $   93.83 │
+└────────────────┴──────────────┴───────────────┴───────────────┴─────────────┘
+
+Rates: Claude Opus 4.5 ($5.00/1M input, $25.00/1M output)
+JPY estimate: ¥14,074 (excl. tax, $1=¥150.0)
 ```
 
 ### 6. Clear Workspace
@@ -433,6 +521,42 @@ ignite attach -s proj-b
 - Each session must have its own independent workspace
 - If session ID is not specified, the default `ignite-session` is used
 - If workspace is not specified, the default `workspace/` directory is used
+
+### Leader-Only Mode
+
+A lightweight mode where only the Leader processes tasks without launching Sub-Leaders or IGNITIANs.
+
+```bash
+# Start in Leader-only mode
+./scripts/ignite start -a leader
+# Or
+./scripts/ignite start --agents leader
+```
+
+**Use Cases:**
+
+| Scenario | Description |
+|----------|-------------|
+| **Cost Reduction** | Significantly reduces token consumption by not launching Sub-Leaders or IGNITIANs |
+| **Simple Task Processing** | Leader alone is sufficient for simple tasks (file editing, minor fixes, etc.) |
+| **Quick Response** | Processes quickly by skipping complex coordination processes |
+| **Debugging & Testing** | Runs with minimal configuration for system verification and testing |
+
+**Behavioral Differences:**
+
+| Item | Normal Mode | Leader-Only Mode |
+|------|-------------|------------------|
+| Launched Agents | Leader + 5 Sub-Leaders + IGNITIANs | Leader only |
+| Strategy Planning | Handled by Strategist | Leader executes directly |
+| Design Decisions | Handled by Architect | Leader executes directly |
+| Task Execution | IGNITIANs execute in parallel | Leader executes directly |
+| Quality Evaluation | Handled by Evaluator | Leader verifies directly |
+| Number of tmux panes | 6+ (Sub-Leaders + IGNITIANs) | 1 (Leader only) |
+
+**Notes:**
+- Normal mode (coordination mode) is recommended for complex tasks or large-scale changes
+- In solo mode, the `[SOLO]` tag is added to Leader's logs
+- Configuration is managed in `workspace/system_config.yaml` under `system.agent_mode`
 
 ### Usage Examples by Task Type
 
