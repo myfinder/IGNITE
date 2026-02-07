@@ -107,34 +107,40 @@ load_config() {
     # 監視対象リポジトリを取得
     REPOSITORIES=()
     REPO_PATTERNS=()   # グローバル（定期リフレッシュで再利用）
-    local in_repos=false
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*repositories: ]]; then
-            in_repos=true
-            continue
-        fi
-        if [[ "$in_repos" == true ]]; then
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*pattern:[[:space:]]*(.+) ]]; then
-                # - pattern: "org/prefix-*" 形式（ワイルドカード）
-                local pat="${BASH_REMATCH[1]}"
-                pat=$(echo "$pat" | tr -d '"' | tr -d "'" | xargs)
-                REPO_PATTERNS+=("$pat")
-            elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
-                # - repo: owner/repo 形式
-                local repo="${BASH_REMATCH[1]}"
-                repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
-                REPOSITORIES+=("$repo")
-            elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*([^:]+)$ ]]; then
-                # - owner/repo 形式（シンプル形式）
-                local repo="${BASH_REMATCH[1]}"
-                repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
-                REPOSITORIES+=("$repo")
-            elif [[ "$line" =~ ^[[:space:]]*[a-z_]+:[[:space:]] ]] && [[ ! "$line" =~ ^[[:space:]]*base_branch: ]]; then
-                # 新しいセクションが始まったら終了（base_branchは除く）
-                in_repos=false
+    if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
+        # yq版: 構造化パース
+        mapfile -t REPO_PATTERNS < <(yq -r '.repositories[] | select(has("pattern")) | .pattern' "$config_file" 2>/dev/null)
+        mapfile -t REPOSITORIES < <(yq -r '.repositories[] | select(has("repo")) | .repo' "$config_file" 2>/dev/null)
+        local simple_repos=()
+        mapfile -t simple_repos < <(yq -r '.repositories[] | select(type == "!!str")' "$config_file" 2>/dev/null)
+        REPOSITORIES+=("${simple_repos[@]}")
+    else
+        # フォールバック: 行ベースパース
+        local in_repos=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*repositories: ]]; then
+                in_repos=true
+                continue
             fi
-        fi
-    done < "$config_file"
+            if [[ "$in_repos" == true ]]; then
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*pattern:[[:space:]]*(.+) ]]; then
+                    local pat="${BASH_REMATCH[1]}"
+                    pat=$(echo "$pat" | tr -d '"' | tr -d "'" | xargs)
+                    REPO_PATTERNS+=("$pat")
+                elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
+                    local repo="${BASH_REMATCH[1]}"
+                    repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
+                    REPOSITORIES+=("$repo")
+                elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*([^:]+)$ ]]; then
+                    local repo="${BASH_REMATCH[1]}"
+                    repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
+                    REPOSITORIES+=("$repo")
+                elif [[ "$line" =~ ^[[:space:]]*[a-z_]+:[[:space:]] ]] && [[ ! "$line" =~ ^[[:space:]]*base_branch: ]]; then
+                    in_repos=false
+                fi
+            fi
+        done < "$config_file"
+    fi
 
     # イベントタイプ設定
     WATCH_ISSUES=$(yaml_get "$config_file" 'issues')
@@ -172,22 +178,27 @@ load_config() {
 
     # 許可ユーザーリストの読み込み
     ALLOWED_USERS=()
-    local in_allowed=false
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*allowed_users: ]]; then
-            in_allowed=true
-            continue
-        fi
-        if [[ "$in_allowed" == true ]]; then
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*[\"\']?([^\"\']+)[\"\']?$ ]]; then
-                local user="${BASH_REMATCH[1]}"
-                user=$(echo "$user" | xargs)
-                [[ -n "$user" ]] && ALLOWED_USERS+=("$user")
-            elif [[ "$line" =~ ^[[:space:]]*[a-z_]+: ]] && [[ ! "$line" =~ ^[[:space:]]*- ]]; then
-                in_allowed=false
+    if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
+        mapfile -t ALLOWED_USERS < <(yaml_get_list "$config_file" '.access_control.allowed_users')
+    else
+        # フォールバック: 行ベースパース
+        local in_allowed=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*allowed_users: ]]; then
+                in_allowed=true
+                continue
             fi
-        fi
-    done < "$config_file"
+            if [[ "$in_allowed" == true ]]; then
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*[\"\']?([^\"\']+)[\"\']?$ ]]; then
+                    local user="${BASH_REMATCH[1]}"
+                    user=$(echo "$user" | xargs)
+                    [[ -n "$user" ]] && ALLOWED_USERS+=("$user")
+                elif [[ "$line" =~ ^[[:space:]]*[a-z_]+: ]] && [[ ! "$line" =~ ^[[:space:]]*- ]]; then
+                    in_allowed=false
+                fi
+            fi
+        done < "$config_file"
+    fi
 
     # ワイルドカードパターンを展開
     if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
