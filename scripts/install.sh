@@ -123,6 +123,15 @@ check_dependencies() {
         return 1
     fi
 
+    # オプション依存（なくても動作するが、機能が制限される）
+    if command -v yq &>/dev/null; then
+        print_success "yq が見つかりました"
+    else
+        print_warning "yq が見つかりません（オプション）"
+        echo "  - yq: https://github.com/mikefarah/yq（v4.30以上推奨）"
+        echo "  - YAML設定のネスト値・配列読み取りに使用します"
+    fi
+
     return 0
 }
 
