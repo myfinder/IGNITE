@@ -36,6 +36,20 @@ print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
 print_error() { echo -e "${RED}✗ $1${NC}"; }
 print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 
+# sed_inplace - GNU/BSD 両対応の sed -i ラッパー（mktemp方式）
+sed_inplace() {
+    local pattern="$1"
+    local file="$2"
+    local tmp
+    tmp="$(mktemp)"
+    if sed "$pattern" "$file" > "$tmp"; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
 # =============================================================================
 # ヘルプ
 # =============================================================================
@@ -119,8 +133,8 @@ copy_installers() {
     chmod +x "$BUILD_DIR/install.sh" "$BUILD_DIR/uninstall.sh"
 
     # __BUILD_VERSION__ プレースホルダーを実際のバージョンに置換
-    sed -i "s/__BUILD_VERSION__/$VERSION/g" "$BUILD_DIR/install.sh"
-    sed -i "s/__BUILD_VERSION__/$VERSION/g" "$BUILD_DIR/uninstall.sh"
+    sed_inplace "s/__BUILD_VERSION__/$VERSION/g" "$BUILD_DIR/install.sh"
+    sed_inplace "s/__BUILD_VERSION__/$VERSION/g" "$BUILD_DIR/uninstall.sh"
 
     print_success "install.sh, uninstall.sh をコピーしました (VERSION=$VERSION)"
 }

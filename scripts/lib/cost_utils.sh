@@ -4,6 +4,9 @@
 
 [[ -n "${__LIB_COST_UTILS_LOADED:-}" ]] && return; __LIB_COST_UTILS_LOADED=1
 
+# core.sh の共通関数（sed_inplace, print_*, カラー変数等）を利用
+source "${BASH_SOURCE[0]%/*}/core.sh"
+
 # =============================================================================
 # 料金設定
 # =============================================================================
@@ -243,7 +246,7 @@ update_sessions_yaml() {
             local resolved_id
             resolved_id=$(resolve_agent_session_id "$role" "$started_utc" || true)
             if [[ -n "$resolved_id" ]]; then
-                sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                sed_inplace "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                 updated=true
             fi
         fi
@@ -259,7 +262,7 @@ update_sessions_yaml() {
                 local resolved_id
                 resolved_id=$(resolve_agent_session_id "$role" "$started_utc" || true)
                 if [[ -n "$resolved_id" ]]; then
-                    sed -i "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
+                    sed_inplace "/^  ${role}:/,/session_id:/{s/session_id: null/session_id: \"$resolved_id\"/}" "$sessions_file"
                     updated=true
                 fi
             fi

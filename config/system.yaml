@@ -1,6 +1,6 @@
 system:
   name: IGNITE
-  version: "0.1.14"
+  version: "0.1.19"
   description: "階層型マルチエージェントシステム"
 
 tmux:
@@ -18,13 +18,23 @@ paths:
   logs: ./workspace/logs
 
 claude_code:
-  command: "claude-code --dangerously-skip-permissions"
+  command: "claude --dangerously-skip-permissions"
   startup_delay: 3  # seconds to wait after launching
 
 monitoring:
   dashboard_update_interval: 5  # seconds
   queue_check_interval: 30      # seconds
   log_rotation_size: 10485760   # 10MB
+
+# cmd_start.sh のハードコード値を集約（読み取り実装は別Issueで対応）
+delays:
+  process_cleanup: 1       # 旧プロセス停止後の待機（秒）      [cmd_start.sh L167]
+  session_create: 0.5      # tmuxセッション作成後の待機（秒）   [cmd_start.sh L172]
+  leader_startup: 3        # Leader起動待機（秒）              [cmd_start.sh L186]
+  permission_accept: 0.5   # 権限承諾後の待機（秒）            [cmd_start.sh L191]
+  claude_startup: 8        # Claude Code起動完了待機（秒）     [cmd_start.sh L196]
+  prompt_send: 0.3         # プロンプト送信後の待機（秒）       [cmd_start.sh L207]
+  leader_init: 10          # Leader初期化待機（秒）            [cmd_start.sh L212]
 
 defaults:
   message_priority: normal
