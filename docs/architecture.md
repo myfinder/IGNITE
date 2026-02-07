@@ -142,10 +142,10 @@ payload:
 | `task_assignment` | coordinator → ignitian | タスク割り当て |
 | `task_completed` | ignitian → coordinator | 完了報告 |
 | `evaluation_request` | coordinator → evaluator | 評価依頼 |
-| `evaluation_result` | evaluator → leader | 評価結果 |
+| `evaluation_result` | evaluator → leader | 評価結果（日次レポートIssueへ自動記録） |
 | `improvement_request` | evaluator → innovator | 改善依頼 |
 | `improvement_suggestion` | innovator → leader | 改善提案 |
-| `progress_update` | coordinator → leader | 進捗報告 |
+| `progress_update` | coordinator → leader | 進捗報告（日次レポートIssueへ自動記録） |
 
 ## ディレクトリ構造
 
@@ -153,7 +153,22 @@ payload:
 ignite/
 ├── scripts/              # 起動・制御スクリプト
 │   ├── ignite            # 統合CLI（start/plan/status/stop等）
+│   ├── schema.sql        # SQLiteメモリDBスキーマ
+│   ├── lib/              # コアライブラリ
+│   │   ├── core.sh       # 定数・カラー・出力ヘルパー
+│   │   ├── agent.sh      # エージェント起動・管理
+│   │   ├── session.sh    # tmuxセッション管理
+│   │   ├── commands.sh   # コマンドルーター
+│   │   ├── cmd_*.sh      # 各サブコマンド実装
+│   │   ├── cost_utils.sh # コスト計算
+│   │   ├── dlq_handler.sh    # デッドレターキュー処理
+│   │   └── retry_handler.sh  # リトライ処理
 │   └── utils/            # ユーティリティ
+│       ├── queue_monitor.sh    # メッセージキュー監視デーモン
+│       ├── send_message.sh     # メッセージ送信
+│       ├── daily_report.sh     # 日次レポートIssue管理
+│       ├── github_watcher.sh   # GitHubイベント監視
+│       └── ...                 # その他GitHub連携スクリプト
 │
 ├── instructions/         # システムプロンプト
 │   ├── leader.md
@@ -167,11 +182,15 @@ ignite/
 ├── config/              # 設定ファイル
 │   ├── system.yaml      # システム設定
 │   ├── agents.yaml      # エージェント設定
-│   └── ignitians.yaml   # IGNITIANS設定
+│   ├── ignitians.yaml   # IGNITIANS設定
+│   └── github-watcher.yaml  # GitHub Watcher設定
 │
 ├── workspace/           # 実行時ワークスペース（.gitignore）
 │   ├── queue/           # メッセージキュー（タスク完了レポート含む）
 │   ├── context/         # コンテキスト
+│   ├── state/           # 状態管理ファイル
+│   │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
+│   ├── memory.db        # SQLiteエージェントメモリDB
 │   ├── logs/            # ログファイル
 │   └── dashboard.md     # 進捗ダッシュボード
 │
@@ -290,6 +309,58 @@ Coordinatorが以下を考慮してタスク配分:
 1. YAMLスキーマを定義
 2. 送信元エージェントの実装
 3. 受信先エージェントの処理実装
+
+## エージェントメモリ永続化
+
+各エージェントはSQLiteデータベース（`workspace/memory.db`）を使用して、セッションをまたいだ学習内容・決定記録を永続化します。
+
+### スキーマ
+
+テーブル定義は `scripts/schema.sql` に定義されています。主なテーブル:
+
+- **decisions** — 設計判断・技術選定などの決定事項とその理由
+- **learnings** — 作業中に得た知見・教訓
+- **task_history** — タスク実行履歴と結果
+
+### 利用フロー
+
+1. システム起動時に `schema.sql` を使用してDBを初期化（テーブルが存在しない場合のみ作成）
+2. 各エージェントが作業中に得た知見・決定をDBに記録
+3. 次回セッションで過去の記録を参照し、一貫性のある判断を実現
+
+### 対応エージェント
+
+全エージェント（Leader、Sub-Leaders、IGNITIANS）がメモリ永続化に対応しています。各エージェントのシステムプロンプト（`instructions/*.md`）にSQLiteメモリ操作の手順が記載されています。
+
+## 日次レポート管理
+
+作業進捗をリポジトリ別の GitHub Issues で自動追跡するシステムです。
+
+### 概要
+
+`scripts/utils/daily_report.sh` が日次レポートIssue のライフサイクルを管理します。作業対象リポジトリごとに、日付単位でIssueを作成・更新・クローズします。
+
+### サブコマンド
+
+| サブコマンド | 説明 |
+|-------------|------|
+| `ensure` | 当日のIssueがなければ作成、あれば番号を返す |
+| `create` | 日次レポートIssueを新規作成 |
+| `comment` | Issueにコメントを追加 |
+| `update` | Issue本文を更新 |
+| `close` | Issueをclose |
+| `close-all` | 全リポジトリの当日Issueを一括close |
+
+### 自動連携
+
+- **タスク受信時**: `queue_monitor.sh` が `github_task` 検知時に日次レポートIssueへ "Task Started" コメントを自動記録
+- **進捗報告時**: `progress_update` メッセージ受信時に進捗内容を日次レポートIssueへ記録
+- **評価完了時**: `evaluation_result` メッセージ受信時に評価結果を日次レポートIssueへ記録
+- **セッション終了時**: `ignite stop` で当日の全日次レポートIssueを自動close
+
+### 状態管理
+
+`workspace/state/report_issues.json` にリポジトリ×日付→Issue番号のキャッシュを保持し、重複作成を防止します（アトミック書き込み対応）。
 
 ## パフォーマンス最適化
 

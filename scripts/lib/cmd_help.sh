@@ -52,13 +52,15 @@ cmd_help() {
             echo "IGNITE システムを停止します"
             echo ""
             echo "オプション:"
-            echo "  -s, --session <id>  停止するセッションIDを指定"
-            echo "  -y, --yes           確認をスキップ"
-            echo "  -h, --help          このヘルプを表示"
+            echo "  -s, --session <id>    停止するセッションIDを指定"
+            echo "  -w, --workspace <dir> ワークスペースディレクトリを指定"
+            echo "  -y, --yes             確認をスキップ"
+            echo "  -h, --help            このヘルプを表示"
             echo ""
             echo "例:"
             echo "  ./scripts/ignite stop              # 実行中のセッションを停止"
             echo "  ./scripts/ignite stop -s proj-a    # 指定セッションを停止"
+            echo "  ./scripts/ignite stop -s proj-a -w /tmp/workspace-a  # ワークスペース指定で停止"
             echo "  ./scripts/ignite stop -y           # 確認なしで停止"
             ;;
         plan)

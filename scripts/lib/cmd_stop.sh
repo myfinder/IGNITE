@@ -35,6 +35,13 @@ cmd_stop() {
                 fi
                 shift 2
                 ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help stop; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help stop; exit 1 ;;
         esac
@@ -67,12 +74,13 @@ cmd_stop() {
         fi
     fi
 
-    # セッション情報からワークスペースを自動検出
-    local session_info="$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"
-    if [[ -f "$session_info" ]]; then
-        WORKSPACE_DIR=$(grep "^workspace_dir:" "$session_info" | awk '{print $2}' | tr -d '"')
+    # ワークスペース解決: -w 指定 > セッション情報 > デフォルト
+    if [[ -z "$WORKSPACE_DIR" ]]; then
+        local session_info="$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"
+        if [[ -f "$session_info" ]]; then
+            WORKSPACE_DIR=$(grep "^workspace_dir:" "$session_info" | awk '{print $2}' | tr -d '"')
+        fi
     fi
-    # フォールバック
     if [[ -z "$WORKSPACE_DIR" ]]; then
         setup_workspace
     fi
