@@ -146,6 +146,76 @@ payload:
 - **Glob**: 新しいメッセージやレポートの検出
 - **Bash**: タイムスタンプ取得、ファイル操作
 
+## メモリ操作（SQLite）
+
+メモリデータベース `workspace/state/memory.db` を使って記録と復元を行います。
+
+> **MEMORY.md との責務分離**:
+> - `MEMORY.md` = エージェント個人のノウハウ・学習メモ（テキストベース）
+> - `SQLite` = システム横断の構造化データ（クエリ可能）
+
+> **sqlite3 不在時**: メモリ操作はスキップし、コア機能に影響なし（ログに警告を出力して続行）
+
+> **SQL injection 対策**: ユーザー入力をSQLに含める場合、シングルクォートは二重化する（例: `'` → `''`）
+
+### セッション開始時（必須）
+通知を受け取ったら、まず以下を実行して前回の状態を復元してください:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT summary FROM agent_states WHERE agent='coordinator';"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, status, title FROM tasks WHERE status IN ('queued','in_progress') ORDER BY started_at DESC LIMIT 20;"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT type, content, timestamp FROM memories WHERE agent='coordinator' ORDER BY timestamp DESC LIMIT 10;"
+```
+
+### 記録タイミング
+以下のタイミングで必ず記録してください:
+
+- **メッセージ送信時**: type='message_sent'
+- **メッセージ受信時**: type='message_received'
+- **判断・意思決定時**: type='decision'
+- **新しい知見を得た時**: type='learning'
+- **エラー発生時**: type='error'
+- **タスク状態変更時**: tasks テーブルを UPDATE
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id) VALUES ('coordinator', '{type}', '{content}', '{context}', '{task_id}');"
+```
+
+### 状態保存（アイドル時）
+タスク処理が一段落したら、現在の状況を要約して保存してください:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT OR REPLACE INTO agent_states (agent, status, current_task_id, last_active, summary) VALUES ('coordinator', 'idle', NULL, datetime('now','+9 hours'), '{現在の状況要約}');"
+```
+
+### Coordinator固有: タスク管理SQL
+
+#### タスク割り当て
+IGNITIANにタスクを割り当てる際、tasks テーブルに記録します:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO tasks (task_id, assigned_to, delegated_by, status, title, started_at) VALUES ('{task_id}', 'ignitian_{n}', 'coordinator', 'in_progress', '{title}', datetime('now','+9 hours'));"
+```
+
+#### タスク完了更新
+IGNITIANから完了レポートを受信したら、tasks テーブルを更新します:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; UPDATE tasks SET status='completed', completed_at=datetime('now','+9 hours') WHERE task_id='{task_id}';"
+```
+
+#### ロストタスク検出（30分閾値）
+30分以上 `in_progress` のまま完了していないタスクを検出します。定期チェックや完了レポート処理時に実行してください:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, title, started_at FROM tasks WHERE status='in_progress' AND datetime(started_at, '+30 minutes') < datetime('now', 'localtime');"
+```
+
+ロストタスクが検出された場合:
+1. 該当IGNITIANの状態を確認
+2. 必要に応じてタスクの再割り当てまたはLeaderへのエスカレーション
+3. メモリに記録: type='observation', content='ロストタスク検出: {task_id}'
+
 ## タスク処理手順
 
 **重要**: 以下は通知を受け取った時の処理手順です。**自発的にキューをポーリングしないでください。**
