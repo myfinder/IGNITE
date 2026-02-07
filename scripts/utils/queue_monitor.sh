@@ -1,6 +1,24 @@
 #!/bin/bash
 # キュー監視・自動処理スクリプト
 # キューに新しいメッセージが来たら、対応するエージェントに処理を指示
+#
+# 配信保証: at-least-once（リトライ機構統合済み）
+#   - at-most-once: mv → process の原子性で重複防止
+#   - タイムアウト検知 + process_retry() でリトライ保証
+#
+# 状態遷移図:
+#   queue/*.yaml
+#     │ mv → processed/
+#     ▼
+#   [processing] ── send_to_agent成功 ──→ [delivered] (完了)
+#     │
+#     │ timeout (mtime > task_timeout)
+#     ▼
+#   [retrying] ── retry_count < MAX ──→ queue/*.yaml に戻す (再処理)
+#     │
+#     │ retry_count >= MAX
+#     ▼
+#   [dead_letter] + escalate_to_leader()
 
 set -u
 
@@ -548,10 +566,13 @@ scan_queue() {
         filename=$(basename "$file")
         local dest="$queue_dir/processed/$filename"
 
-        # at-most-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
+        # at-least-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
         mv "$file" "$dest" 2>/dev/null || continue
 
         # status=processing + processed_at を追記
+        printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
+
+        # status=processing + processed_at を追記（タイムアウト検知の基点）
         printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
 
         # 処理（processed/ 内のパスを渡す）
