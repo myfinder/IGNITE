@@ -308,6 +308,9 @@ EOF
 session_name: "${SESSION_NAME}"
 workspace_dir: "${WORKSPACE_DIR}"
 started_at: "$(date -Iseconds)"
+mode: "${agent_mode}"
+agents_total: $((1 + ${#SUB_LEADERS[@]} + worker_count))
+agents_actual: $((1 + ${#SUB_LEADERS[@]} + actual_ignitian_count))
 EOF
 
     # コスト追跡用のセッションID記録

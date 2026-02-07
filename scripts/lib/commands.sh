@@ -370,20 +370,69 @@ cmd_clean() {
 # =============================================================================
 
 cmd_list() {
-    print_header "実行中のIGNITEセッション"
+    print_header "IGNITEセッション一覧"
     echo ""
 
-    local sessions
-    sessions=$(tmux list-sessions -F '#{session_name} (#{session_windows} windows, created #{session_created_string})' 2>/dev/null | grep "^ignite-" || true)
+    local session_dir="$IGNITE_CONFIG_DIR/sessions"
+    local found=0
+    # 表示済みセッション名を記録（tmuxフォールバック時の重複防止）
+    local shown_sessions=""
 
-    if [[ -z "$sessions" ]]; then
+    # テーブルヘッダー
+    printf "  %-16s %-10s %-8s %s\n" "SESSION" "STATUS" "AGENTS" "WORKSPACE"
+    printf "  %-16s %-10s %-8s %s\n" "────────────────" "──────────" "────────" "─────────────────"
+
+    # Step 2: sessions/*.yaml を走査
+    if [[ -d "$session_dir" ]]; then
+        for f in "$session_dir"/*.yaml; do
+            [[ -f "$f" ]] || continue
+            local s_name s_workspace s_mode s_total s_actual
+            s_name=$(grep '^session_name:' "$f" | awk '{print $2}' | tr -d '"')
+            s_workspace=$(grep '^workspace_dir:' "$f" | awk '{print $2}' | tr -d '"')
+            s_mode=$(grep '^mode:' "$f" | awk '{print $2}' | tr -d '"')
+            s_total=$(grep '^agents_total:' "$f" | awk '{print $2}')
+            s_actual=$(grep '^agents_actual:' "$f" | awk '{print $2}')
+            # 後方互換フォールバック
+            s_mode=${s_mode:-unknown}
+            s_total=${s_total:-"-"}
+            s_actual=${s_actual:-"-"}
+            # STATUS判定
+            local s_status="stopped"
+            if tmux has-session -t "$s_name" 2>/dev/null; then
+                s_status="running"
+            fi
+            # AGENTS列
+            local agents_display="${s_actual}/${s_total}"
+            if [[ "$s_mode" == "leader" ]]; then
+                agents_display="${agents_display} (solo)"
+            fi
+            printf "  %-16s %-10s %-8s %s\n" "$s_name" "$s_status" "$agents_display" "$s_workspace"
+            shown_sessions="${shown_sessions}${s_name} "
+            found=$((found + 1))
+        done
+    fi
+
+    # Step 3: tmuxフォールバック（YAMLなしのセッションを補完）
+    local tmux_sessions
+    tmux_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
+    if [[ -n "$tmux_sessions" ]]; then
+        while IFS= read -r s_name; do
+            # 既にYAMLで表示済みならスキップ
+            if [[ "$shown_sessions" == *"$s_name "* ]]; then
+                continue
+            fi
+            printf "  %-16s %-10s %-8s %s\n" "$s_name" "running" "-" "-"
+            found=$((found + 1))
+        done <<< "$tmux_sessions"
+    fi
+
+    # Step 4: 結果なし
+    if [[ "$found" -eq 0 ]]; then
+        echo ""
         print_warning "実行中のIGNITEセッションはありません"
         echo ""
         echo -e "新しいセッションを起動: ${YELLOW}./scripts/ignite start${NC}"
     else
-        echo "$sessions" | while read -r session; do
-            echo -e "  ${GREEN}●${NC} $session"
-        done
         echo ""
         echo -e "セッションに接続: ${YELLOW}./scripts/ignite attach -s <session-id>${NC}"
         echo -e "セッションを停止: ${YELLOW}./scripts/ignite stop -s <session-id>${NC}"
