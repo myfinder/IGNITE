@@ -8,6 +8,7 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 
 # Layer 0: 定数・ユーティリティ
 source "${LIB_DIR}/core.sh"
+source "${LIB_DIR}/yaml_utils.sh"
 
 # Layer 1: 基盤サービス
 source "${LIB_DIR}/session.sh"

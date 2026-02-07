@@ -27,6 +27,9 @@ if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
     fi
 fi
 
+# YAMLユーティリティ
+source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
+
 # デフォルト設定
 DEFAULT_INTERVAL=60
 DEFAULT_STATE_FILE="workspace/state/github_watcher_state.json"
@@ -81,10 +84,10 @@ load_config() {
     fi
 
     # YAMLから設定を読み込み
-    POLL_INTERVAL=$(grep -E '^\s*interval:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    POLL_INTERVAL=$(yaml_get "$config_file" 'interval')
     POLL_INTERVAL=${POLL_INTERVAL:-$DEFAULT_INTERVAL}
 
-    STATE_FILE=$(grep -E '^\s*state_file:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    STATE_FILE=$(yaml_get "$config_file" 'state_file')
     STATE_FILE=${STATE_FILE:-$DEFAULT_STATE_FILE}
     # IGNITE_WORKSPACE_DIR が設定されていればそれを基準にする（インストールモード対応）
     if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
@@ -95,10 +98,10 @@ load_config() {
         STATE_FILE="${PROJECT_ROOT}/${STATE_FILE}"
     fi
 
-    IGNORE_BOT=$(grep -E '^\s*ignore_bot:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    IGNORE_BOT=$(yaml_get "$config_file" 'ignore_bot')
     IGNORE_BOT=${IGNORE_BOT:-true}
 
-    PATTERN_REFRESH_INTERVAL=$(grep -E '^\s*pattern_refresh_interval:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    PATTERN_REFRESH_INTERVAL=$(yaml_get "$config_file" 'pattern_refresh_interval')
     PATTERN_REFRESH_INTERVAL=${PATTERN_REFRESH_INTERVAL:-60}
 
     # 監視対象リポジトリを取得
@@ -134,23 +137,23 @@ load_config() {
     done < "$config_file"
 
     # イベントタイプ設定
-    WATCH_ISSUES=$(grep -E '^\s*issues:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_ISSUES=$(yaml_get "$config_file" 'issues')
     WATCH_ISSUES=${WATCH_ISSUES:-true}
 
-    WATCH_ISSUE_COMMENTS=$(grep -E '^\s*issue_comments:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_ISSUE_COMMENTS=$(yaml_get "$config_file" 'issue_comments')
     WATCH_ISSUE_COMMENTS=${WATCH_ISSUE_COMMENTS:-true}
 
-    WATCH_PRS=$(grep -E '^\s*pull_requests:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PRS=$(yaml_get "$config_file" 'pull_requests')
     WATCH_PRS=${WATCH_PRS:-true}
 
-    WATCH_PR_COMMENTS=$(grep -E '^\s*pr_comments:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PR_COMMENTS=$(yaml_get "$config_file" 'pr_comments')
     WATCH_PR_COMMENTS=${WATCH_PR_COMMENTS:-true}
 
-    WATCH_PR_REVIEWS=$(grep -E '^\s*pr_reviews:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PR_REVIEWS=$(yaml_get "$config_file" 'pr_reviews')
     WATCH_PR_REVIEWS=${WATCH_PR_REVIEWS:-true}
 
     # トリガー設定
-    MENTION_PATTERN=$(grep -E '^\s*mention_pattern:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    MENTION_PATTERN=$(yaml_get "$config_file" 'mention_pattern')
     MENTION_PATTERN=${MENTION_PATTERN:-"@ignite-gh-app"}
 
     # ワークスペース設定
@@ -158,13 +161,13 @@ load_config() {
     if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
         WORKSPACE_DIR="$IGNITE_WORKSPACE_DIR"
     else
-        WORKSPACE_DIR=$(grep -E '^\s*workspace:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+        WORKSPACE_DIR=$(yaml_get "$config_file" 'workspace')
         WORKSPACE_DIR=${WORKSPACE_DIR:-"workspace"}
         WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
     fi
 
     # アクセス制御設定
-    ACCESS_CONTROL_ENABLED=$(awk '/^access_control:/{found=1} found && /^[[:space:]]+enabled:/{print $2; exit}' "$config_file" | tr -d '"')
+    ACCESS_CONTROL_ENABLED=$(yaml_get_nested "$config_file" '.access_control.enabled')
     ACCESS_CONTROL_ENABLED=${ACCESS_CONTROL_ENABLED:-false}
 
     # 許可ユーザーリストの読み込み
