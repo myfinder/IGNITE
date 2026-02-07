@@ -142,11 +142,22 @@ _get_bot_token_internal() {
             return 0
         fi
 
+        # 失敗: exit codeに基づくログ出力（sysexits.h準拠）
         last_error="$token"
+        case $exit_code in
+            64) log_warn "Bot Token: 引数エラー (EX_USAGE)"; break ;;
+            69) log_warn "Bot Token: gh CLI/gh-token未インストール (EX_UNAVAILABLE)"; break ;;
+            78) log_warn "Bot Token: 設定ファイルエラー (EX_CONFIG)"; break ;;
+            77) log_warn "Bot Token: 権限エラー (EX_NOPERM)"; break ;;
+            73) log_warn "Bot Token: トークン生成失敗 (EX_CANTCREAT)" ;;
+            75) log_warn "Bot Token: 一時的エラー (EX_TEMPFAIL)" ;;
+            *)  log_warn "Bot Token: 不明なエラー (exit_code=$exit_code)" ;;
+        esac
+
         retry_count=$((retry_count + 1))
 
         if [[ $retry_count -lt $BOT_TOKEN_MAX_RETRIES ]]; then
-            log_warn "Bot Token取得失敗 (試行 $retry_count/$BOT_TOKEN_MAX_RETRIES)。${BOT_TOKEN_RETRY_DELAY}秒後にリトライ..."
+            log_warn "Bot Token取得リトライ (試行 $retry_count/$BOT_TOKEN_MAX_RETRIES)。${BOT_TOKEN_RETRY_DELAY}秒後..."
             sleep "$BOT_TOKEN_RETRY_DELAY"
         fi
     done
