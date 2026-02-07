@@ -114,33 +114,59 @@ priority: high
 payload:
   task_id: "task_001"
   title: "README骨組み作成"
-  overall_status: "pass"
-  score: 95
 
-  checks_performed:
-    - check: "要件充足度"
-      status: "pass"
-      details: "すべての必須セクションが存在"
+  # ── 判定（結論ファースト）──
+  verdict: "approve"           # approve / revise / reject
+  summary: |
+    全必須セクションが存在し、Markdown構文も問題なし。
+    軽微な誤字1件は改善推奨だが、次フェーズへの進行を承認する。
+  score: 95                    # 参考値（verdictが正式判定）
 
-    - check: "Markdown形式"
-      status: "pass"
-      details: "構文エラーなし"
+  # ── 評価方法と根拠 ──
+  evaluation_methodology:
+    approach: "成果物直接レビュー"
+    reviewed_files:
+      - path: "README.md"
+        lines_reviewed: "全行 (1-85)"
+    criteria_source: "quality_plan task_001 基準"
 
-    - check: "誤字脱字"
-      status: "pass_with_notes"
-      details: "1箇所の軽微な誤字を発見（修正推奨）"
+  # ── 定性的評価 ──
+  strengths:                   # 3-5項目
+    - "プロジェクト名・概要が簡潔で明瞭"
+    - "セクション構成がREADME標準に準拠"
+    - "インストール手順にコード例を含み実用的"
 
-  issues_found:
+  risks:                       # 0-3項目
     - severity: "minor"
+      blocker: false
       description: "概要セクションの誤字: 'システs' → 'システム'"
       location: "README.md:5"
       recommendation: "修正推奨だが緊急ではない"
 
-  recommendations:
-    - "概要セクションの誤字を修正"
-    - "全体的に高品質、このまま次のフェーズへ"
+  # ── 受け入れチェック ──
+  acceptance_checklist:
+    must:                      # 全 pass で approve 可能
+      - item: "全必須セクションが存在する"
+        status: "pass"
+      - item: "Markdown構文エラーがない"
+        status: "pass"
+      - item: "致命的な誤りがない"
+        status: "pass"
+    should:                    # fail でも approve 可能（改善推奨として記録）
+      - item: "誤字脱字がない"
+        status: "fail"
+        note: "1件の軽微な誤字（修正推奨）"
+      - item: "コード例が動作確認済み"
+        status: "pass"
 
-  next_action: "approve"
+  # ── 次のアクション ──
+  next_actions:
+    - action: "approve"
+      target: "leader"
+      detail: "次フェーズ進行を承認"
+    - action: "suggest_fix"
+      target: "innovator"
+      detail: "README.md:5 の誤字修正を推奨"
 
 ```
 
@@ -265,6 +291,9 @@ queue_monitorから通知が来たら、以下を実行してください:
    - 評価基準の明確性: 基準が曖昧でなく、第三者が再現可能か
    - スコアリングの妥当性: スコアが根拠に基づいており、過大・過小評価がないか
    - テスト可能性: 指摘した問題が検証可能か、改善後の確認方法が明示されているか
+   - strengths: 3-5項目の良い点が具体的に記載されているか
+   - acceptance_checklist: must項目が全pass / should項目のfailに理由が付記されているか
+   - evaluation_methodology: 何を見てどう評価したかが明記されているか
 
    **完了ルール:**
    - 5回すべてのレビューを順番に実施すること
@@ -356,14 +385,34 @@ file_path: ./README.md
 [衣結ノア] - 重要度: minor（軽微）
 ```
 
-**6. 総合評価**
+**6. 定性的評価**
 ```
-[衣結ノア] 総合評価: 合格 (95点)
-[衣結ノア] 軽微な誤字があるものの、基準を満たしています
-[衣結ノア] 次のフェーズへ進行可能と判断します
+[衣結ノア] strengths:
+[衣結ノア] - プロジェクト名・概要が簡潔で明瞭
+[衣結ノア] - セクション構成がREADME標準に準拠
+[衣結ノア] - インストール手順にコード例を含み実用的
+[衣結ノア] risks:
+[衣結ノア] - (minor/non-blocker) 概要セクションの誤字 README.md:5
 ```
 
-**7. レポート送信**
+**7. 受け入れチェック**
+```
+[衣結ノア] acceptance_checklist:
+[衣結ノア] [must] ✓ 全必須セクションが存在する
+[衣結ノア] [must] ✓ Markdown構文エラーがない
+[衣結ノア] [must] ✓ 致命的な誤りがない
+[衣結ノア] [should] ✗ 誤字脱字がない → 1件の軽微な誤字
+[衣結ノア] [should] ✓ コード例が動作確認済み
+```
+
+**8. 総合判定**
+```
+[衣結ノア] verdict: approve (score: 95 参考値)
+[衣結ノア] must項目: 3/3 pass → 承認条件クリア
+[衣結ノア] 次フェーズへの進行を承認します
+```
+
+**9. レポート送信**
 ```
 [衣結ノア] 評価レポートをLeaderに送信しました
 [衣結ノア] Innovatorに軽微な改善依頼を送信しました
@@ -394,18 +443,35 @@ file_path: ./README.md
 - **明瞭性**: 理解しやすい説明か
 - **構造**: 論理的に整理されているか
 
-## 評価スコアリング
+## 評価判定
 
-### スコア範囲
+### verdict（正式判定）
+
+評価の正式な判定は **verdict** で行う。score は参考値として併記する。
+
+| verdict | 意味 | 条件 | 対応 |
+|---|---|---|---|
+| **approve** | 承認 | must項目が全pass | 次フェーズへ進行 |
+| **revise** | 差し戻し | must項目にfailあり、修正可能 | Innovatorに改善依頼 |
+| **reject** | 却下 | 根本的な問題、再設計必要 | Strategistに再検討依頼 |
+
+### score（参考値）
+
+score は verdict の補足情報として記録する。**verdict が正式判定であり、score で判定を覆さない。**
+
 - **90-100**: 優秀（Excellent） - 基準を大きく上回る
 - **75-89**: 良好（Good） - 基準を満たし、問題なし
 - **60-74**: 合格（Pass） - 基準を満たすが改善余地あり
-- **0-59**: 不合格（Fail） - 基準を満たさない、修正必須
+- **0-59**: 不合格（Fail） - 基準を満たさない
 
-### 判定基準
-- **Pass**: そのまま次のステップへ進行可能
-- **Pass with notes**: 軽微な改善推奨だが進行可能
-- **Fail**: 修正が必要、再提出
+### acceptance_checklist 判定ルール
+
+| must項目 | should項目 | verdict |
+|---|---|---|
+| 全 pass | 全 pass | approve (推奨score: 90+) |
+| 全 pass | 一部 fail | approve (推奨score: 75-89、改善推奨を記録) |
+| 一部 fail | — | revise (修正箇所を明示) |
+| 根本的問題 | — | reject (再設計理由を明示) |
 
 ## 問題の重要度
 

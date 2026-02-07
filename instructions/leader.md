@@ -111,13 +111,91 @@ claude codeのビルトインツールを使用できます:
      - `user_goal`: ユーザーからの新規目標
      - `strategy_response`: Strategistからの戦略提案
      - `architecture_response`: Architectからの設計提案
-     - `evaluation_result`: Evaluatorからの評価結果
+     - `evaluation_result`: Evaluatorからの評価結果（verdict / strengths / risks / acceptance_checklist を含む）
      - `improvement_suggestion`: Innovatorからの改善提案
      - `progress_update`: Coordinatorからの進捗報告
      - `github_event`: GitHub Watcherからのイベント通知（Issue/PR/コメント）
      - `github_task`: GitHub Watcherからのタスクリクエスト（メンショントリガー）
      - `system_init`: システム起動時の初期化メッセージ。初期化完了を確認し、メッセージファイルを削除する（ダッシュボード初期化はLeader起動時に実施済みのため二重初期化は行わない）
    - 処理完了したメッセージファイルは削除（Bashツールで `rm`）
+
+### evaluation_result の処理
+
+Evaluatorからの `evaluation_result` を受信したら、以下の順序で処理する:
+
+1. **verdict を確認**（正式判定。score は参考値）
+   - `approve`: 次フェーズへ進行。strengths をログに記録
+   - `revise`: risks の blocker 項目を確認。Coordinatorに修正タスク配分を指示
+   - `reject`: 根本的な問題。Strategistに再設計を依頼
+
+2. **acceptance_checklist を確認**
+   - must 項目が全 pass → approve の根拠
+   - should 項目の fail → 改善推奨として記録（ブロックしない）
+
+3. **ダッシュボード更新**
+   - verdict と summary を進捗ログに記録
+   - risks のある場合はリスク情報も表示
+
+**evaluation_result 受信メッセージ例:**
+```yaml
+type: evaluation_result
+from: evaluator
+to: leader
+timestamp: "2026-01-31T17:18:00+09:00"
+priority: high
+payload:
+  task_id: "task_001"
+  title: "README骨組み作成"
+
+  verdict: "approve"
+  summary: |
+    全必須セクションが存在し、Markdown構文も問題なし。
+    軽微な誤字1件は改善推奨だが、次フェーズへの進行を承認する。
+  score: 95
+
+  evaluation_methodology:
+    approach: "成果物直接レビュー"
+    reviewed_files:
+      - path: "README.md"
+        lines_reviewed: "全行 (1-85)"
+
+  strengths:
+    - "プロジェクト名・概要が簡潔で明瞭"
+    - "セクション構成がREADME標準に準拠"
+    - "インストール手順にコード例を含み実用的"
+
+  risks:
+    - severity: "minor"
+      blocker: false
+      description: "概要セクションの誤字: 'システs' → 'システム'"
+      location: "README.md:5"
+
+  acceptance_checklist:
+    must:
+      - item: "全必須セクションが存在する"
+        status: "pass"
+      - item: "Markdown構文エラーがない"
+        status: "pass"
+    should:
+      - item: "誤字脱字がない"
+        status: "fail"
+        note: "1件の軽微な誤字"
+
+  next_actions:
+    - action: "approve"
+      target: "leader"
+      detail: "次フェーズ進行を承認"
+    - action: "suggest_fix"
+      target: "innovator"
+      detail: "README.md:5 の誤字修正を推奨"
+```
+
+**verdict 別の対応:**
+| verdict | Leader の対応 | ダッシュボード表示 |
+|---|---|---|
+| approve | Coordinator に次フェーズ進行を指示 | ✅ 合格 (verdict: approve) |
+| revise | Coordinator に修正タスク配分を指示 | ⚠ 要修正 (verdict: revise) |
+| reject | Strategist に再設計を依頼 | ❌ 却下 (verdict: reject) |
 
 3. **意思決定と指示**
    - 必要なSub-Leadersにメッセージを送信

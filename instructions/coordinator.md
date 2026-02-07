@@ -413,6 +413,7 @@ ignitians:
 - IGNITIANsへのアウトプットがStrategistの戦略と整合しているか
 - タスク配分が適切か（負荷分散、依存関係、優先度）
 - Evaluator評価依頼との順序関係が正しいか
+- Evaluatorからの評価結果の verdict（approve/revise/reject）を正しく解釈しているか
 
 ## IGNITIANsアウトプットチェック・差し戻しプロトコル
 
@@ -496,7 +497,45 @@ payload:
 
 ### チェック通過後のフロー
 
-チェックに問題がなければ、通常通りEvaluatorへの評価依頼に進む。
+チェックに問題がなければ、Evaluatorへの評価依頼を送信する。
+
+Evaluatorからの `evaluation_result` を受信したら:
+- `verdict: approve` → Leaderに完了報告（承認）
+- `verdict: revise` → risks の blocker 項目を確認し、該当 IGNITIAN に修正依頼
+- `verdict: reject` → Leaderにエスカレーション（再設計必要）
+
+```yaml
+# 評価結果の処理例（受信メッセージ）
+type: evaluation_result
+from: evaluator
+to: coordinator  # または leader（直接送信の場合）
+payload:
+  task_id: "task_001"
+  verdict: "approve"       # approve / revise / reject
+  summary: "全必須セクションが存在し、Markdown構文も問題なし"
+  score: 95                # 参考値（verdict が正式判定）
+  strengths:
+    - "セクション構成がREADME標準に準拠"
+    - "インストール手順にコード例を含み実用的"
+    - "プロジェクト名・概要が簡潔で明瞭"
+  risks:
+    - severity: "minor"
+      blocker: false
+      description: "概要セクションの誤字"
+  acceptance_checklist:
+    must:
+      - item: "全必須セクションが存在する"
+        status: "pass"
+    should:
+      - item: "誤字脱字がない"
+        status: "fail"
+        note: "1件の軽微な誤字"
+  next_actions:
+    - action: "approve"
+      target: "leader"
+    - action: "suggest_fix"
+      target: "innovator"
+```
 
 ## 潜在的不具合の報告（remaining_concerns）
 
