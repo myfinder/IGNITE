@@ -336,16 +336,16 @@ _generate_repo_report() {
 
     [[ -f "$dashboard" ]] || return 0
 
-    # 「現在のタスク」セクションからこのrepoのエントリだけ抽出
-    # 各タスクは "- " で始まり、インデントされた子行（"  - ブランチ:" 等）が続く
+    # NOTE: 現在のタスクセクションはテーブル形式/リスト形式いずれも許容
+    # _sync_dashboard_to_reports() から ~5分ごとに呼ばれる
+    # TODO: dashboard.md の presentation/data-source 二重責務の分離
+    # TODO: tasks テーブルへの登録パイプライン整備
+    # TODO: 複数リポジトリ運用時の repo 別フィルタリング機構
     local task_lines
-    task_lines=$(awk -v repo="$repo" '
+    task_lines=$(awk '
         /^## 現在のタスク/ { in_section=1; next }
-        /^## / { in_section=0 }
-        in_section && /^- / {
-            if (index($0, "(" repo ")") > 0) { show=1 } else { show=0 }
-        }
-        in_section && show { print }
+        /^## /             { in_section=0 }
+        in_section         { print }
     ' "$dashboard")
 
     # body 組み立て
