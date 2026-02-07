@@ -332,21 +332,33 @@ _generate_repo_report() {
     local repo="$1"
     local today="$2"
     local timestamp="$3"
+    local db="$WORKSPACE_DIR/state/memory.db"
     local dashboard="$WORKSPACE_DIR/dashboard.md"
 
-    [[ -f "$dashboard" ]] || return 0
+    local task_lines=""
 
-    # NOTE: 現在のタスクセクションはテーブル形式/リスト形式いずれも許容
-    # _sync_dashboard_to_reports() から ~5分ごとに呼ばれる
-    # TODO: dashboard.md の presentation/data-source 二重責務の分離
-    # TODO: tasks テーブルへの登録パイプライン整備
-    # TODO: 複数リポジトリ運用時の repo 別フィルタリング機構
-    local task_lines
-    task_lines=$(awk '
-        /^## 現在のタスク/ { in_section=1; next }
-        /^## /             { in_section=0 }
-        in_section         { print }
-    ' "$dashboard")
+    # メインパス: SQLite tasksテーブルから直接取得
+    if command -v sqlite3 &>/dev/null && [[ -f "$db" ]]; then
+        local raw
+        raw=$(sqlite3 "$db" \
+            "PRAGMA busy_timeout=5000; SELECT task_id, title, status FROM tasks WHERE repository='${repo}' AND status != 'completed' ORDER BY task_id;" 2>/dev/null) || raw=""
+        if [[ -n "$raw" ]]; then
+            task_lines="| Task ID | Title | Status |"$'\n'
+            task_lines+="|---------|-------|--------|"$'\n'
+            while IFS='|' read -r tid ttitle tstatus; do
+                task_lines+="| ${tid} | ${ttitle} | ${tstatus} |"$'\n'
+            done <<< "$raw"
+        fi
+    fi
+
+    # フォールバック: SQLite不在またはクエリ結果が空の場合、dashboard.mdからawk抽出
+    if [[ -z "$task_lines" ]] && [[ -f "$dashboard" ]]; then
+        task_lines=$(awk '
+            /^## 現在のタスク/ { in_section=1; next }
+            /^## /             { in_section=0 }
+            in_section         { print }
+        ' "$dashboard")
+    fi
 
     # body 組み立て
     cat <<EOF
