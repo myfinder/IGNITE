@@ -482,7 +482,6 @@ ignite/
 │   │   └── retry_handler.sh    # Retry handler
 │   └── utils/                  # Utility scripts
 │       ├── queue_monitor.sh    # Message queue monitoring daemon
-│       ├── send_message.sh     # Message sending utility
 │       ├── daily_report.sh     # Daily report Issue management
 │       ├── github_watcher.sh   # GitHub event monitoring
 │       ├── comment_on_issue.sh # Issue comment posting
