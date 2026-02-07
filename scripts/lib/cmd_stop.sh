@@ -2,25 +2,6 @@
 # lib/cmd_stop.sh - stopコマンド
 [[ -n "${__LIB_CMD_STOP_LOADED:-}" ]] && return; __LIB_CMD_STOP_LOADED=1
 
-# 日次レポートを close するラッパー（失敗してもセッション停止をブロックしない）
-close_daily_reports() {
-    local daily_report_script="${LIB_DIR}/../utils/daily_report.sh"
-    if [[ ! -x "$daily_report_script" ]]; then
-        # インストールモードの場合のパスも確認
-        local xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
-        daily_report_script="$xdg_data/ignite/scripts/utils/daily_report.sh"
-    fi
-
-    if [[ -x "$daily_report_script" ]]; then
-        print_info "日次レポートを close 中..."
-        if WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR" "$daily_report_script" close-all 2>/dev/null; then
-            print_success "日次レポートを close しました"
-        else
-            print_warning "日次レポートの close に失敗しました（スキップ）"
-        fi
-    fi
-}
-
 cmd_stop() {
     local skip_confirm=false
 
@@ -133,9 +114,6 @@ cmd_stop() {
 
     # コスト履歴を保存
     save_cost_history
-
-    # 日次レポートを close（ベストエフォート）
-    close_daily_reports
 
     # セッション終了
     print_warning "tmuxセッションを終了中..."
