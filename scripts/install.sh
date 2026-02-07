@@ -232,6 +232,22 @@ install_data() {
         fi
     fi
 
+    # characters ディレクトリ
+    local source_characters="$SCRIPT_DIR/share/characters"
+    if [[ ! -d "$source_characters" ]]; then
+        source_characters="$SCRIPT_DIR/../characters"
+    fi
+
+    if [[ -d "$source_characters" ]]; then
+        mkdir -p "$DATA_DIR/characters"
+        cp -r "$source_characters"/* "$DATA_DIR/characters/"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "characters を $DATA_DIR/characters にアップグレードしました"
+        else
+            print_success "characters を $DATA_DIR/characters にインストールしました"
+        fi
+    fi
+
     # scripts/ignite 本体 + scripts/lib/ モジュール
     local source_scripts="$SCRIPT_DIR/share/scripts"
     if [[ ! -d "$source_scripts" ]]; then

@@ -1041,6 +1041,14 @@ GitHub の Issue やPR のコメントで：
 
 起票された Issue には `ignite-insight` ラベルが付与され、根拠となるメモリ記録への参照が含まれます。
 
+### 設定
+
+`config/system.yaml` で以下の設定が可能です：
+
+| 設定 | デフォルト | 説明 |
+|------|-----------|------|
+| `insights.contribute_upstream` | `true` | `false` にすると IGNITE 本体リポ（myfinder/ignite）への改善 Issue 起票をスキップし、作業対象リポへの起票のみ行います |
+
 ## 📚 さらに詳しく
 
 - **基本使用例**: [docs/examples/basic-usage.md](docs/examples/basic-usage.md) - 実際の使用例とシナリオ
@@ -1072,7 +1080,10 @@ IGNITEプロジェクトへの貢献を歓迎します！
 
 ## 📄 ライセンス
 
-MIT License
+- **コード**: [MIT License](LICENSE)
+- **キャラクター・ロゴ**: All Rights Reserved — [詳細](LICENSE-CHARACTER)
+
+フォーク時はキャラクター資産（`characters/`, `images/`）を差し替えてご利用ください。
 
 ## 🙏 謝辞
 

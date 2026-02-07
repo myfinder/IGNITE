@@ -43,3 +43,6 @@ delays:
 defaults:
   message_priority: normal
   task_timeout: 300  # seconds
+
+insights:
+  contribute_upstream: true  # false にすると IGNITE 本体リポへの改善 Issue 起票をスキップ

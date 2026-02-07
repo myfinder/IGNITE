@@ -55,6 +55,7 @@ Issue/PR へのコメント投稿スクリプト
 オプション:
   -r, --repo <repo>       リポジトリ（owner/repo形式）
   -b, --body <body>       コメント本文
+  --body-file <file>      ファイルからコメント本文を読み込み
   -t, --template <type>   テンプレートを使用
                           (acknowledge, success, error, progress)
   -c, --context <text>    テンプレート内で使用するコンテキスト
@@ -84,6 +85,10 @@ Issue/PR へのコメント投稿スクリプト
   # テンプレート使用（エラー報告）
   ./scripts/utils/comment_on_issue.sh 123 --repo owner/repo --bot \
     --template error --context "ビルドが失敗しました: npm test でエラー"
+
+  # ファイルから本文を読み込んで投稿
+  ./scripts/utils/comment_on_issue.sh 123 --repo owner/repo --bot \
+    --body-file /tmp/comment_body.md
 
   # 現在のディレクトリからリポジトリを推測
   cd /path/to/repo
@@ -233,6 +238,15 @@ main() {
                 template_context="$2"
                 shift 2
                 ;;
+            --body-file)
+                if [[ -f "$2" ]]; then
+                    body=$(cat "$2")
+                else
+                    log_error "ファイルが見つかりません: $2"
+                    exit 1
+                fi
+                shift 2
+                ;;
             --bot)
                 use_bot=true
                 shift
@@ -280,7 +294,7 @@ main() {
 
     # 本文チェック
     if [[ -z "$body" ]]; then
-        log_error "コメント本文を指定してください: --body または --template"
+        log_error "コメント本文を指定してください: --body, --body-file, または --template"
         exit 1
     fi
 

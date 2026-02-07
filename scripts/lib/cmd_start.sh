@@ -249,12 +249,14 @@ EOF
     # Leaderにシステムプロンプトを読み込ませる（絶対パスを使用）
     print_info "Leaderシステムプロンプトをロード中..."
     local instruction_file="$IGNITE_INSTRUCTIONS_DIR/leader.md"
+    local character_file="$IGNITE_CHARACTERS_DIR/leader.md"
     if [[ "$agent_mode" == "leader" ]]; then
         instruction_file="$IGNITE_INSTRUCTIONS_DIR/leader-solo.md"
+        character_file="$IGNITE_CHARACTERS_DIR/leader-solo.md"
         print_info "単独モード: $instruction_file を使用"
     fi
     tmux send-keys -t "$SESSION_NAME:ignite" \
-        "$instruction_file を読んで、あなたはLeader（伊羽ユイ）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/leader/ 内のメッセージを確認してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に読み替えてください。"
+        "$character_file と $instruction_file を読んで、あなたはLeader（伊羽ユイ）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/leader/ 内のメッセージを確認してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
     sleep "$(get_delay prompt_send 0.3)"
     tmux send-keys -t "$SESSION_NAME:ignite" C-m
 

@@ -49,7 +49,7 @@ start_agent() {
         if [[ "$_health" != "missing" ]]; then
             # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-                "$IGNITE_INSTRUCTIONS_DIR/${role}.md を読んで、あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/${role}/ のメッセージを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に読み替えてください。"
+                "$IGNITE_CHARACTERS_DIR/${role}.md と $IGNITE_INSTRUCTIONS_DIR/${role}.md を読んで、あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/${role}/ のメッセージを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
             sleep "$(get_delay prompt_send 0.3)"
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" C-m
             sleep "$(get_delay agent_stabilize 2)"  # プロンプト送信後の安定待機
@@ -101,7 +101,7 @@ start_ignitian() {
         if [[ "$_health" != "missing" ]]; then
             # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
-                "$IGNITE_INSTRUCTIONS_DIR/ignitian.md を読んで、あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/ignitian_${id}/ ディレクトリを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に読み替えてください。"
+                "$IGNITE_CHARACTERS_DIR/ignitian.md と $IGNITE_INSTRUCTIONS_DIR/ignitian.md を読んで、あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/ignitian_${id}/ ディレクトリを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
             sleep "$(get_delay prompt_send 0.3)"
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" C-m
             sleep "$(get_delay agent_stabilize 2)"  # プロンプト送信後の安定待機

@@ -1044,6 +1044,14 @@ In a GitHub Issue or PR comment:
 
 Created Issues are labeled with `ignite-insight` and include references to the source memory records.
 
+### Configuration
+
+The following settings are available in `config/system.yaml`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `insights.contribute_upstream` | `true` | Set to `false` to skip filing improvement Issues to the IGNITE repository (myfinder/ignite), only filing to work target repositories |
+
 ## 📚 Learn More
 
 - **Basic Usage Examples**: [docs/examples/basic-usage.md](docs/examples/basic-usage.md) - Real usage examples and scenarios
@@ -1075,7 +1083,10 @@ Contributions to the IGNITE project are welcome!
 
 ## 📄 License
 
-MIT License
+- **Code**: [MIT License](LICENSE)
+- **Characters & Logo**: All Rights Reserved — [Details](LICENSE-CHARACTER)
+
+When forking, please replace character assets (`characters/`, `images/`) with your own.
 
 ## 🙏 Acknowledgments
 

@@ -92,7 +92,7 @@ clean_dist() {
 prepare_directories() {
     print_header "ディレクトリ準備"
 
-    mkdir -p "$BUILD_DIR"/{bin,config,share/instructions,share/scripts/utils,share/scripts/lib}
+    mkdir -p "$BUILD_DIR"/{bin,config,share/instructions,share/characters,share/scripts/utils,share/scripts/lib}
     print_success "ビルドディレクトリを作成しました: $BUILD_DIR"
 }
 
@@ -176,6 +176,15 @@ copy_instructions() {
     local count
     count=$(ls -1 "$BUILD_DIR/share/instructions"/*.md 2>/dev/null | wc -l)
     print_success "$count 個の instruction ファイルをコピーしました"
+}
+
+copy_characters() {
+    print_header "characters のコピー"
+
+    cp -r "$PROJECT_ROOT/characters"/* "$BUILD_DIR/share/characters/"
+    local count
+    count=$(ls -1 "$BUILD_DIR/share/characters"/*.md 2>/dev/null | wc -l)
+    print_success "$count 個の character ファイルをコピーしました"
 }
 
 copy_utils() {
@@ -331,6 +340,8 @@ main() {
     copy_config
     echo ""
     copy_instructions
+    echo ""
+    copy_characters
     echo ""
     copy_utils
     echo ""
