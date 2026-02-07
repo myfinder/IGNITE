@@ -35,3 +35,16 @@ jobs:
           scandir: './scripts'
           severity: warning
           format: tty
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    needs: [bats-test, shellcheck]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.bats-test.result }}" != "success" || "${{ needs.shellcheck.result }}" != "success" ]]; then
+            echo "One or more checks failed"
+            exit 1
+          fi
