@@ -23,6 +23,22 @@ IGNITE may not be able to sing, dance, or go live streaming just yet, but theyâ€
 
 ## ðŸ“‹ Requirements
 
+### Recommended System Requirements
+
+| Configuration | Processes | Memory (RAM) | CPU | Storage |
+|--------------|----------|-------------|-----|---------|
+| **Leader-only mode** | 1 | 4GB+ | 2+ cores | 100MB+ |
+| **Default** (Leader + Sub-Leaders + 8 IGNITIANs) | 14 | 8GB+ | 4+ cores | 500MB+ |
+| **Maximum** (Leader + Sub-Leaders + 32 IGNITIANs) | 38 | 16GB+ | 8+ cores | 1GB+ |
+
+- **OS**: Linux (currently Linux only; macOS can run in development mode)
+- **Architecture**: x86_64 / ARM64
+- **Network**: Always-on internet connection (Claude API communication)
+
+> **Note**: Each Claude Code process consumes approximately 300-500MB of memory.
+
+### Required Software
+
 The following tools must be installed:
 
 ```bash
