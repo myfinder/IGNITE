@@ -88,26 +88,40 @@ validate_required() {
 }
 
 # validate_type <file> <yq_path> <expected_type>
-#   expected_type: str, int, bool, seq, map
+#   expected_type: str, int, bool, seq, map (または !!str, !!int 等の yq 形式)
 validate_type() {
     local file="$1" path="$2" expected="$3"
     local actual
     actual=$(yq -r "${path} | type" "$file" 2>/dev/null)
-    [[ -z "$actual" || "$actual" == "null" ]] && return 0  # 未設定は validate_required で捕捉
+    [[ -z "$actual" || "$actual" == "null" || "$actual" == "!!null" ]] && return 0  # 未設定は validate_required で捕捉
 
-    # yq type 出力の正規化
+    # expected を正規化（ユーザ指定 → 内部表現）
     local mapped=""
     case "$expected" in
-        str|string|'!!str')   mapped="string" ;;
-        int|number|'!!int')   mapped="number" ;;
+        str|string|'!!str')    mapped="string" ;;
+        int|number|'!!int')    mapped="number" ;;
+        float|'!!float')       mapped="number" ;;
         bool|boolean|'!!bool') mapped="boolean" ;;
-        seq|array|'!!seq')    mapped="array" ;;
-        map|object|'!!map')   mapped="object" ;;
-        *)                    mapped="$expected" ;;
+        seq|array|'!!seq')     mapped="array" ;;
+        map|object|'!!map')    mapped="object" ;;
+        *)                     mapped="$expected" ;;
     esac
 
-    if [[ "$actual" != "$mapped" ]]; then
-        validation_error "$file" "$path" "型が不正です: 期待=${mapped}, 実際=${actual}" "正しい型の値を設定してください"
+    # actual を正規化（yq 出力 !!str/!!int 等 → 内部表現）
+    local actual_normalized=""
+    case "$actual" in
+        '!!str'|string)    actual_normalized="string" ;;
+        '!!int'|number)    actual_normalized="number" ;;
+        '!!float')         actual_normalized="number" ;;
+        '!!bool'|boolean)  actual_normalized="boolean" ;;
+        '!!seq'|array)     actual_normalized="array" ;;
+        '!!map'|object)    actual_normalized="object" ;;
+        '!!null')          return 0 ;;
+        *)                 actual_normalized="$actual" ;;
+    esac
+
+    if [[ "$actual_normalized" != "$mapped" ]]; then
+        validation_error "$file" "$path" "型が不正です: 期待=${mapped}, 実際=${actual_normalized}" "正しい型の値を設定してください"
         return 1
     fi
     return 0
