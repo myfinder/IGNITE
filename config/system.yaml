@@ -26,7 +26,7 @@ monitoring:
   queue_check_interval: 30      # seconds
   log_rotation_size: 10485760   # 10MB
 
-# 起動タイミング制御の遅延値（読み取り実装は別Issueで対応）
+# 起動タイミング制御の遅延値（get_delay() で読み取り）
 delays:
   # --- ユーザー調整推奨（環境依存） ---
   leader_startup: 3        # Leader/Agent起動待機（秒）
