@@ -229,16 +229,25 @@ generate_token() {
         exit $EX_CANTCREAT
     fi
 
-    # JSONからトークン値を抽出（jqがある場合）
+    # JSONからトークン値を抽出
     if command -v jq &> /dev/null; then
+        # jq がある場合: 正確な JSON パース
         token=$(echo "$result" | jq -r '.token // empty' 2>/dev/null)
+        if [[ -n "$token" ]]; then
+            echo "$token"
+            return
+        fi
+    else
+        # jq フォールバック: grep -o でトークン抽出
+        warn "jq が未インストールです。grep でトークンを抽出します。"
+        token=$(echo "$result" | grep -oE 'ghs_[A-Za-z0-9_]+' | head -1)
         if [[ -n "$token" ]]; then
             echo "$token"
             return
         fi
     fi
 
-    # jqがない場合やJSONでない場合はそのまま出力
+    # JSON でない場合（ghs_ プレフィックスの生トークン）はそのまま出力
     echo "$result"
 }
 
