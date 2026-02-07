@@ -57,6 +57,9 @@ gh --version
 
 # bash（通常は標準でインストール済み）
 bash --version
+
+# yq（オプション — 未インストール時はgrep/awkフォールバックで動作）
+yq --version
 ```
 
 ### 前提ソフトウェアのインストール
@@ -84,6 +87,22 @@ sudo apt install gh
 
 # macOS
 brew install gh
+```
+
+yqがインストールされていない場合（オプション）：
+```bash
+# yq v4.30以上推奨（mikefarah/yq）: https://github.com/mikefarah/yq
+# 未インストールでもgrep/awkフォールバックで基本機能は動作します
+# インストールするとネストされたYAML値や配列の読み取りが正確になります
+
+# Ubuntu/Debian
+sudo apt install yq
+
+# macOS
+brew install yq
+
+# バイナリ直接ダウンロード
+wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 ```
 
 ## 📦 インストール

@@ -189,15 +189,14 @@ post_comment() {
     local body="$3"
     local use_bot="$4"
 
-    local token_args=""
-
     if [[ "$use_bot" == "true" ]]; then
         # リポジトリを渡してトークン取得（Organization対応）
         local bot_token
         bot_token=$(get_bot_token "$repo")
         if [[ -n "$bot_token" ]]; then
-            log_info "Bot名義でコメントを投稿中..."
-            GH_TOKEN="$bot_token" gh issue comment "$issue_number" --repo "$repo" --body "$body"
+            log_info "Bot名義でコメントを投稿中... (REST API)"
+            GH_TOKEN="$bot_token" gh api "/repos/${repo}/issues/${issue_number}/comments" \
+                -f body="$body" --silent
             return $?
         else
             log_warn "Bot Token取得失敗。通常のトークンで投稿します。"
@@ -205,7 +204,7 @@ post_comment() {
     fi
 
     log_info "コメントを投稿中..."
-    gh issue comment "$issue_number" --repo "$repo" --body "$body"
+    gh api "/repos/${repo}/issues/${issue_number}/comments" -f body="$body" --silent
 }
 
 # =============================================================================

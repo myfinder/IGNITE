@@ -67,25 +67,16 @@ check_timeout() {
         return 1
     fi
 
-    # タイムスタンプ取得
-    local timestamp
-    timestamp=$(grep -E '^\s*timestamp:' "$file" 2>/dev/null | head -1 | sed 's/.*timestamp:[[:space:]]*//' | tr -d '"' | tr -d ' ')
-    if [[ -z "$timestamp" ]]; then
-        _rh_log_warn "タイムスタンプが見つかりません: $file"
+    # mtime ベースのタイムアウト検知
+    local file_mtime now_epoch elapsed
+    file_mtime=$(stat -c %Y "$file" 2>/dev/null) || file_mtime=$(stat -f %m "$file" 2>/dev/null) || true
+    if [[ -z "$file_mtime" ]]; then
+        _rh_log_warn "mtime の取得に失敗: $file"
         return 1
     fi
 
-    # タイムスタンプをエポック秒に変換
-    local file_epoch
-    file_epoch=$(date -d "$timestamp" +%s 2>/dev/null) || true
-    if [[ -z "$file_epoch" ]]; then
-        _rh_log_warn "タイムスタンプの変換に失敗: $timestamp"
-        return 1
-    fi
-
-    local now_epoch
     now_epoch=$(date +%s)
-    local elapsed=$((now_epoch - file_epoch))
+    elapsed=$((now_epoch - file_mtime))
 
     if [[ $elapsed -ge $RETRY_TIMEOUT ]]; then
         _rh_log_warn "タイムアウト検知: $file (経過: ${elapsed}秒, 閾値: ${RETRY_TIMEOUT}秒)"
@@ -216,8 +207,8 @@ process_retry() {
     sed_inplace '/^error_reason:/d' "$file" 2>/dev/null
     sed_inplace '/^error_at:/d' "$file" 2>/dev/null
 
-    # ステータスをqueuedに戻す
-    sed_inplace 's/^status:.*/status: queued/' "$file" 2>/dev/null
+    # ステータスをretryingに設定（キューに戻された後にscan_queueで再処理される）
+    sed_inplace 's/^status:.*/status: retrying/' "$file" 2>/dev/null
 
     _rh_log_success "リトライ完了: $file (試行: ${new_count}, 次回リトライ: ${next_retry:-不明})"
     return 0

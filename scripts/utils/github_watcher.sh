@@ -27,6 +27,9 @@ if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
     fi
 fi
 
+# YAMLユーティリティ
+source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
+
 # デフォルト設定
 DEFAULT_INTERVAL=60
 DEFAULT_STATE_FILE="workspace/state/github_watcher_state.json"
@@ -81,10 +84,10 @@ load_config() {
     fi
 
     # YAMLから設定を読み込み
-    POLL_INTERVAL=$(grep -E '^\s*interval:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    POLL_INTERVAL=$(yaml_get "$config_file" 'interval')
     POLL_INTERVAL=${POLL_INTERVAL:-$DEFAULT_INTERVAL}
 
-    STATE_FILE=$(grep -E '^\s*state_file:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    STATE_FILE=$(yaml_get "$config_file" 'state_file')
     STATE_FILE=${STATE_FILE:-$DEFAULT_STATE_FILE}
     # IGNITE_WORKSPACE_DIR が設定されていればそれを基準にする（インストールモード対応）
     if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
@@ -95,62 +98,68 @@ load_config() {
         STATE_FILE="${PROJECT_ROOT}/${STATE_FILE}"
     fi
 
-    IGNORE_BOT=$(grep -E '^\s*ignore_bot:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    IGNORE_BOT=$(yaml_get "$config_file" 'ignore_bot')
     IGNORE_BOT=${IGNORE_BOT:-true}
 
-    PATTERN_REFRESH_INTERVAL=$(grep -E '^\s*pattern_refresh_interval:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    PATTERN_REFRESH_INTERVAL=$(yaml_get "$config_file" 'pattern_refresh_interval')
     PATTERN_REFRESH_INTERVAL=${PATTERN_REFRESH_INTERVAL:-60}
 
     # 監視対象リポジトリを取得
     REPOSITORIES=()
     REPO_PATTERNS=()   # グローバル（定期リフレッシュで再利用）
-    local in_repos=false
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*repositories: ]]; then
-            in_repos=true
-            continue
-        fi
-        if [[ "$in_repos" == true ]]; then
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*pattern:[[:space:]]*(.+) ]]; then
-                # - pattern: "org/prefix-*" 形式（ワイルドカード）
-                local pat="${BASH_REMATCH[1]}"
-                pat=$(echo "$pat" | tr -d '"' | tr -d "'" | xargs)
-                REPO_PATTERNS+=("$pat")
-            elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
-                # - repo: owner/repo 形式
-                local repo="${BASH_REMATCH[1]}"
-                repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
-                REPOSITORIES+=("$repo")
-            elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*([^:]+)$ ]]; then
-                # - owner/repo 形式（シンプル形式）
-                local repo="${BASH_REMATCH[1]}"
-                repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
-                REPOSITORIES+=("$repo")
-            elif [[ "$line" =~ ^[[:space:]]*[a-z_]+:[[:space:]] ]] && [[ ! "$line" =~ ^[[:space:]]*base_branch: ]]; then
-                # 新しいセクションが始まったら終了（base_branchは除く）
-                in_repos=false
+    if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
+        # yq版: 構造化パース
+        mapfile -t REPO_PATTERNS < <(yq -r '.repositories[] | select(has("pattern")) | .pattern' "$config_file" 2>/dev/null)
+        mapfile -t REPOSITORIES < <(yq -r '.repositories[] | select(has("repo")) | .repo' "$config_file" 2>/dev/null)
+        local simple_repos=()
+        mapfile -t simple_repos < <(yq -r '.repositories[] | select(type == "!!str")' "$config_file" 2>/dev/null)
+        REPOSITORIES+=("${simple_repos[@]}")
+    else
+        # フォールバック: 行ベースパース
+        local in_repos=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*repositories: ]]; then
+                in_repos=true
+                continue
             fi
-        fi
-    done < "$config_file"
+            if [[ "$in_repos" == true ]]; then
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*pattern:[[:space:]]*(.+) ]]; then
+                    local pat="${BASH_REMATCH[1]}"
+                    pat=$(echo "$pat" | tr -d '"' | tr -d "'" | xargs)
+                    REPO_PATTERNS+=("$pat")
+                elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(.+) ]]; then
+                    local repo="${BASH_REMATCH[1]}"
+                    repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
+                    REPOSITORIES+=("$repo")
+                elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]*([^:]+)$ ]]; then
+                    local repo="${BASH_REMATCH[1]}"
+                    repo=$(echo "$repo" | tr -d '"' | tr -d "'" | xargs)
+                    REPOSITORIES+=("$repo")
+                elif [[ "$line" =~ ^[[:space:]]*[a-z_]+:[[:space:]] ]] && [[ ! "$line" =~ ^[[:space:]]*base_branch: ]]; then
+                    in_repos=false
+                fi
+            fi
+        done < "$config_file"
+    fi
 
     # イベントタイプ設定
-    WATCH_ISSUES=$(grep -E '^\s*issues:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_ISSUES=$(yaml_get "$config_file" 'issues')
     WATCH_ISSUES=${WATCH_ISSUES:-true}
 
-    WATCH_ISSUE_COMMENTS=$(grep -E '^\s*issue_comments:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_ISSUE_COMMENTS=$(yaml_get "$config_file" 'issue_comments')
     WATCH_ISSUE_COMMENTS=${WATCH_ISSUE_COMMENTS:-true}
 
-    WATCH_PRS=$(grep -E '^\s*pull_requests:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PRS=$(yaml_get "$config_file" 'pull_requests')
     WATCH_PRS=${WATCH_PRS:-true}
 
-    WATCH_PR_COMMENTS=$(grep -E '^\s*pr_comments:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PR_COMMENTS=$(yaml_get "$config_file" 'pr_comments')
     WATCH_PR_COMMENTS=${WATCH_PR_COMMENTS:-true}
 
-    WATCH_PR_REVIEWS=$(grep -E '^\s*pr_reviews:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    WATCH_PR_REVIEWS=$(yaml_get "$config_file" 'pr_reviews')
     WATCH_PR_REVIEWS=${WATCH_PR_REVIEWS:-true}
 
     # トリガー設定
-    MENTION_PATTERN=$(grep -E '^\s*mention_pattern:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+    MENTION_PATTERN=$(yaml_get "$config_file" 'mention_pattern')
     MENTION_PATTERN=${MENTION_PATTERN:-"@ignite-gh-app"}
 
     # ワークスペース設定
@@ -158,33 +167,38 @@ load_config() {
     if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
         WORKSPACE_DIR="$IGNITE_WORKSPACE_DIR"
     else
-        WORKSPACE_DIR=$(grep -E '^\s*workspace:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"')
+        WORKSPACE_DIR=$(yaml_get "$config_file" 'workspace')
         WORKSPACE_DIR=${WORKSPACE_DIR:-"workspace"}
         WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
     fi
 
     # アクセス制御設定
-    ACCESS_CONTROL_ENABLED=$(awk '/^access_control:/{found=1} found && /^[[:space:]]+enabled:/{print $2; exit}' "$config_file" | tr -d '"')
+    ACCESS_CONTROL_ENABLED=$(yaml_get_nested "$config_file" '.access_control.enabled')
     ACCESS_CONTROL_ENABLED=${ACCESS_CONTROL_ENABLED:-false}
 
     # 許可ユーザーリストの読み込み
     ALLOWED_USERS=()
-    local in_allowed=false
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*allowed_users: ]]; then
-            in_allowed=true
-            continue
-        fi
-        if [[ "$in_allowed" == true ]]; then
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*[\"\']?([^\"\']+)[\"\']?$ ]]; then
-                local user="${BASH_REMATCH[1]}"
-                user=$(echo "$user" | xargs)
-                [[ -n "$user" ]] && ALLOWED_USERS+=("$user")
-            elif [[ "$line" =~ ^[[:space:]]*[a-z_]+: ]] && [[ ! "$line" =~ ^[[:space:]]*- ]]; then
-                in_allowed=false
+    if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
+        mapfile -t ALLOWED_USERS < <(yaml_get_list "$config_file" '.access_control.allowed_users')
+    else
+        # フォールバック: 行ベースパース
+        local in_allowed=false
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*allowed_users: ]]; then
+                in_allowed=true
+                continue
             fi
-        fi
-    done < "$config_file"
+            if [[ "$in_allowed" == true ]]; then
+                if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*[\"\']?([^\"\']+)[\"\']?$ ]]; then
+                    local user="${BASH_REMATCH[1]}"
+                    user=$(echo "$user" | xargs)
+                    [[ -n "$user" ]] && ALLOWED_USERS+=("$user")
+                elif [[ "$line" =~ ^[[:space:]]*[a-z_]+: ]] && [[ ! "$line" =~ ^[[:space:]]*- ]]; then
+                    in_allowed=false
+                fi
+            fi
+        done < "$config_file"
+    fi
 
     # ワイルドカードパターンを展開
     if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
@@ -406,6 +420,9 @@ get_bot_token() {
     local repo="${1:-}"
     local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
     local repo_option=""
+    local _token_rc=0
+    local _token_err
+    local _token_result=""
 
     # リポジトリが指定されている場合は --repo オプションを使用（Organization対応）
     if [[ -n "$repo" ]]; then
@@ -413,13 +430,23 @@ get_bot_token() {
     fi
 
     if [[ -f "$token_script" ]]; then
+        _token_err=$(mktemp)
         # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
-                "$token_script" $repo_option 2>/dev/null || echo ""
+            _token_result=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
+                "$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
         else
-            "$token_script" $repo_option 2>/dev/null || echo ""
+            _token_result=$("$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
         fi
+        if [[ $_token_rc -ne 0 ]]; then
+            log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
+            [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
+            rm -f "$_token_err"
+            echo ""
+            return
+        fi
+        rm -f "$_token_err"
+        echo "$_token_result"
     else
         echo ""
     fi

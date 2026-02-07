@@ -8,6 +8,7 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 
 # Layer 0: 定数・ユーティリティ
 source "${LIB_DIR}/core.sh"
+source "${LIB_DIR}/yaml_utils.sh"
 
 # Layer 1: 基盤サービス
 source "${LIB_DIR}/session.sh"
@@ -24,6 +25,7 @@ source "${LIB_DIR}/cmd_status.sh"
 source "${LIB_DIR}/cmd_plan.sh"
 source "${LIB_DIR}/cmd_cost.sh"
 source "${LIB_DIR}/cmd_work_on.sh"
+source "${LIB_DIR}/config_validator.sh"
 source "${LIB_DIR}/commands.sh"
 
 main() {
@@ -41,6 +43,7 @@ main() {
         clean)    shift; cmd_clean "$@" ;;
         work-on)  shift; cmd_work_on "$@" ;;
         watcher)  shift; cmd_watcher "$@" ;;
+        validate) shift; cmd_validate "$@" ;;
         help)     shift; cmd_help "$@" ;;
         -h|--help) cmd_help ;;
         -v|--version) echo "IGNITE v$VERSION" ;;

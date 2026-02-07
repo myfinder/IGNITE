@@ -72,7 +72,7 @@ get_worker_count() {
     local config_file="$IGNITE_CONFIG_DIR/ignitians.yaml"
     if [[ -f "$config_file" ]]; then
         local count
-        count=$(grep "default:" "$config_file" | head -1 | awk '{print $2}')
+        count=$(yaml_get "$config_file" 'default')
         if [[ -n "$count" ]] && [[ "$count" =~ ^[0-9]+$ ]]; then
             echo "$count"
             return

@@ -2,12 +2,14 @@
 # lib/agent.sh - エージェント起動・セッション管理
 [[ -n "${__LIB_AGENT_LOADED:-}" ]] && return; __LIB_AGENT_LOADED=1
 
+source "${LIB_DIR}/health_check.sh"
+
 # GitHub Watcher自動起動設定を取得
 get_watcher_auto_start() {
     local config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
     if [[ -f "$config_file" ]]; then
         local enabled
-        enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
+        enabled=$(yaml_get "$config_file" 'enabled')
         [[ "$enabled" == "true" ]]
     else
         return 1
@@ -41,8 +43,10 @@ start_agent() {
         tmux send-keys -t "$SESSION_NAME:ignite.$pane" Enter
         sleep "$(get_delay claude_startup 8)"
 
-        # 起動確認（ペインが生きているか）
-        if tmux list-panes -t "$SESSION_NAME:ignite" 2>/dev/null | grep -q "$pane:"; then
+        # 起動確認（ヘルスチェック）
+        local _health
+        _health=$(check_agent_health "$SESSION_NAME:ignite" "$pane" "${name} (${role^})")
+        if [[ "$_health" != "missing" ]]; then
             # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
                 "$IGNITE_CHARACTERS_DIR/${role}.md と $IGNITE_INSTRUCTIONS_DIR/${role}.md を読んで、あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/${role}/ のメッセージを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
@@ -91,8 +95,10 @@ start_ignitian() {
         tmux send-keys -t "$SESSION_NAME:ignite.$pane" Enter
         sleep "$(get_delay claude_startup 8)"
 
-        # 起動確認
-        if tmux list-panes -t "$SESSION_NAME:ignite" 2>/dev/null | grep -q "$pane:"; then
+        # 起動確認（ヘルスチェック）
+        local _health
+        _health=$(check_agent_health "$SESSION_NAME:ignite" "$pane" "IGNITIAN-${id}")
+        if [[ "$_health" != "missing" ]]; then
             # システムプロンプト読み込み（絶対パスを使用）
             tmux send-keys -t "$SESSION_NAME:ignite.$pane" \
                 "$IGNITE_CHARACTERS_DIR/ignitian.md と $IGNITE_INSTRUCTIONS_DIR/ignitian.md を読んで、あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/ignitian_${id}/ ディレクトリを監視してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"

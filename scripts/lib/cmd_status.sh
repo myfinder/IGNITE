@@ -2,6 +2,8 @@
 # lib/cmd_status.sh - statusコマンド
 [[ -n "${__LIB_CMD_STATUS_LOADED:-}" ]] && return; __LIB_CMD_STATUS_LOADED=1
 
+source "${LIB_DIR}/health_check.sh"
+
 cmd_status() {
     # オプション解析
     while [[ $# -gt 0 ]]; do
@@ -47,29 +49,19 @@ cmd_status() {
         pane_count=$(tmux list-panes -t "$SESSION_NAME" 2>/dev/null | wc -l)
         echo -e "${BLUE}  ペイン数: ${pane_count}${NC}"
 
-        # エージェント構成の推定
+        # エージェント状態（3層ヘルスチェック）
         echo ""
         print_header "エージェント状態"
         echo ""
-        echo -e "  ${GREEN}✓${NC} pane 0: Leader (伊羽ユイ)"
-
-        if [[ "$pane_count" -gt 1 ]]; then
-            local sub_count=$((pane_count > 6 ? 5 : pane_count - 1))
-            for i in $(seq 1 $sub_count); do
-                local idx=$((i - 1))
-                if [[ $idx -lt ${#SUB_LEADERS[@]} ]]; then
-                    echo -e "  ${GREEN}✓${NC} pane ${i}: ${SUB_LEADER_NAMES[$idx]} (${SUB_LEADERS[$idx]})"
-                fi
-            done
-        fi
-
-        if [[ "$pane_count" -gt 6 ]]; then
-            local ignitian_count=$((pane_count - 6))
-            for i in $(seq 1 $ignitian_count); do
-                local pane_num=$((5 + i))
-                echo -e "  ${GREEN}✓${NC} pane ${pane_num}: IGNITIAN-${i}"
-            done
-        fi
+        local _health_line
+        while IFS= read -r _health_line; do
+            [[ -z "$_health_line" ]] && continue
+            local _pane_idx _agent_name _status
+            IFS=':' read -r _pane_idx _agent_name _status <<< "$_health_line"
+            local _formatted
+            _formatted=$(format_health_status "$_status")
+            echo -e "  ${_formatted} pane ${_pane_idx}: ${_agent_name}"
+        done < <(get_all_agents_health "$SESSION_NAME:ignite")
     else
         print_error "tmuxセッション: 停止"
         exit 1

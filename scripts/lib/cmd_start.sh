@@ -14,6 +14,7 @@ cmd_start() {
     local worker_count=""
     local no_workers=false
     local with_watcher=""      # 空=設定に従う, true=起動, false=起動しない
+    local skip_validation=false
 
     # オプション解析
     while [[ $# -gt 0 ]]; do
@@ -53,6 +54,7 @@ cmd_start() {
             --no-workers) no_workers=true; shift ;;
             --with-watcher) with_watcher=true; shift ;;
             --no-watcher) with_watcher=false; shift ;;
+            --skip-validation) skip_validation=true; shift ;;
             -h|--help) cmd_help start; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help start; exit 1 ;;
         esac
@@ -97,6 +99,44 @@ cmd_start() {
         echo -e "${BLUE}IGNITIANs:${NC} ${worker_count}並列"
     fi
     echo ""
+
+    # 設定ファイル検証（--skip-validation で無効化可能）
+    if [[ "$skip_validation" == false ]] && declare -f validate_all_configs &>/dev/null; then
+        print_info "設定ファイルを検証中..."
+        _VALIDATION_ERRORS=()
+        _VALIDATION_WARNINGS=()
+        local xdg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
+        validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml"
+        if [[ -d "$xdg_dir" ]]; then
+            validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml"
+            validate_github_app_yaml "${xdg_dir}/github-app.yaml"
+        fi
+
+        # 警告の表示
+        if [[ ${#_VALIDATION_WARNINGS[@]} -gt 0 ]]; then
+            for w in "${_VALIDATION_WARNINGS[@]}"; do
+                echo -e "  ${YELLOW}${w}${NC}"
+            done
+        fi
+
+        # エラーがあれば起動中止
+        if [[ ${#_VALIDATION_ERRORS[@]} -gt 0 ]]; then
+            for e in "${_VALIDATION_ERRORS[@]}"; do
+                echo -e "  ${RED}${e}${NC}"
+            done
+            echo ""
+            print_error "設定ファイルにエラーがあります。起動を中止します。"
+            echo -e "  修正後に再実行するか、${YELLOW}--skip-validation${NC} で検証をスキップしてください。"
+            _VALIDATION_ERRORS=()
+            _VALIDATION_WARNINGS=()
+            exit 1
+        fi
+
+        _VALIDATION_ERRORS=()
+        _VALIDATION_WARNINGS=()
+        print_success "設定ファイル検証OK"
+        echo ""
+    fi
 
     cd "$WORKSPACE_DIR" || return 1
 

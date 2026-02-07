@@ -461,7 +461,7 @@ cmd_watcher() {
         status)
             if pgrep -f "github_watcher.sh" > /dev/null; then
                 print_success "GitHub Watcher: 実行中"
-                pgrep -f "github_watcher.sh" | while read pid; do
+                pgrep -f "github_watcher.sh" | while read -r pid; do
                     echo "  PID: $pid"
                 done
             else
@@ -507,4 +507,141 @@ cmd_watcher() {
             echo "  ./scripts/ignite watcher ack 123 owner/repo"
             ;;
     esac
+}
+
+# =============================================================================
+# validate コマンド - 設定ファイル検証
+# =============================================================================
+
+cmd_validate() {
+    local target="all"
+
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--config) target="$2"; shift 2 ;;
+            -h|--help)
+                echo "使用方法: ./scripts/ignite validate [options]"
+                echo ""
+                echo "設定ファイルを検証し、エラーや警告を表示します。"
+                echo ""
+                echo "オプション:"
+                echo "  -c, --config <name>   検証対象を指定"
+                echo "                        system      - system.yaml"
+                echo "                        watcher     - github-watcher.yaml"
+                echo "                        github-app  - github-app.yaml"
+                echo "                        all (default) - 全ファイル"
+                echo "  -h, --help            この使い方を表示"
+                echo ""
+                echo "例:"
+                echo "  ./scripts/ignite validate"
+                echo "  ./scripts/ignite validate --config system"
+                echo "  ./scripts/ignite validate --config watcher"
+                exit 0
+                ;;
+            *) print_error "Unknown option: $1"; echo "使用方法: ./scripts/ignite validate -h"; exit 1 ;;
+        esac
+    done
+
+    print_header "IGNITE 設定ファイル検証"
+    echo ""
+
+    # config_validator.sh の関数が利用可能か確認
+    if ! declare -f validate_required &>/dev/null; then
+        print_warning "config_validator が読み込まれていません"
+        return 1
+    fi
+
+    # ディレクトリ解決
+    local config_dir="$IGNITE_CONFIG_DIR"
+    local xdg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
+
+    # エラー蓄積リセット
+    _VALIDATION_ERRORS=()
+    _VALIDATION_WARNINGS=()
+
+    case "$target" in
+        system)
+            local f="${config_dir}/system.yaml"
+            if [[ ! -e "$f" ]]; then
+                print_error "ファイルが見つかりません: $f"
+                return 1
+            fi
+            validate_system_yaml "$f"
+            ;;
+        watcher)
+            local f="${xdg_dir}/github-watcher.yaml"
+            if [[ ! -e "$f" ]]; then
+                f="${config_dir}/github-watcher.yaml"
+            fi
+            if [[ ! -e "$f" ]]; then
+                print_warning "github-watcher.yaml が見つかりません（スキップ）"
+                return 0
+            fi
+            validate_watcher_yaml "$f"
+            ;;
+        github-app)
+            local f="${xdg_dir}/github-app.yaml"
+            if [[ ! -e "$f" ]]; then
+                f="${config_dir}/github-app.yaml"
+            fi
+            if [[ ! -e "$f" ]]; then
+                print_warning "github-app.yaml が見つかりません（スキップ）"
+                return 0
+            fi
+            validate_github_app_yaml "$f"
+            ;;
+        all)
+            # config_dir の system.yaml
+            if [[ -d "$config_dir" ]]; then
+                validate_system_yaml "${config_dir}/system.yaml"
+            else
+                validation_error "$config_dir" "(dir)" "設定ディレクトリが見つかりません"
+            fi
+            # XDG 設定はオプショナル
+            if [[ -d "$xdg_dir" ]]; then
+                validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml"
+                validate_github_app_yaml "${xdg_dir}/github-app.yaml"
+            fi
+            ;;
+        *)
+            print_error "不明な検証対象: $target"
+            echo "有効な値: system, watcher, github-app, all"
+            return 1
+            ;;
+    esac
+
+    # 個別検証時のレポート出力
+    _colorize_and_report
+}
+
+# カラー付きレポート出力（内部関数）
+_colorize_and_report() {
+    local has_error=0
+
+    if [[ ${#_VALIDATION_WARNINGS[@]} -gt 0 ]]; then
+        for w in "${_VALIDATION_WARNINGS[@]}"; do
+            echo -e "${YELLOW}${w}${NC}"
+        done
+    fi
+
+    if [[ ${#_VALIDATION_ERRORS[@]} -gt 0 ]]; then
+        for e in "${_VALIDATION_ERRORS[@]}"; do
+            echo -e "${RED}${e}${NC}"
+        done
+        has_error=1
+    fi
+
+    local total=$(( ${#_VALIDATION_ERRORS[@]} + ${#_VALIDATION_WARNINGS[@]} ))
+    echo ""
+    if [[ $total -eq 0 ]]; then
+        echo -e "${GREEN}✓ 検証に成功しました（エラー: 0, 警告: 0）${NC}"
+    else
+        echo -e "エラー: ${RED}${#_VALIDATION_ERRORS[@]}${NC} 件, 警告: ${YELLOW}${#_VALIDATION_WARNINGS[@]}${NC} 件"
+    fi
+
+    _VALIDATION_ERRORS=()
+    _VALIDATION_WARNINGS=()
+
+    return "$has_error"
 }

@@ -54,6 +54,9 @@ tmux -V
 
 # bash (usually pre-installed)
 bash --version
+
+# yq (optional — falls back to grep/awk when not installed)
+yq --version
 ```
 
 ### Installation
@@ -70,6 +73,22 @@ sudo apt install tmux
 
 # macOS
 brew install tmux
+```
+
+If yq is not installed (optional):
+```bash
+# yq v4.30+ recommended (mikefarah/yq): https://github.com/mikefarah/yq
+# IGNITE works without yq using grep/awk fallback for basic functionality
+# Installing yq enables accurate reading of nested YAML values and arrays
+
+# Ubuntu/Debian
+sudo apt install yq
+
+# macOS
+brew install yq
+
+# Direct binary download
+wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 ```
 
 ## 📦 Installation

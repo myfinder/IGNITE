@@ -1,6 +1,24 @@
 #!/bin/bash
 # キュー監視・自動処理スクリプト
 # キューに新しいメッセージが来たら、対応するエージェントに処理を指示
+#
+# 配信保証: at-least-once（リトライ機構統合済み）
+#   - at-most-once: mv → process の原子性で重複防止
+#   - タイムアウト検知 + process_retry() でリトライ保証
+#
+# 状態遷移図:
+#   queue/*.yaml
+#     │ mv → processed/
+#     ▼
+#   [processing] ── send_to_agent成功 ──→ [delivered] (完了)
+#     │
+#     │ timeout (mtime > task_timeout)
+#     ▼
+#   [retrying] ── retry_count < MAX ──→ queue/*.yaml に戻す (再処理)
+#     │
+#     │ retry_count >= MAX
+#     ▼
+#   [dead_letter] + escalate_to_leader()
 
 set -u
 
@@ -20,10 +38,38 @@ log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[QUEUE]${NC} $1"
 log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[QUEUE]${NC} $1" >&2; }
 log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[QUEUE]${NC} $1" >&2; }
 
+# リトライ/DLQ ハンドラーの読み込み（SCRIPT_DIR保護）
+_QM_SCRIPT_DIR="$SCRIPT_DIR"
+source "${SCRIPT_DIR}/../lib/retry_handler.sh"
+source "${SCRIPT_DIR}/../lib/dlq_handler.sh"
+SCRIPT_DIR="$_QM_SCRIPT_DIR"
+
+# yaml_utils（task_timeout動的読み取り用）
+if [[ -f "${SCRIPT_DIR}/../lib/yaml_utils.sh" ]]; then
+    source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
+fi
+
 # 設定
 WORKSPACE_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}"
 POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
 TMUX_SESSION="${IGNITE_TMUX_SESSION:-}"
+
+# task_timeout を system.yaml から動的取得（デフォルト: 300秒）
+_TASK_TIMEOUT=""
+_resolve_task_timeout() {
+    if [[ -n "$_TASK_TIMEOUT" ]]; then
+        echo "$_TASK_TIMEOUT"
+        return
+    fi
+    local config_dir="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+    local sys_yaml="${config_dir}/system.yaml"
+    if declare -f yaml_get &>/dev/null && [[ -f "$sys_yaml" ]]; then
+        _TASK_TIMEOUT=$(yaml_get "$sys_yaml" "task_timeout" "300")
+    else
+        _TASK_TIMEOUT="${RETRY_TIMEOUT:-300}"
+    fi
+    echo "$_TASK_TIMEOUT"
+}
 
 # =============================================================================
 # tmux セッションへのメッセージ送信
@@ -425,7 +471,12 @@ process_message() {
     esac
 
     # エージェントに送信
-    send_to_agent "$queue_name" "$instruction"
+    if send_to_agent "$queue_name" "$instruction"; then
+        # 配信成功: status=delivered に更新
+        sed_inplace 's/^status:.*/status: delivered/' "$file" 2>/dev/null || \
+            printf 'status: delivered\n' >> "$file"
+    fi
+    # 失敗時は status=processing のまま（リトライ対象）
 }
 
 # =============================================================================
@@ -515,16 +566,97 @@ scan_queue() {
         filename=$(basename "$file")
         local dest="$queue_dir/processed/$filename"
 
-        # at-most-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
+        # at-least-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
         mv "$file" "$dest" 2>/dev/null || continue
+
+        # status=processing + processed_at を追記
+        printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
+
+        # status=processing + processed_at を追記（タイムアウト検知の基点）
+        printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
 
         # 処理（processed/ 内のパスを渡す）
         process_message "$dest" "$queue_name"
     done
 }
 
+# =============================================================================
+# タイムアウト検査
+# =============================================================================
+
+scan_for_timeouts() {
+    local queue_dir="$1"
+    local queue_name="$2"
+
+    local processed_dir="$queue_dir/processed"
+    [[ -d "$processed_dir" ]] || return
+
+    local timeout_sec
+    timeout_sec=$(_resolve_task_timeout)
+    local max_retries="${DLQ_MAX_RETRIES:-3}"
+
+    # mtime が timeout_sec 秒以上前のファイルを候補取得
+    while IFS= read -r -d '' file; do
+        [[ -f "$file" ]] || continue
+
+        # status フィールドを取得
+        local status
+        status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+
+        # delivered/completed はスキップ
+        case "$status" in
+            delivered|completed) continue ;;
+            retrying)
+                # next_retry_after を確認（バックオフ待機中はスキップ）
+                local next_retry
+                next_retry=$(grep -E '^next_retry_after:' "$file" 2>/dev/null | head -1 | sed 's/.*next_retry_after:[[:space:]]*//' | tr -d '"')
+                if [[ -n "$next_retry" ]]; then
+                    local next_epoch now_epoch
+                    next_epoch=$(date -d "$next_retry" +%s 2>/dev/null) || true
+                    now_epoch=$(date +%s)
+                    if [[ -n "$next_epoch" ]] && [[ "$now_epoch" -lt "$next_epoch" ]]; then
+                        continue  # バックオフ待機中
+                    fi
+                fi
+                ;;
+            processing|"")
+                # processing または statusなし → タイムアウト検査対象
+                ;;
+            *)
+                continue  # 未知のステータスはスキップ
+                ;;
+        esac
+
+        # retry_count を取得
+        local retry_count
+        retry_count=$(grep -E '^retry_count:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        retry_count="${retry_count:-0}"
+
+        if [[ "$retry_count" -ge "$max_retries" ]]; then
+            # DLQ 移動 + エスカレーション
+            log_warn "リトライ上限到達: $(basename "$file") (${retry_count}/${max_retries})"
+            move_to_dlq "$file" "$retry_count" "timeout after ${max_retries} retries" >/dev/null
+            escalate_to_leader "$file" "$retry_count" "timeout after ${max_retries} retries" "manual_review" >/dev/null
+        else
+            # リトライ処理
+            log_info "タイムアウトリトライ: $(basename "$file") (試行: $((retry_count + 1)))"
+            process_retry "$file"
+            # status を retrying に設定
+            sed_inplace 's/^status:.*/status: retrying/' "$file" 2>/dev/null || true
+
+            # queue/ に戻す（再処理対象にする）
+            local filename
+            filename=$(basename "$file")
+            mv "$file" "$queue_dir/$filename" 2>/dev/null || true
+        fi
+    done < <(find "$processed_dir" -name "*.yaml" -not -newermt "${timeout_sec} seconds ago" -print0 2>/dev/null)
+}
+
 monitor_queues() {
     log_info "キュー監視を開始します（間隔: ${POLL_INTERVAL}秒）"
+
+    # DLQ ディレクトリ事前作成
+    mkdir -p "$WORKSPACE_DIR/queue/dead_letter"
 
     local poll_count=0
     local SYNC_INTERVAL=30    # 30 × 10秒 = ~5分
@@ -552,6 +684,20 @@ monitor_queues() {
             local dirname
             dirname=$(basename "$ignitian_dir")
             scan_queue "$ignitian_dir" "$dirname"
+        done
+
+        # タイムアウト検査（全キューの processed/ を走査）
+        scan_for_timeouts "$WORKSPACE_DIR/queue/leader" "leader"
+        scan_for_timeouts "$WORKSPACE_DIR/queue/strategist" "strategist"
+        scan_for_timeouts "$WORKSPACE_DIR/queue/architect" "architect"
+        scan_for_timeouts "$WORKSPACE_DIR/queue/evaluator" "evaluator"
+        scan_for_timeouts "$WORKSPACE_DIR/queue/coordinator" "coordinator"
+        scan_for_timeouts "$WORKSPACE_DIR/queue/innovator" "innovator"
+        for ignitian_dir in "$WORKSPACE_DIR/queue"/ignitian[_-]*; do
+            [[ -d "$ignitian_dir" ]] || continue
+            local dirname
+            dirname=$(basename "$ignitian_dir")
+            scan_for_timeouts "$ignitian_dir" "$dirname"
         done
 
         # 定期的にダッシュボードから日次レポートに同期（~5分ごと）
