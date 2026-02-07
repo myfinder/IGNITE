@@ -384,8 +384,13 @@ _generate_repo_report() {
         if [[ -n "$raw" ]]; then
             task_lines="| Task ID | Title | Status |"$'\n'
             task_lines+="|---------|-------|--------|"$'\n'
+            # NOTE: sqlite3のデフォルト区切り文字は|のため、
+            # タイトルに|が含まれるとIFSで誤分割される。
+            # 現実的にtask titleに|が含まれる可能性は極めて低いため許容。
             while IFS='|' read -r tid ttitle tstatus; do
-                task_lines+="| ${tid} | ${ttitle} | ${tstatus} |"$'\n'
+                local safe_title="${ttitle//|/-}"
+                safe_title="${safe_title//$'\n'/ }"
+                task_lines+="| ${tid} | ${safe_title} | ${tstatus} |"$'\n'
             done <<< "$raw"
         fi
     fi
