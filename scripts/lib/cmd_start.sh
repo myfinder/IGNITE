@@ -166,12 +166,12 @@ EOF
     fi
     pkill -f "queue_monitor.sh" 2>/dev/null || true
     pkill -f "github_watcher.sh" 2>/dev/null || true
-    sleep 1
+    sleep "$(get_delay process_cleanup 1)"
 
     # tmuxセッション作成
     print_info "tmuxセッションを作成中..."
     tmux new-session -d -s "$SESSION_NAME" -n ignite
-    sleep 0.5  # セッション作成を待機
+    sleep "$(get_delay session_create 0.5)"  # セッション作成を待機
 
     # ペインボーダーにキャラクター名を常時表示
     tmux set-option -t "$SESSION_NAME" pane-border-status top
@@ -185,17 +185,17 @@ EOF
 
     # 起動待機（確認プロンプト表示を待つ）
     print_warning "Leaderの起動を待機中... (3秒)"
-    sleep 3
+    sleep "$(get_delay leader_startup 3)"
 
     # 確認プロンプトを通過（下矢印で "Yes, I accept" を選択してEnter）
     print_info "権限確認を承諾中..."
     tmux send-keys -t "$SESSION_NAME:ignite" Down
-    sleep 0.5
+    sleep "$(get_delay permission_accept 0.5)"
     tmux send-keys -t "$SESSION_NAME:ignite" Enter
 
     # Claude Codeの起動完了を待機
     print_warning "Claude Codeの起動を待機中... (8秒)"
-    sleep 8
+    sleep "$(get_delay claude_startup 8)"
 
     # Leaderにシステムプロンプトを読み込ませる（絶対パスを使用）
     print_info "Leaderシステムプロンプトをロード中..."
@@ -206,12 +206,12 @@ EOF
     fi
     tmux send-keys -t "$SESSION_NAME:ignite" \
         "$instruction_file を読んで、あなたはLeader（伊羽ユイ）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/leader/ 内のメッセージを確認してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に読み替えてください。"
-    sleep 0.3
+    sleep "$(get_delay prompt_send 0.3)"
     tmux send-keys -t "$SESSION_NAME:ignite" C-m
 
     # プロンプトロード完了を待機
     print_warning "Leaderの初期化を待機中... (10秒)"
-    sleep 10
+    sleep "$(get_delay leader_init 10)"
 
     # 初期メッセージの送信
     print_info "Leaderに初期化メッセージを送信中..."
