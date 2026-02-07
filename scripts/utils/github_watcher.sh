@@ -420,6 +420,9 @@ get_bot_token() {
     local repo="${1:-}"
     local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
     local repo_option=""
+    local _token_rc=0
+    local _token_err
+    local _token_result=""
 
     # リポジトリが指定されている場合は --repo オプションを使用（Organization対応）
     if [[ -n "$repo" ]]; then
@@ -427,13 +430,23 @@ get_bot_token() {
     fi
 
     if [[ -f "$token_script" ]]; then
+        _token_err=$(mktemp)
         # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
-                "$token_script" $repo_option 2>/dev/null || echo ""
+            _token_result=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
+                "$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
         else
-            "$token_script" $repo_option 2>/dev/null || echo ""
+            _token_result=$("$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
         fi
+        if [[ $_token_rc -ne 0 ]]; then
+            log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
+            [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
+            rm -f "$_token_err"
+            echo ""
+            return
+        fi
+        rm -f "$_token_err"
+        echo "$_token_result"
     else
         echo ""
     fi
