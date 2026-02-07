@@ -23,6 +23,7 @@ IGNITE may not be able to sing, dance, or go live streaming just yet, but they�
 - **Agent Memory Persistence**: SQLite-based retention of learning and decision records across sessions
 - **Daily Report Management**: Automatic progress tracking via per-repository GitHub Issues
 - **Configurable Delays**: Customize inter-agent communication delays
+- **Memory Insights**: Automatically analyzes agent learnings and errors, creating GitHub Issues with improvement proposals
 
 ## 📋 Requirements
 
@@ -968,6 +969,61 @@ ignite logs -f
 # Show more lines
 ignite logs -n 100
 ```
+
+## 🧠 Memory Insights (Automated Improvement Proposals)
+
+Automatically analyzes learnings, errors, and observations accumulated by agents during operation, and files improvement proposals as **GitHub Issues**.
+
+### How It Works
+
+When you mention `@ignite-gh-app insights` on GitHub, the following flow executes automatically:
+
+1. **GitHub Watcher** detects the mention and submits a task to Leader
+2. **Leader** posts an acknowledgment and delegates memory analysis to **Innovator (Tsumugi Ena)**
+3. **Innovator** performs:
+   - Extracts data from the SQLite memories table (already-processed records are auto-excluded)
+   - Investigates the mentioned repository's code structure and existing Issues
+   - Cross-analyzes memory learnings with repository reality to identify improvement themes
+   - Checks for duplicates per theme, then **creates new Issues** or **adds comments to existing Issues**
+4. **Leader** posts a completion report as a comment
+
+### Usage
+
+```bash
+# Start GitHub Watcher (required to receive insights triggers)
+ignite start --with-watcher
+
+# Or start separately
+ignite watcher start
+```
+
+In a GitHub Issue or PR comment:
+```
+@ignite-gh-app insights
+```
+
+### CLI Tool (Direct Execution)
+
+```bash
+# Extract memory data (JSON output)
+./scripts/utils/memory_insights.sh analyze
+
+# List existing Issues for target repo
+./scripts/utils/memory_insights.sh list-issues --repo owner/repo
+
+# Check for duplicates
+./scripts/utils/memory_insights.sh check-duplicates --repo owner/repo --title "improvement theme"
+
+# Display analysis summary
+./scripts/utils/memory_insights.sh summary
+```
+
+### Example Issues Created
+
+- **Git Operation Conflict Prevention**: Based on learnings from commit loss during parallel work on shared repositories, proposes branch strategy and locking mechanism improvements
+- **Token Expiry Auto-Recovery**: Based on GitHub App Token expiration error records, proposes automatic refresh mechanism implementation
+
+Created Issues are labeled with `ignite-insight` and include references to the source memory records.
 
 ## 📚 Learn More
 

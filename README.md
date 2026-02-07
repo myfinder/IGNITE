@@ -23,6 +23,7 @@ IGNITEは今はまだ歌って踊ってライブ配信することはできま�
 - **エージェントメモリ永続化**: SQLiteによるセッション間の学習・決定記録保持
 - **日次レポート管理**: 作業進捗をリポジトリ別 GitHub Issues で自動追跡
 - **設定可能な遅延**: エージェント間の通信遅延をカスタマイズ可能
+- **Memory Insights**: エージェントの学習・エラー記録を自動分析し、改善提案をGitHub Issueとして起票
 
 ## 📋 必要環境
 
@@ -965,6 +966,61 @@ ignite logs -f
 # 多くの行を表示
 ignite logs -n 100
 ```
+
+## 🧠 Memory Insights（自動改善提案）
+
+エージェントが稼働中に蓄積する学習（learning）・エラー（error）・観察（observation）の記録を自動分析し、改善提案を **GitHub Issue** として起票する機能です。
+
+### 仕組み
+
+GitHub 上で `@ignite-gh-app insights` とメンションすると、以下のフローが自動実行されます：
+
+1. **GitHub Watcher** がメンションを検知し、Leader にタスクを投入
+2. **Leader** が受付応答を投稿し、**Innovator（恵那ツムギ）** にメモリ分析を依頼
+3. **Innovator** が以下を実行：
+   - SQLite の memories テーブルからデータを抽出（処理済みは自動除外）
+   - メンション元リポジトリのコード構造・既存 Issue を調査
+   - メモリの教訓とリポジトリの実態をクロス分析し、改善テーマを特定
+   - テーマごとに重複チェックを行い、**新規 Issue 起票**または**既存 Issue にコメント追加**
+4. **Leader** が完了レポートをコメント投稿
+
+### 使い方
+
+```bash
+# GitHub Watcher を起動（insights トリガーの受付に必要）
+ignite start --with-watcher
+
+# または別途起動
+ignite watcher start
+```
+
+GitHub の Issue やPR のコメントで：
+```
+@ignite-gh-app insights
+```
+
+### CLIツール（直接実行）
+
+```bash
+# メモリデータの抽出（JSON出力）
+./scripts/utils/memory_insights.sh analyze
+
+# 対象リポの既存 Issue 一覧取得
+./scripts/utils/memory_insights.sh list-issues --repo owner/repo
+
+# 重複チェック
+./scripts/utils/memory_insights.sh check-duplicates --repo owner/repo --title "改善テーマ"
+
+# 分析サマリー表示
+./scripts/utils/memory_insights.sh summary
+```
+
+### 起票される Issue の例
+
+- **Git操作の競合防止**: 共有リポジトリでの並列作業時に発生したコミット消失の教訓から、ブランチ戦略やロック機構の改善を提案
+- **Token期限切れ自動復旧**: GitHub App Token の有効期限切れエラーの記録から、自動リフレッシュ機構の導入を提案
+
+起票された Issue には `ignite-insight` ラベルが付与され、根拠となるメモリ記録への参照が含まれます。
 
 ## 📚 さらに詳しく
 
