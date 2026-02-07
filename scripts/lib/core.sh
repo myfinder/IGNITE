@@ -95,6 +95,34 @@ sed_inplace() {
     fi
 }
 
+# yaml_set_fields - YAMLファイルのトップレベルフィールドを安全に追記・上書き
+# Usage: yaml_set_fields <file> <key1=value1> [key2=value2] ...
+# 既存キーは削除後に追記、新規キーはそのまま追記（mktemp方式でBSD互換）
+yaml_set_fields() {
+    local file="$1"
+    shift
+
+    [[ -f "$file" ]] || return 1
+
+    local tmp
+    tmp="$(mktemp)"
+    cp "$file" "$tmp"
+
+    local key val
+    for pair in "$@"; do
+        key="${pair%%=*}"
+        val="${pair#*=}"
+        # 既存行を削除（mktemp方式）
+        local tmp2
+        tmp2="$(mktemp)"
+        sed "/^${key}:/d" "$tmp" > "$tmp2" && mv "$tmp2" "$tmp" || rm -f "$tmp2"
+        # 追記
+        printf '%s: %s\n' "$key" "$val" >> "$tmp"
+    done
+
+    mv "$tmp" "$file"
+}
+
 # get_delay - delays セクションから遅延値を取得（数値バリデーション付き）
 # Usage: get_delay <key> <default>
 get_delay() {
