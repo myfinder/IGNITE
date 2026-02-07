@@ -159,9 +159,12 @@ cmd_notify() {
     timestamp=$(date -Iseconds)
     local message_id
     message_id=$(date +%s%6N)
-    local escaped_message="${message//\"/\\\"}"
     mkdir -p "$WORKSPACE_DIR/queue/${target}/processed"
     local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.yaml"
+
+    # マルチラインメッセージ対応: YAMLブロックスカラー(|)とsedインデント付与
+    local indented_message
+    indented_message=$(printf '%s' "$message" | sed 's/^/    /')
 
     cat > "$message_file" <<EOF
 type: notification
@@ -170,7 +173,8 @@ to: ${target}
 timestamp: "${timestamp}"
 priority: normal
 payload:
-  message: "${escaped_message}"
+  message: |
+${indented_message}
 EOF
 
     print_success "メッセージを送信しました: $message_file"
