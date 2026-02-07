@@ -21,6 +21,9 @@ if [[ -n "${__RETRY_HANDLER_LOADED:-}" ]]; then
 fi
 __RETRY_HANDLER_LOADED=1
 
+# core.sh の共通関数（sed_inplace等）を利用
+source "${BASH_SOURCE[0]%/*}/core.sh"
+
 # =============================================================================
 # 設定（環境変数で上書き可能）
 # =============================================================================
@@ -110,19 +113,19 @@ mark_as_error() {
     fi
 
     # ステータスをerrorに変更
-    if ! sed -i 's/^status:.*/status: error/' "$file" 2>/dev/null; then
+    if ! sed_inplace 's/^status:.*/status: error/' "$file" 2>/dev/null; then
         _rh_log_error "ステータスの更新に失敗: $file"
         return 1
     fi
 
     # エラー理由を記録（既存行を削除してから追記で安全にする）
-    sed -i '/^error_reason:/d' "$file" 2>/dev/null
+    sed_inplace '/^error_reason:/d' "$file" 2>/dev/null
     printf 'error_reason: "%s"\n' "$reason" >> "$file"
 
     # エラー発生時刻を記録
     local error_time
     error_time=$(date -Iseconds)
-    sed -i '/^error_at:/d' "$file" 2>/dev/null
+    sed_inplace '/^error_at:/d' "$file" 2>/dev/null
     printf 'error_at: "%s"\n' "$error_time" >> "$file"
 
     _rh_log_error "エラーステータスに変更: $file (理由: ${reason})"
@@ -192,29 +195,29 @@ process_retry() {
     _rh_log_info "リトライ処理: $file (試行: ${new_count}, バックオフ: ${backoff}秒)"
 
     # retry_countを更新（既存行を削除してから追記）
-    sed -i '/^retry_count:/d' "$file" 2>/dev/null
+    sed_inplace '/^retry_count:/d' "$file" 2>/dev/null
     printf 'retry_count: %d\n' "$new_count" >> "$file"
 
     # last_retry_at を記録
     local retry_time
     retry_time=$(date -Iseconds)
-    sed -i '/^last_retry_at:/d' "$file" 2>/dev/null
+    sed_inplace '/^last_retry_at:/d' "$file" 2>/dev/null
     printf 'last_retry_at: "%s"\n' "$retry_time" >> "$file"
 
     # next_retry_after を記録（バックオフ後の時刻）
     local next_retry
     next_retry=$(date -Iseconds -d "+${backoff} seconds" 2>/dev/null) || true
     if [[ -n "$next_retry" ]]; then
-        sed -i '/^next_retry_after:/d' "$file" 2>/dev/null
+        sed_inplace '/^next_retry_after:/d' "$file" 2>/dev/null
         printf 'next_retry_after: "%s"\n' "$next_retry" >> "$file"
     fi
 
     # エラー関連フィールドをクリア
-    sed -i '/^error_reason:/d' "$file" 2>/dev/null
-    sed -i '/^error_at:/d' "$file" 2>/dev/null
+    sed_inplace '/^error_reason:/d' "$file" 2>/dev/null
+    sed_inplace '/^error_at:/d' "$file" 2>/dev/null
 
     # ステータスをqueuedに戻す
-    sed -i 's/^status:.*/status: queued/' "$file" 2>/dev/null
+    sed_inplace 's/^status:.*/status: queued/' "$file" 2>/dev/null
 
     _rh_log_success "リトライ完了: $file (試行: ${new_count}, 次回リトライ: ${next_retry:-不明})"
     return 0
