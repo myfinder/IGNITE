@@ -112,6 +112,7 @@ to: leader
 timestamp: "2026-01-31T17:18:00+09:00"
 priority: high
 payload:
+  repository: "owner/repo"
   task_id: "task_001"
   title: "README骨組み作成"
 
