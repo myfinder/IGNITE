@@ -20,6 +20,9 @@ IGNITE may not be able to sing, dance, or go live streaming just yet, but they�
 - **Fully Local Execution**: Leverage full claude code capabilities on local PC
 - **tmux Integration**: Real-time visualization of all agent activities
 - **Cost Tracking**: Real-time token usage and cost monitoring per agent
+- **Agent Memory Persistence**: SQLite-based retention of learning and decision records across sessions
+- **Daily Report Management**: Automatic progress tracking via per-repository GitHub Issues
+- **Configurable Delays**: Customize inter-agent communication delays
 
 ## 📋 Requirements
 
@@ -441,8 +444,32 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 ignite/
 ├── scripts/                    # Execution scripts
 │   ├── ignite                  # Unified command (start/stop/plan/status/attach/logs/clean)
-│   └── utils/
-│       └── send_message.sh     # Message sending utility
+│   ├── schema.sql              # SQLite memory DB schema
+│   ├── lib/                    # Core libraries
+│   │   ├── core.sh             # Constants, colors, output helpers
+│   │   ├── agent.sh            # Agent launch & management
+│   │   ├── session.sh          # tmux session management
+│   │   ├── commands.sh         # Command router
+│   │   ├── cmd_start.sh        # start command
+│   │   ├── cmd_stop.sh         # stop command
+│   │   ├── cmd_plan.sh         # plan command
+│   │   ├── cmd_status.sh       # status command
+│   │   ├── cmd_cost.sh         # cost command
+│   │   ├── cmd_help.sh         # help command
+│   │   ├── cmd_work_on.sh      # work-on command
+│   │   ├── cost_utils.sh       # Cost calculation utilities
+│   │   ├── dlq_handler.sh      # Dead letter queue handler
+│   │   └── retry_handler.sh    # Retry handler
+│   └── utils/                  # Utility scripts
+│       ├── queue_monitor.sh    # Message queue monitoring daemon
+│       ├── send_message.sh     # Message sending utility
+│       ├── daily_report.sh     # Daily report Issue management
+│       ├── github_watcher.sh   # GitHub event monitoring
+│       ├── comment_on_issue.sh # Issue comment posting
+│       ├── create_pr.sh        # PR creation
+│       ├── update_pr.sh        # PR update
+│       ├── setup_repo.sh       # Repository initial setup
+│       └── get_github_app_token.sh  # GitHub App token retrieval
 │
 ├── instructions/               # Agent system prompts
 │   ├── leader.md               # For Leader
@@ -457,7 +484,8 @@ ignite/
 │   ├── system.yaml             # System-wide settings
 │   ├── agents.yaml             # Individual agent settings
 │   ├── ignitians.yaml          # IGNITIANS parallelism settings
-│   └── pricing.yaml            # Claude API pricing settings
+│   ├── pricing.yaml            # Claude API pricing settings
+│   └── github-watcher.yaml     # GitHub Watcher settings
 │
 ├── workspace/                  # Runtime workspace (excluded via .gitignore)
 │   ├── queue/                  # Message queues (per agent)
@@ -471,6 +499,9 @@ ignite/
 │   │   ├── ignitian_2/          # IGNITIAN-2 queue
 │   │   └── ignitian_{n}/        # IGNITIAN-N queue (dynamic)
 │   ├── context/                # Project context
+│   ├── state/                  # State management files
+│   │   └── report_issues.json  # Daily report Issue number cache
+│   ├── memory.db               # SQLite agent memory DB
 │   ├── logs/                   # Log files
 │   └── dashboard.md            # Real-time progress dashboard
 │

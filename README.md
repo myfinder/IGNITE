@@ -20,6 +20,9 @@ IGNITEは今はまだ歌って踊ってライブ配信することはできま�
 - **完全なローカル実行**: claude codeのフル機能をローカルPCで活用
 - **tmux統合**: 全エージェントの動作をリアルタイムで可視化
 - **コスト追跡**: エージェントごとのトークン消費量と費用をリアルタイムで確認
+- **エージェントメモリ永続化**: SQLiteによるセッション間の学習・決定記録保持
+- **日次レポート管理**: 作業進捗をリポジトリ別 GitHub Issues で自動追跡
+- **設定可能な遅延**: エージェント間の通信遅延をカスタマイズ可能
 
 ## 📋 必要環境
 
@@ -440,8 +443,32 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 ignite/
 ├── scripts/                    # 実行スクリプト
 │   ├── ignite                  # 統合コマンド (start/stop/plan/status/attach/logs/clean)
-│   └── utils/
-│       └── send_message.sh     # メッセージ送信ユーティリティ
+│   ├── schema.sql              # SQLiteメモリDBスキーマ
+│   ├── lib/                    # コアライブラリ
+│   │   ├── core.sh             # 定数・カラー・出力ヘルパー
+│   │   ├── agent.sh            # エージェント起動・管理
+│   │   ├── session.sh          # tmuxセッション管理
+│   │   ├── commands.sh         # コマンドルーター
+│   │   ├── cmd_start.sh        # start コマンド
+│   │   ├── cmd_stop.sh         # stop コマンド
+│   │   ├── cmd_plan.sh         # plan コマンド
+│   │   ├── cmd_status.sh       # status コマンド
+│   │   ├── cmd_cost.sh         # cost コマンド
+│   │   ├── cmd_help.sh         # help コマンド
+│   │   ├── cmd_work_on.sh      # work-on コマンド
+│   │   ├── cost_utils.sh       # コスト計算ユーティリティ
+│   │   ├── dlq_handler.sh      # デッドレターキュー処理
+│   │   └── retry_handler.sh    # リトライ処理
+│   └── utils/                  # ユーティリティスクリプト
+│       ├── queue_monitor.sh    # メッセージキュー監視デーモン
+│       ├── send_message.sh     # メッセージ送信ユーティリティ
+│       ├── daily_report.sh     # 日次レポートIssue管理
+│       ├── github_watcher.sh   # GitHubイベント監視
+│       ├── comment_on_issue.sh # Issue コメント投稿
+│       ├── create_pr.sh        # PR作成
+│       ├── update_pr.sh        # PR更新
+│       ├── setup_repo.sh       # リポジトリ初期設定
+│       └── get_github_app_token.sh  # GitHub App トークン取得
 │
 ├── instructions/               # エージェントのシステムプロンプト
 │   ├── leader.md               # Leader用
@@ -456,7 +483,8 @@ ignite/
 │   ├── system.yaml             # システム全体の設定
 │   ├── agents.yaml             # 各エージェントの設定
 │   ├── ignitians.yaml          # IGNITIANS並列数設定
-│   └── pricing.yaml            # Claude API料金設定
+│   ├── pricing.yaml            # Claude API料金設定
+│   └── github-watcher.yaml     # GitHub Watcher設定
 │
 ├── workspace/                  # 実行時ワークスペース（.gitignoreで除外）
 │   ├── queue/                  # メッセージキュー（各エージェント用）
@@ -470,6 +498,9 @@ ignite/
 │   │   ├── ignitian_2/          # IGNITIAN-2キュー
 │   │   └── ignitian_{n}/        # IGNITIAN-Nキュー（動的）
 │   ├── context/                # プロジェクトコンテキスト
+│   ├── state/                  # 状態管理ファイル
+│   │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
+│   ├── memory.db               # SQLiteエージェントメモリDB
 │   ├── logs/                   # ログファイル
 │   └── dashboard.md            # リアルタイム進捗ダッシュボード
 │
