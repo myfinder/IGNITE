@@ -461,7 +461,7 @@ cmd_watcher() {
         status)
             if pgrep -f "github_watcher.sh" > /dev/null; then
                 print_success "GitHub Watcher: 実行中"
-                pgrep -f "github_watcher.sh" | while read pid; do
+                pgrep -f "github_watcher.sh" | while read -r pid; do
                     echo "  PID: $pid"
                 done
             else

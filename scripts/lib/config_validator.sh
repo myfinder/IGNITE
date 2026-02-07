@@ -25,7 +25,8 @@ _VALIDATION_WARNINGS=()
 # validation_error <file> <path> <msg> [fix_suggestion]
 validation_error() {
     local file="$1" path="$2" msg="$3" fix="${4:-}"
-    local entry="[ERROR] $(basename "$file"): ${path} - ${msg}"
+    local entry
+    entry="[ERROR] $(basename "$file"): ${path} - ${msg}"
     [[ -n "$fix" ]] && entry+=" (Fix: ${fix})"
     _VALIDATION_ERRORS+=("$entry")
 }
@@ -33,7 +34,8 @@ validation_error() {
 # validation_warn <file> <path> <msg> [fix_suggestion]
 validation_warn() {
     local file="$1" path="$2" msg="$3" fix="${4:-}"
-    local entry="[WARN] $(basename "$file"): ${path} - ${msg}"
+    local entry
+    entry="[WARN] $(basename "$file"): ${path} - ${msg}"
     [[ -n "$fix" ]] && entry+=" (Fix: ${fix})"
     _VALIDATION_WARNINGS+=("$entry")
 }
