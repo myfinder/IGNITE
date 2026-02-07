@@ -54,18 +54,43 @@ DEFAULT_WORKER_COUNT=8
 # Claude Code は /path/to/project を -path-to-project に変換してディレクトリ名にする
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')"
 
-# カラー定義
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
+# カラー定義（TTY検出 + NO_COLOR対応）
+if [[ -n "${NO_COLOR:-}" ]] || ! [[ -t 1 ]] || [[ "${TERM:-}" == "dumb" ]]; then
+    GREEN='' BLUE='' YELLOW='' RED='' CYAN='' BOLD='' NC=''
+else
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    YELLOW='\033[1;33m'
+    RED='\033[0;31m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+fi
 
 # 共通出力関数
 print_info() { echo -e "${BLUE}$1${NC}"; }
 print_success() { echo -e "${GREEN}✓ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
-print_error() { echo -e "${RED}❌ $1${NC}"; }
+print_error() { echo -e "${RED}❌ $1${NC}" >&2; }
 print_header() { echo -e "${BOLD}${CYAN}=== $1 ===${NC}"; }
+
+# タイムスタンプ付きログ関数（stderr出力）
+log_info()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[INFO]${NC} $1" >&2; }
+log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[OK]${NC} $1" >&2; }
+log_warn()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[WARN]${NC} $1" >&2; }
+log_error()   { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[ERROR]${NC} $1" >&2; }
+
+# sed_inplace - GNU/BSD 両対応の sed -i ラッパー（mktemp方式）
+# Usage: sed_inplace "pattern" "file"
+sed_inplace() {
+    local pattern="$1"
+    local file="$2"
+    local tmp
+    tmp="$(mktemp)"
+    if sed "$pattern" "$file" > "$tmp"; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+        return 1
+    fi
+}
