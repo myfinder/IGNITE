@@ -425,14 +425,22 @@ IGNITIANsからの完了報告（`task_completed`）受信時、以下のプロ�
    - 成果物（deliverables）が期待通りか
    - 品質基準を満たしているか
 
-2. **不整合検出時の差し戻し**
+2. **レポートYAMLの変数展開バリデーション**
+   - `timestamp` フィールドを検証（検証対象は `timestamp` 行に限定。`notes`/`description`/`summary` 等のフリーテキストは対象外）:
+     - `$(date` で始まるリテラルが含まれていないか → 含まれていれば **FAIL**
+     - `$(hostname` / `$(whoami` / `$(pwd` 等の未展開コマンド置換がないか → あれば **FAIL**
+     - ISO 8601 形式（例: `2026-02-07T10:00:00+0900`）になっているか → なっていなければ **FAIL**
+   - FAIL 検出時は項目3の差し戻し条件「変数展開ミス」に該当。下記の専用テンプレートで `revision_request` を送信
+
+3. **不整合検出時の差し戻し**
    - 以下の条件に該当する場合、該当IGNITIANに `revision_request` を送信:
      - **品質不足**: 成果物の品質が基準を満たしていない
      - **要件未達**: 指示された要件が実装されていない
      - **戦略との相違**: Strategistの戦略意図と異なる実装
      - **エラー含有**: 成果物にエラーや不具合がある
+     - **変数展開ミス**: レポートの `timestamp` 等に未展開のシェル変数・コマンド置換が残っている
 
-3. **差し戻し回数上限: 2回**
+4. **差し戻し回数上限: 2回**
    - 同一タスクへの差し戻しは最大2回まで
    - 2回差し戻しても解決しない場合は、Leaderにエスカレーションする
 
@@ -454,6 +462,34 @@ payload:
       - "具体的な指摘1"
       - "具体的な指摘2"
     guidance: "修正の方向性"
+  revision_count: 1
+  max_revisions: 2
+```
+
+### 変数展開ミス検出時の revision_request テンプレート
+
+項目2のバリデーションで FAIL を検出した場合、以下のテンプレートで差し戻す:
+
+```yaml
+type: revision_request
+from: coordinator
+to: ignitian_{n}
+timestamp: "2026-02-07T10:00:00+09:00"
+priority: high
+payload:
+  task_id: "対象タスクID"
+  title: "対象タスクのタイトル"
+  reason:
+    category: "correctness"
+    severity: "major"
+    specific_issues:
+      - "完了レポートの timestamp フィールドに未展開のシェル変数/コマンド置換が残っています"
+      - "検出パターン: $(date ...) 等のリテラル文字列"
+    guidance: |
+      レポート生成時は以下のいずれかの方法で修正してください:
+      1. 【推奨】Write tool でYAMLを直接生成（Bash toolで date コマンドの結果を取得し、Write toolでYAMLに値を埋め込む）
+      2. 【代替】Bash heredoc を使う場合は << EOF（クォートなし）を使い、事前に TIMESTAMP=$(date ...) で変数に格納してから ${TIMESTAMP} で参照
+      ※ << 'EOF'（シングルクォート付き）は絶対に使わないでください
   revision_count: 1
   max_revisions: 2
 ```

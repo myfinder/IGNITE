@@ -194,6 +194,57 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 処理が完了したら、単にそこで終了してください。次の通知はqueue_monitorが送信します。
 
+## ⚠️ レポート生成ルール（必須）
+
+完了レポート（`task_completed` YAML）を生成する際、以下のルールに従うこと。
+
+### 推奨: Write tool でYAML生成（最も安全）
+
+完了レポートは以下の2ステップで生成してください:
+
+**Step 1**: Bash tool で動的値を取得
+```bash
+date '+%Y-%m-%dT%H:%M:%S%z'
+# 出力例: 2026-02-06T18:01:42+0900
+```
+
+**Step 2**: Write tool でYAMLファイルを直接生成
+- Step 1で取得した値をYAML内に直接記述する
+- Bashのヒアドキュメントは使用しない
+- シェル変数展開の問題が**構造的に発生し得ない**ため最も安全
+
+### 代替: Bash heredoc を使う場合の必須ルール
+
+やむを得ずBash heredocでレポートを生成する場合、以下を厳守すること:
+
+1. **`<< EOF`（クォートなし）を使うこと** — `<< 'EOF'` は**絶対禁止**
+2. 動的値は事前に変数に格納: `TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')`
+3. heredoc内では `"${TIMESTAMP}"` で参照
+
+### よくあるミスと防止策
+
+**❌ NG例（絶対にやってはいけない）**:
+```bash
+cat > "report.yaml" << 'EOF'
+timestamp: "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+EOF
+# 結果: timestamp: "$(date '+%Y-%m-%dT%H:%M:%S%z')"  ← 展開されない！
+```
+理由: `<< 'EOF'`（シングルクォート付き）はシェル変数・コマンド置換を展開しない。
+
+**✅ OK例（heredocを使う場合）**:
+```bash
+TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+cat > "report.yaml" << EOF
+timestamp: "${TIMESTAMP}"
+EOF
+# 結果: timestamp: "2026-02-06T18:01:42+0900"  ← 正しく展開される
+```
+
+**✅✅ 最推奨例（Write tool）**:
+Bash toolで `date` コマンドの結果を取得し、Write toolでYAMLを直接書き出す。
+ヒアドキュメントの問題を構造的に回避できる。
+
 ## セルフレビュープロトコル
 
 タスク完了後、Coordinatorへの報告前に必ず以下の5段階レビューを実施すること。
@@ -217,6 +268,7 @@ queue_monitorから通知が来たら、以下を実行してください:
   - 副作用やリスクを見落としていないか
   - エラーハンドリングが適切か
   - セキュリティ上の懸念がないか
+  - **変数展開チェック**: 生成したYAMLレポート内に `$(` や `${` がリテラルとして残っていないか確認。`timestamp` フィールドが実際の日時（ISO 8601形式）になっているか確認
 
 - **Round 4: 明瞭性・可読性チェック**
   - 受け手が誤解なく理解できるか
@@ -352,6 +404,11 @@ content: |
 ```
 
 **4. レポート送信**
+
+> ⚠️ **重要**: 推奨は Write tool による直接生成です（「レポート生成ルール」セクション参照）。
+> heredocを使う場合、デリミタは `<<EOF`（クォートなし）を使ってください。
+> `<< 'EOF'` を使うと変数が展開されません。
+
 ```bash
 cat > workspace/queue/coordinator/task_completed_$(date +%s%6N).yaml <<EOF
 type: task_completed
