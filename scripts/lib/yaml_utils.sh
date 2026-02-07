@@ -14,8 +14,8 @@ fi
 
 # =============================================================================
 # yaml_get <file> <key> [default]
-#   トップレベルキーの値を取得する。
-#   yq がある場合は yq、なければ grep+awk フォールバック。
+#   任意の深さのキーの値を取得する（最初にマッチしたものを返す）。
+#   yq がある場合は yq（再帰検索）、なければ grep+awk フォールバック。
 #   値が空の場合は default を返す。常に exit 0。
 # =============================================================================
 
@@ -26,7 +26,7 @@ yaml_get() {
     local val=""
 
     if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
-        val=$(yq -r ".${key} // \"\"" "$file" 2>/dev/null)
+        val=$(yq -r ".. | select(has(\"${key}\")).${key}" "$file" 2>/dev/null | head -1)
     else
         val=$(grep -E "^\\s*${key}:" "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
     fi
