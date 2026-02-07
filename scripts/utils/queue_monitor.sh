@@ -188,14 +188,11 @@ _report_progress() {
     local today
     today=$(date +%Y-%m-%d)
 
-    # repository があればそれだけ、なければ全件（後方互換）
-    local repos
-    if [[ -n "$msg_repo" ]]; then
-        repos="$msg_repo"
-    else
-        repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
+    # repository 必須: なければ投稿スキップ
+    if [[ -z "$msg_repo" ]]; then
+        return 0
     fi
-    [[ -n "$repos" ]] || return 0
+    local repos="$msg_repo"
 
     local comment_body
     comment_body="### Progress Update
@@ -246,14 +243,11 @@ _report_evaluation() {
     local today
     today=$(date +%Y-%m-%d)
 
-    # repository があればそれだけ、なければ全件（後方互換）
-    local repos
-    if [[ -n "$msg_repo" ]]; then
-        repos="$msg_repo"
-    else
-        repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
+    # repository 必須: なければ投稿スキップ
+    if [[ -z "$msg_repo" ]]; then
+        return 0
     fi
-    [[ -n "$repos" ]] || return 0
+    local repos="$msg_repo"
 
     local verdict_emoji
     case "$verdict" in

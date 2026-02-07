@@ -281,6 +281,7 @@ to: leader
 timestamp: "2026-01-31T17:18:00+09:00"
 priority: high
 payload:
+  repository: "owner/repo"
   task_id: "task_001"
   title: "タスク名"
   overall_status: "pass"  # pass, pass_with_notes, fail
@@ -371,6 +372,7 @@ to: leader
 timestamp: "2026-01-31T17:10:00+09:00"
 priority: normal
 payload:
+  repository: "owner/repo"
   total_tasks: 3
   completed: 1
   in_progress: 2
