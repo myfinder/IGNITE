@@ -94,3 +94,14 @@ sed_inplace() {
         return 1
     fi
 }
+
+# get_delay - delays セクションから遅延値を取得（数値バリデーション付き）
+# Usage: get_delay <key> <default>
+get_delay() {
+    local key="$1" default="$2"
+    local config_file="$IGNITE_CONFIG_DIR/system.yaml"
+    local value
+    value=$(sed -n '/^delays:/,/^[^ ]/p' "$config_file" 2>/dev/null | awk '/^  '"$key"':/{print $2; exit}')
+    [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]] || value=""
+    echo "${value:-$default}"
+}
