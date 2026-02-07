@@ -26,6 +26,9 @@ if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
     fi
 fi
 
+# YAMLユーティリティ
+source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
+
 # カラー定義
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -79,9 +82,9 @@ load_config() {
         exit 1
     fi
 
-    # YAMLから値を取得（grepとawkで簡易パース）
-    APP_ID=$(grep -E '^\s*app_id:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
-    PRIVATE_KEY_PATH=$(grep -E '^\s*private_key_path:' "$config_file" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+    # YAMLから値を取得
+    APP_ID=$(yaml_get "$config_file" 'app_id')
+    PRIVATE_KEY_PATH=$(yaml_get "$config_file" 'private_key_path')
 
     # チルダをホームディレクトリに展開
     PRIVATE_KEY_PATH="${PRIVATE_KEY_PATH/#\~/$HOME}"

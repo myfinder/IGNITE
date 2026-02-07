@@ -7,7 +7,7 @@ get_watcher_auto_start() {
     local config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
     if [[ -f "$config_file" ]]; then
         local enabled
-        enabled=$(grep -E '^\s*enabled:' "$config_file" | head -1 | awk '{print $2}')
+        enabled=$(yaml_get "$config_file" 'enabled')
         [[ "$enabled" == "true" ]]
     else
         return 1
