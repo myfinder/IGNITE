@@ -10,9 +10,14 @@ DB_PATH="${1:-${WORKSPACE_DIR:-workspace}/state/memory.db}"
 get_repository_name() {
     # 1. 環境変数 IGNITE_REPOSITORY（最優先、CI環境対応）
     if [[ -n "${IGNITE_REPOSITORY:-}" ]]; then
-        echo "[schema_migrate] Using IGNITE_REPOSITORY env: $IGNITE_REPOSITORY" >&2
-        echo "$IGNITE_REPOSITORY"
-        return 0
+        if [[ ! "$IGNITE_REPOSITORY" =~ ^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ ]]; then
+            echo "[schema_migrate] WARNING: Invalid IGNITE_REPOSITORY format: $IGNITE_REPOSITORY" >&2
+            # Tier 2にフォールスルー（環境変数を無視してgit remoteを試行）
+        else
+            echo "[schema_migrate] Using IGNITE_REPOSITORY env: $IGNITE_REPOSITORY" >&2
+            echo "$IGNITE_REPOSITORY"
+            return 0
+        fi
     fi
 
     # 2. git remote get-url origin（HTTPS/SSH両対応）
