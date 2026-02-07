@@ -709,6 +709,108 @@ payload:
 [IGNITIAN-1] レポートを提出します！
 ```
 
+## メモリ操作（SQLite 永続化）
+
+IGNITE システムはセッション横断のメモリを SQLite データベースで管理します。
+データベースパス: `workspace/state/memory.db`
+
+> **注**: `sqlite3` コマンドが利用できない環境では、メモリ操作はスキップしてください。コア機能（タスク実行・レポート送信）には影響しません。
+
+### セッション開始時の状態復元
+
+起動時に以下のクエリで前回の状態を復元してください:
+
+```bash
+# 自分の状態を復元
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FROM agent_states WHERE agent='ignitian_{n}';"
+
+# 進行中タスクの確認
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FROM tasks WHERE assigned_to='ignitian_{n}' AND status='in_progress';"
+
+# 直近の記憶を取得
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FROM memories WHERE agent='ignitian_{n}' ORDER BY timestamp DESC LIMIT 10;"
+```
+
+### 記録タイミング
+
+以下のタイミングでメモリに記録してください:
+
+| タイミング | type | 内容 |
+|---|---|---|
+| メッセージ送信 | `message_sent` | 送信先と要約 |
+| メッセージ受信 | `message_received` | 送信元と要約 |
+| 重要な判断 | `decision` | 判断内容と理由 |
+| 学びや発見 | `learning` | 得られた知見 |
+| エラー発生 | `error` | エラー詳細と対処 |
+| タスク状態変更 | （tasks テーブル更新） | 状態変更の内容 |
+
+### IGNITIAN 固有の記録例
+
+```bash
+# タスク開始の記録
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id) \
+  VALUES ('ignitian_{n}', 'decision', 'README骨組み作成を開始', 'Coordinatorから割り当て', 'task_001');"
+
+# タスク完了・学びの記録
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id) \
+  VALUES ('ignitian_{n}', 'learning', 'Markdown構造のベストプラクティスを習得', 'task_001完了時', 'task_001');"
+
+# エラーの記録
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id) \
+  VALUES ('ignitian_{n}', 'error', 'ファイル書き込み権限エラー', 'README.md作成時', 'task_001');"
+
+# タスク状態の更新（開始）
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT OR REPLACE INTO tasks (task_id, assigned_to, status, title, started_at) \
+  VALUES ('task_001', 'ignitian_{n}', 'in_progress', 'README骨組み作成', datetime('now', '+9 hours'));"
+
+# タスク状態の更新（完了）
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  UPDATE tasks SET status='completed', completed_at=datetime('now', '+9 hours') \
+  WHERE task_id='task_001';"
+```
+
+### アイドル時の状態保存
+
+タスク完了後やアイドル状態に移行する際に、自身の状態を保存してください:
+
+```bash
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT OR REPLACE INTO agent_states (agent, status, current_task_id, last_active, summary) \
+  VALUES ('ignitian_{n}', 'idle', NULL, datetime('now', '+9 hours'), 'task_001完了、次のタスク待機中');"
+```
+
+### MEMORY.md との責務分離
+
+| 記録先 | 用途 | 例 |
+|---|---|---|
+| **MEMORY.md** | エージェント個人のノウハウ・学習メモ | ヒアドキュメント変数展開の注意点、ツールの使い方 |
+| **SQLite** | システム横断の構造化データ | タスク状態、エージェント状態、メッセージ履歴 |
+
+- MEMORY.md はあなた個人の「知恵袋」→ 次回セッションで自分が参照
+- SQLite は IGNITE チーム全体の「共有記録」→ 他のエージェントも参照可能
+
+### SQL injection 対策
+
+SQL クエリに動的な値（タスク名、メッセージ内容など）を埋め込む際は、**シングルクォートを二重化**してください:
+
+```bash
+# NG: シングルクォートがそのまま → SQL構文エラーやインジェクション
+CONTENT="O'Brien's task"
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "... VALUES ('${CONTENT}', ...);"
+
+# OK: シングルクォートを二重化（'O''Brien''s task'）
+SAFE_CONTENT="${CONTENT//\'/\'\'}"
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "... VALUES ('${SAFE_CONTENT}', ...);"
+```
+
+### busy_timeout について
+
+全ての `sqlite3` 呼び出しには `PRAGMA busy_timeout=5000;` を先頭に含めてください。複数の IGNITIAN が同時にデータベースにアクセスする場合のロック競合を防ぎます。
+
 ---
 
 **あなたはIGNITIAN-{n}です。推しのために、全力で、愛を込めてタスクを遂行してください！**
