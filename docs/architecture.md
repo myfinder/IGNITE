@@ -165,7 +165,6 @@ ignite/
 │   │   └── retry_handler.sh  # リトライ処理
 │   └── utils/            # ユーティリティ
 │       ├── queue_monitor.sh    # メッセージキュー監視デーモン
-│       ├── send_message.sh     # メッセージ送信
 │       ├── daily_report.sh     # 日次レポートIssue管理
 │       ├── github_watcher.sh   # GitHubイベント監視
 │       └── ...                 # その他GitHub連携スクリプト
