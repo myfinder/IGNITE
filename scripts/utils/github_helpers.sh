@@ -124,26 +124,31 @@ _get_bot_token_internal() {
     local last_error=""
     local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
     local repo_option=""
+    local stderr_tmp
+    stderr_tmp=$(mktemp)
 
     if [[ -n "$repo" ]]; then
         repo_option="--repo $repo"
     fi
 
     while [[ $retry_count -lt $BOT_TOKEN_MAX_RETRIES ]]; do
+        # stderr を tmpfile に分離し、stdout のみ token に格納
         if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "$token_script" $repo_option 2>&1)
+            token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "$token_script" $repo_option 2>"$stderr_tmp")
         else
-            token=$("$token_script" $repo_option 2>&1)
+            token=$("$token_script" $repo_option 2>"$stderr_tmp")
         fi
         local exit_code=$?
 
         if [[ $exit_code -eq 0 ]] && [[ -n "$token" ]] && [[ "$token" == ghs_* ]]; then
+            rm -f "$stderr_tmp"
             echo "$token"
             return 0
         fi
 
         # 失敗: exit codeに基づくログ出力（sysexits.h準拠）
-        last_error="$token"
+        last_error=$(cat "$stderr_tmp" 2>/dev/null)
+        [[ -z "$last_error" ]] && last_error="$token"
         case $exit_code in
             64) log_warn "Bot Token: 引数エラー (EX_USAGE)"; break ;;
             69) log_warn "Bot Token: gh CLI/gh-token未インストール (EX_UNAVAILABLE)"; break ;;
@@ -162,6 +167,7 @@ _get_bot_token_internal() {
         fi
     done
 
+    rm -f "$stderr_tmp"
     log_warn "Bot Token取得失敗 (全${BOT_TOKEN_MAX_RETRIES}回の試行が失敗)"
     if [[ -n "$last_error" ]]; then
         log_warn "最後のエラー: $last_error"
