@@ -18,6 +18,9 @@ jobs:
       - name: Setup Bats
         uses: bats-core/bats-action@2.0.0
 
+      - name: Verify sqlite3 availability
+        run: sqlite3 --version
+
       - name: Run Bats tests
         run: bats tests/
 
