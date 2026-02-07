@@ -362,21 +362,50 @@ _generate_repo_report() {
     local repo="$1"
     local today="$2"
     local timestamp="$3"
+    local db="$WORKSPACE_DIR/state/memory.db"
     local dashboard="$WORKSPACE_DIR/dashboard.md"
 
-    [[ -f "$dashboard" ]] || return 0
+    # Layer 1: 入力バリデーション（Defense in Depth）
+    if [[ ! "$repo" =~ ^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ ]]; then
+        log_warn "Invalid repository format: $repo"
+        return 0
+    fi
 
-    # 「現在のタスク」セクションからこのrepoのエントリだけ抽出
-    # 各タスクは "- " で始まり、インデントされた子行（"  - ブランチ:" 等）が続く
-    local task_lines
-    task_lines=$(awk -v repo="$repo" '
-        /^## 現在のタスク/ { in_section=1; next }
-        /^## / { in_section=0 }
-        in_section && /^- / {
-            if (index($0, "(" repo ")") > 0) { show=1 } else { show=0 }
-        }
-        in_section && show { print }
-    ' "$dashboard")
+    local task_lines=""
+
+    # メインパス: SQLite tasksテーブルから直接取得
+    if command -v sqlite3 &>/dev/null && [[ -f "$db" ]]; then
+        # Layer 2: SQLエスケープ（シングルクォート二重化）
+        local safe_repo="${repo//\'/\'\'}"
+        local raw
+        raw=$(sqlite3 "$db" \
+            "PRAGMA busy_timeout=5000; SELECT task_id, title, status FROM tasks WHERE repository='${safe_repo}' AND status != 'completed' ORDER BY task_id;" 2>/dev/null \
+            | grep '|') || raw=""
+        if [[ -n "$raw" ]]; then
+            task_lines="| Task ID | Title | Status |"$'\n'
+            task_lines+="|---------|-------|--------|"$'\n'
+            # NOTE: sqlite3のデフォルト区切り文字は|のため、
+            # タイトルに|が含まれるとIFSで誤分割される。
+            # 現実的にtask titleに|が含まれる可能性は極めて低いため許容。
+            while IFS='|' read -r tid ttitle tstatus; do
+                local safe_title="${ttitle//|/-}"
+                safe_title="${safe_title//$'\n'/ }"
+                task_lines+="| ${tid} | ${safe_title} | ${tstatus} |"$'\n'
+            done <<< "$raw"
+        fi
+    fi
+
+    # フォールバック: SQLite不在またはクエリ結果が空の場合、dashboard.mdからawk抽出
+    # NOTE: フォールバック（awk）パスではリポジトリ別フィルタリングは不可
+    # （dashboard.md テーブルに repository 列がないため）。
+    # SQLiteパスが主、フォールバックは全タスクを表示。
+    if [[ -z "$task_lines" ]] && [[ -f "$dashboard" ]]; then
+        task_lines=$(awk '
+            /^## 現在のタスク/ { in_section=1; next }
+            /^## /             { in_section=0 }
+            in_section         { print }
+        ' "$dashboard")
+    fi
 
     # body 組み立て
     cat <<EOF

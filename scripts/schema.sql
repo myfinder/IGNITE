@@ -1,6 +1,6 @@
 -- IGNITE メモリデータベース スキーマ
 -- タイムスタンプは JST (UTC+9) で記録
-PRAGMA user_version = 1;
+-- NOTE: user_version は schema_migrate.sh が管理する（ここでは設定しない）
 
 -- メモリテーブル（全エージェント共通：学習・決定・観察・エラーを記録）
 CREATE TABLE IF NOT EXISTS memories (
@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     delegated_by TEXT,
     status TEXT DEFAULT 'queued',
     title TEXT,
+    repository TEXT,
+    issue_number INTEGER,
     started_at DATETIME,
     completed_at DATETIME
 );
@@ -58,5 +60,6 @@ CREATE TABLE IF NOT EXISTS insight_log (
 CREATE INDEX IF NOT EXISTS idx_memories_agent_type ON memories(agent, type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_task ON memories(task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, assigned_to);
+-- NOTE: idx_tasks_repo は schema_migrate.sh が作成する（既存DBとの互換性のため）
 CREATE INDEX IF NOT EXISTS idx_strategist_status ON strategist_state(status);
 CREATE INDEX IF NOT EXISTS idx_insight_log_repo ON insight_log(repository);

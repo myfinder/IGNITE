@@ -58,6 +58,8 @@ timestamp: "2026-01-31T17:05:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  repository: "myfinder/IGNITE"
+  issue_number: 174
   tasks:
     - task_id: "task_001"
       title: "README骨組み作成"
@@ -144,7 +146,7 @@ payload:
 
 ```bash
 sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT summary FROM agent_states WHERE agent='coordinator';"
-sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, status, title FROM tasks WHERE status IN ('queued','in_progress') ORDER BY started_at DESC LIMIT 20;"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, status, title, repository, issue_number FROM tasks WHERE status IN ('queued','in_progress') ORDER BY started_at DESC LIMIT 20;"
 sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT type, content, timestamp FROM memories WHERE agent='coordinator' ORDER BY timestamp DESC LIMIT 10;"
 ```
 
@@ -175,8 +177,17 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT OR REPLACE I
 IGNITIANにタスクを割り当てる際、tasks テーブルに記録します:
 
 ```bash
-sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO tasks (task_id, assigned_to, delegated_by, status, title, started_at) VALUES ('{task_id}', 'ignitian_{n}', 'coordinator', 'in_progress', '{title}', datetime('now','+9 hours'));"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO tasks (task_id, assigned_to, delegated_by, status, title, repository, issue_number, started_at) VALUES ('{task_id}', 'ignitian_{n}', 'coordinator', 'in_progress', '{title}', '{repository}', {issue_number}, datetime('now','+9 hours'));"
 ```
+
+repository / issue_number が不明な場合は NULL（クォートなしリテラル）を使用します:
+
+```bash
+# NULLケース: リポジトリやIssue番号が紐づかないタスク
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO tasks (task_id, assigned_to, delegated_by, status, title, repository, issue_number, started_at) VALUES ('{task_id}', 'ignitian_{n}', 'coordinator', 'in_progress', '{title}', NULL, NULL, datetime('now','+9 hours'));"
+```
+
+> **注意**: `NULL` はSQLリテラルです。`'NULL'`（クォート付き）は文字列 "NULL" になるため使用しないでください。
 
 #### タスク完了更新
 IGNITIANから完了レポートを受信したら、tasks テーブルを更新します:
@@ -189,7 +200,7 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; UPDATE tasks SET st
 30分以上 `in_progress` のまま完了していないタスクを検出します。定期チェックや完了レポート処理時に実行してください:
 
 ```bash
-sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, title, started_at FROM tasks WHERE status='in_progress' AND datetime(started_at, '+30 minutes') < datetime('now', 'localtime');"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT task_id, assigned_to, title, repository, issue_number, started_at FROM tasks WHERE status='in_progress' AND datetime(started_at, '+30 minutes') < datetime('now', 'localtime');"
 ```
 
 ロストタスクが検出された場合:

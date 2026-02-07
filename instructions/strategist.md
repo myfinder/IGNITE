@@ -46,6 +46,8 @@ timestamp: "2026-01-31T17:01:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  repository: "myfinder/IGNITE"
+  issue_number: 123
   requirements:
     - "プロジェクト概要を記載"
     - "インストール方法を記載"
@@ -83,6 +85,11 @@ payload:
 ```
 
 **送信メッセージ例（タスクリスト）:**
+
+> **重要**: `repository` と `issue_number` は Leader → Strategist → Coordinator のデータフローで
+> 途切れないよう、payload レベルと各タスクの両方に含めること。
+> Coordinator はこれらの値を SQLite `tasks` テーブルに INSERT する。
+
 ```yaml
 type: task_list
 from: strategist
@@ -91,6 +98,8 @@ timestamp: "2026-01-31T17:04:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  repository: "myfinder/IGNITE"
+  issue_number: 123
   strategy_summary: "3フェーズで段階的に構築"
   tasks:
     - task_id: "task_001"
@@ -101,6 +110,8 @@ payload:
       estimated_time: 60
       dependencies: []
       skills_required: ["file_write", "markdown"]
+      repository: "myfinder/IGNITE"
+      issue_number: 123
       deliverables:
         - "README.md (基本構造)"
 
@@ -112,6 +123,8 @@ payload:
       estimated_time: 120
       dependencies: ["task_001"]
       skills_required: ["documentation", "technical_writing"]
+      repository: "myfinder/IGNITE"
+      issue_number: 123
       deliverables:
         - "README.md (インストールセクション完成)"
 
@@ -123,6 +136,8 @@ payload:
       estimated_time: 120
       dependencies: ["task_001"]
       skills_required: ["documentation", "code_examples"]
+      repository: "myfinder/IGNITE"
+      issue_number: 123
       deliverables:
         - "README.md (使用例セクション完成)"
 ```
@@ -531,6 +546,37 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; UPDATE strategist_s
 ```bash
 sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; UPDATE strategist_state SET status='completed' WHERE request_id='strategy_20260131170500';"
 ```
+
+## データフロー: repository / issue_number の受け渡し
+
+タスクに紐づく `repository` と `issue_number` は、以下のデータフローで途切れなく伝搬させること:
+
+```
+Leader (strategy_request)
+  └─ payload.repository, payload.issue_number
+       │
+       ▼
+Strategist (task_list)
+  └─ payload.repository, payload.issue_number   ← 全体レベル
+  └─ payload.tasks[].repository, tasks[].issue_number  ← 各タスクレベル
+       │
+       ▼
+Coordinator (INSERT INTO tasks)
+  └─ tasks.repository, tasks.issue_number  ← SQLite に永続化
+       │
+       ▼
+Dashboard / Daily Report
+  └─ _generate_repo_report() でタスク情報を参照
+```
+
+| 送信元 | 送信先 | フィールド位置 | 用途 |
+|--------|--------|---------------|------|
+| Leader | Strategist | `payload.repository`, `payload.issue_number` | 戦略立案の対象リポジトリ・Issue を特定 |
+| Strategist | Coordinator | `payload.repository`, `payload.issue_number` + 各タスク内 | タスク割り当て時に SQLite に記録 |
+| Coordinator | SQLite `tasks` テーブル | `repository`, `issue_number` カラム | ダッシュボード表示・レポート生成 |
+
+> **後方互換性**: `repository` / `issue_number` はオプショナルフィールド。
+> 未設定の場合、Coordinator は NULL として INSERT する。
 
 ## タスク分解の原則
 

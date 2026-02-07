@@ -175,6 +175,8 @@ cmd_start() {
         print_info "メモリデータベースを初期化中..."
         sqlite3 "$WORKSPACE_DIR/state/memory.db" < "$IGNITE_SCRIPTS_DIR/schema.sql"
         sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"
+        # 既存DBのスキーママイグレーション（冪等）
+        bash "$IGNITE_SCRIPTS_DIR/schema_migrate.sh" "$WORKSPACE_DIR/state/memory.db"
     else
         print_warning "sqlite3 が見つかりません。メモリ機能は無効です。"
     fi
