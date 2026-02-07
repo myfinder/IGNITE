@@ -306,8 +306,12 @@ mark_event_processed() {
 
     local tmp_file
     tmp_file=$(mktemp)
-    jq ".processed_events[\"$key\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"
-    mv "$tmp_file" "$STATE_FILE"
+    if jq ".processed_events[\"$key\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"; then
+        mv "$tmp_file" "$STATE_FILE"
+    else
+        rm -f "$tmp_file"
+        log_warn "ステートファイル更新失敗: mark_event_processed $key"
+    fi
 }
 
 # 最終チェック時刻を更新
@@ -319,8 +323,12 @@ update_last_check() {
 
     local tmp_file
     tmp_file=$(mktemp)
-    jq ".last_check[\"${repo}_${event_type}\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"
-    mv "$tmp_file" "$STATE_FILE"
+    if jq ".last_check[\"${repo}_${event_type}\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"; then
+        mv "$tmp_file" "$STATE_FILE"
+    else
+        rm -f "$tmp_file"
+        log_warn "ステートファイル更新失敗: update_last_check ${repo}_${event_type}"
+    fi
 }
 
 # 古い処理済みイベントをクリーンアップ（24時間以上前）
@@ -333,9 +341,13 @@ cleanup_old_events() {
 
     local tmp_file
     tmp_file=$(mktemp)
-    jq --arg cutoff "$cutoff" '
+    if jq --arg cutoff "$cutoff" '
         .processed_events |= with_entries(select(.value >= $cutoff))
-    ' "$STATE_FILE" > "$tmp_file" 2>/dev/null && mv "$tmp_file" "$STATE_FILE"
+    ' "$STATE_FILE" > "$tmp_file" 2>/dev/null; then
+        mv "$tmp_file" "$STATE_FILE"
+    else
+        rm -f "$tmp_file"
+    fi
 }
 
 # =============================================================================
