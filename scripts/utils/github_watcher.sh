@@ -109,10 +109,10 @@ load_config() {
     REPO_PATTERNS=()   # グローバル（定期リフレッシュで再利用）
     if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
         # yq版: 構造化パース
-        mapfile -t REPO_PATTERNS < <(yq -r '.repositories[] | select(has("pattern")) | .pattern' "$config_file" 2>/dev/null)
-        mapfile -t REPOSITORIES < <(yq -r '.repositories[] | select(has("repo")) | .repo' "$config_file" 2>/dev/null)
+        mapfile -t REPO_PATTERNS < <(yq -r '.watcher.repositories[] | select(has("pattern")) | .pattern' "$config_file" 2>/dev/null)
+        mapfile -t REPOSITORIES < <(yq -r '.watcher.repositories[] | select(has("repo")) | .repo' "$config_file" 2>/dev/null)
         local simple_repos=()
-        mapfile -t simple_repos < <(yq -r '.repositories[] | select(type == "!!str")' "$config_file" 2>/dev/null)
+        mapfile -t simple_repos < <(yq -r '.watcher.repositories[] | select(type == "!!str")' "$config_file" 2>/dev/null)
         REPOSITORIES+=("${simple_repos[@]}")
     else
         # フォールバック: 行ベースパース
@@ -204,6 +204,12 @@ load_config() {
     if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
         expand_patterns "${REPO_PATTERNS[@]}"
     fi
+
+    # system.yaml からデフォルトメッセージ優先度を取得
+    local system_yaml="${IGNITE_CONFIG_DIR}/system.yaml"
+    DEFAULT_MESSAGE_PRIORITY=$(sed -n '/^defaults:/,/^[^ ]/p' "$system_yaml" 2>/dev/null \
+        | awk -F': ' '/^  message_priority:/{print $2; exit}' | tr -d '"' | tr -d "'")
+    DEFAULT_MESSAGE_PRIORITY="${DEFAULT_MESSAGE_PRIORITY:-normal}"
 }
 
 # ワイルドカードパターンをリポジトリ一覧に展開
@@ -647,7 +653,7 @@ type: github_event
 from: github_watcher
 to: leader
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   event_type: ${event_type}
   repository: ${repo}
@@ -675,7 +681,7 @@ type: github_event
 from: github_watcher
 to: leader
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   event_type: ${event_type}
   repository: ${repo}
@@ -705,7 +711,7 @@ type: github_event
 from: github_watcher
 to: leader
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   event_type: ${event_type}
   repository: ${repo}
@@ -735,7 +741,7 @@ type: github_event
 from: github_watcher
 to: leader
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   event_type: ${event_type}
   repository: ${repo}
@@ -764,7 +770,7 @@ type: github_event
 from: github_watcher
 to: leader
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   event_type: ${event_type}
   repository: ${repo}

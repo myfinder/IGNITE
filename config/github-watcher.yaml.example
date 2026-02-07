@@ -54,15 +54,6 @@ watcher:
   # true にすると、自分自身の Bot 投稿に反応しなくなります
   ignore_bot: true
 
-  # 処理済みイベントの保存先
-  # 重複処理を防ぐためのステートファイル
-  # 注: プロジェクトルート（ignite/）からの相対パス
-  state_file: "workspace/state/github_watcher_state.json"
-
-  # ワークスペースディレクトリ
-  # イベントメッセージの出力先
-  # 注: プロジェクトルート（ignite/）からの相対パス
-  workspace: "workspace"
 
 # トリガー設定
 # メンションやキーワードで特定のアクションを実行
@@ -175,12 +166,3 @@ access_control:
   allowed_users:
     # - "admin-user"
     # - "trusted-developer"
-
-# ログ設定
-logging:
-  # ログレベル: debug, info, warn, error
-  level: info
-
-  # ログファイル（空の場合は標準出力のみ）
-  # 注: プロジェクトルート（ignite/）からの相対パス
-  file: "workspace/logs/github_watcher.log"

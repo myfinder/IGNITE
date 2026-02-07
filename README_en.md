@@ -502,8 +502,6 @@ ignite/
 │
 ├── config/                     # Configuration files
 │   ├── system.yaml             # System-wide settings
-│   ├── agents.yaml             # Individual agent settings
-│   ├── ignitians.yaml          # IGNITIANS parallelism settings
 │   ├── pricing.yaml            # Claude API pricing settings
 │   └── github-watcher.yaml     # GitHub Watcher settings
 │
@@ -676,18 +674,13 @@ You can adjust parallelism based on task nature.
 **Edit Configuration File:**
 
 ```bash
-# Edit config/ignitians.yaml
-nano config/ignitians.yaml
+# Edit config/system.yaml
+nano config/system.yaml
 ```
 
 ```yaml
-ignitians:
-  default: 3    # Default
-
-  presets:
-    light: 16   # Light tasks (file operations, etc.)
-    normal: 8   # Normal tasks (implementation, etc.)
-    heavy: 4    # Heavy tasks (analysis, etc.)
+defaults:
+  worker_count: 3    # IGNITIANs parallelism count
 ```
 
 Restart the system after changes:
@@ -959,7 +952,7 @@ ignite plan "Improve performance" -c "Database query optimization, introduce cac
 
 > **Note**: Parallelism is based on "weight per task", not total project complexity. Heavy tasks (complex analysis, etc.) consume more tokens per task, so fewer workers are used to manage resources and control costs. Light tasks complete quickly, so more parallelism improves throughput.
 
-Default parallelism is 3. Presets can be configured in `config/ignitians.yaml`.
+Default parallelism is 3. Can be configured via `worker_count` in `config/system.yaml`.
 
 ### 4. Regular Progress Checks
 

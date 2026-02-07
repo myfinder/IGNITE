@@ -64,8 +64,8 @@ cmd_stop() {
         exit 1
     fi
 
-    # 確認
-    if [[ "$skip_confirm" == false ]]; then
+    # 確認（非対話環境ではスキップ）
+    if [[ "$skip_confirm" == false ]] && [[ -t 0 ]]; then
         read -p "IGNITE システムを停止しますか? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then

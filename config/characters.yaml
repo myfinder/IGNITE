@@ -1,0 +1,13 @@
+# キャラクター名設定
+# ロール構成（strategist, architect, ...）はコードで定義。ここでは名前のみ管理。
+# フォーク時はこのファイルを編集するだけでキャラクターを差し替えられます。
+
+leader:
+  name: 伊羽ユイ
+
+sub_leaders:
+  strategist: 義賀リオ
+  architect: 祢音ナナ
+  evaluator: 衣結ノア
+  coordinator: 通瀬アイナ
+  innovator: 恵那ツムギ

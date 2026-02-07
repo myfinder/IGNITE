@@ -158,7 +158,7 @@ copy_config() {
     done
 
     # 公開可能な設定ファイルをコピー
-    for file in agents.yaml ignitians.yaml pricing.yaml system.yaml; do
+    for file in pricing.yaml system.yaml characters.yaml; do
         if [[ -f "$config_dir/$file" ]]; then
             cp "$config_dir/$file" "$BUILD_DIR/config/"
             print_success "$file をコピーしました"

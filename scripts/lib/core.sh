@@ -40,17 +40,34 @@ else
 fi
 
 # セッション名とワークスペース（後でコマンドラインで上書き可能）
-SESSION_NAME=""
-WORKSPACE_DIR=""
+SESSION_NAME="${SESSION_NAME:-}"
+WORKSPACE_DIR="${WORKSPACE_DIR:-}"
 
-# Sub-Leaders 定義
+# Sub-Leaders 定義（ロール構成はコード固定、名前は characters.yaml から読み込み）
 SUB_LEADERS=("strategist" "architect" "evaluator" "coordinator" "innovator")
-SUB_LEADER_NAMES=("義賀リオ" "祢音ナナ" "衣結ノア" "通瀬アイナ" "恵那ツムギ")
-LEADER_NAME="伊羽ユイ"
+LEADER_NAME="Leader"
+SUB_LEADER_NAMES=("Strategist" "Architect" "Evaluator" "Coordinator" "Innovator")
+
+# characters.yaml からキャラクター名を読み込み
+_CHARACTERS_FILE="$IGNITE_CONFIG_DIR/characters.yaml"
+if [[ -f "$_CHARACTERS_FILE" ]]; then
+    _name=$(sed -n '/^leader:/,/^[^ ]/p' "$_CHARACTERS_FILE" 2>/dev/null \
+        | awk -F': ' '/^  name:/{print $2; exit}' | tr -d '"' | tr -d "'")
+    [[ -n "$_name" ]] && LEADER_NAME="$_name"
+
+    for _i in "${!SUB_LEADERS[@]}"; do
+        _role="${SUB_LEADERS[$_i]}"
+        _name=$(sed -n '/^sub_leaders:/,/^[^ ]/p' "$_CHARACTERS_FILE" 2>/dev/null \
+            | awk -F': ' '/^  '"$_role"':/{print $2; exit}' | tr -d '"' | tr -d "'")
+        [[ -n "$_name" ]] && SUB_LEADER_NAMES[$_i]="$_name"
+    done
+    unset _name _role _i
+fi
+unset _CHARACTERS_FILE
 
 # デフォルト設定
 DEFAULT_MODEL="claude-opus-4-6"
-DEFAULT_WORKER_COUNT=8
+DEFAULT_WORKER_COUNT=3
 
 # Claude セッションデータのパス（PROJECT_ROOT から動的に生成）
 # Claude Code は /path/to/project を -path-to-project に変換してディレクトリ名にする
@@ -131,7 +148,22 @@ get_delay() {
     local key="$1" default="$2"
     local config_file="$IGNITE_CONFIG_DIR/system.yaml"
     local value
-    value=$(sed -n '/^delays:/,/^[^ ]/p' "$config_file" 2>/dev/null | awk '/^  '"$key"':/{print $2; exit}')
+    value=$(sed -n '/^delays:/,/^[^ ]/p' "$config_file" 2>/dev/null | awk -F': ' '/^  '"$key"':/{print $2; exit}')
     [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]] || value=""
     echo "${value:-$default}"
 }
+
+# get_config - 任意セクションから設定値を取得
+# Usage: get_config <section> <key> <default>
+get_config() {
+    local section="$1" key="$2" default="$3"
+    local config_file="$IGNITE_CONFIG_DIR/system.yaml"
+    local value
+    value=$(sed -n "/^${section}:/,/^[^ ]/p" "$config_file" 2>/dev/null \
+        | awk -F': ' '/^  '"$key"':/{print $2; exit}' | sed 's/ *#.*//' | tr -d '"' | tr -d "'")
+    echo "${value:-$default}"
+}
+
+# system.yaml から読み込むグローバル設定
+TMUX_WINDOW_NAME=$(get_config tmux window_name "ignite")
+DEFAULT_MESSAGE_PRIORITY=$(get_config defaults message_priority "normal")

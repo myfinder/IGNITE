@@ -233,44 +233,8 @@ validate_system_yaml() {
 
     echo "[INFO] 検証中: $(basename "$file")" >&2
 
-    # system セクション (3)
-    validate_required "$file" ".system.name"
-    validate_required "$file" ".system.version"
-    validate_type     "$file" ".system.version" str
-    validate_required "$file" ".system.description"
-
-    # tmux セクション (4)
-    validate_required "$file" ".tmux.session_name"
+    # tmux セクション
     validate_required "$file" ".tmux.window_name"
-    validate_required "$file" ".tmux.dimensions.width"
-    validate_type     "$file" ".tmux.dimensions.width" int
-    validate_range    "$file" ".tmux.dimensions.width" 80 500
-    validate_required "$file" ".tmux.dimensions.height"
-    validate_type     "$file" ".tmux.dimensions.height" int
-    validate_range    "$file" ".tmux.dimensions.height" 24 200
-
-    # paths セクション (5)
-    validate_required "$file" ".paths.workspace"
-    validate_required "$file" ".paths.instructions"
-    validate_required "$file" ".paths.config"
-    validate_required "$file" ".paths.memory"
-    validate_required "$file" ".paths.logs"
-
-    # claude_code セクション (2)
-    validate_required "$file" ".claude_code.command"
-    validate_required "$file" ".claude_code.startup_delay"
-    validate_type     "$file" ".claude_code.startup_delay" int
-    validate_range    "$file" ".claude_code.startup_delay" 0 60
-
-    # monitoring セクション (3)
-    validate_required "$file" ".monitoring.dashboard_update_interval"
-    validate_type     "$file" ".monitoring.dashboard_update_interval" int
-    validate_range    "$file" ".monitoring.dashboard_update_interval" 1 300
-    validate_required "$file" ".monitoring.queue_check_interval"
-    validate_type     "$file" ".monitoring.queue_check_interval" int
-    validate_range    "$file" ".monitoring.queue_check_interval" 5 600
-    validate_required "$file" ".monitoring.log_rotation_size"
-    validate_type     "$file" ".monitoring.log_rotation_size" int
 
     # delays セクション (9)
     local delay_keys=(
@@ -284,12 +248,15 @@ validate_system_yaml() {
         validate_range    "$file" ".delays.${key}" 0 120
     done
 
-    # defaults セクション (2)
+    # defaults セクション (3)
     validate_required "$file" ".defaults.message_priority"
     validate_enum     "$file" ".defaults.message_priority" normal high low
     validate_required "$file" ".defaults.task_timeout"
     validate_type     "$file" ".defaults.task_timeout" int
     validate_range    "$file" ".defaults.task_timeout" 30 3600
+    validate_required "$file" ".defaults.worker_count"
+    validate_type     "$file" ".defaults.worker_count" int
+    validate_range    "$file" ".defaults.worker_count" 1 32
 }
 
 # =============================================================================
@@ -318,7 +285,6 @@ validate_watcher_yaml() {
     done
 
     validate_type "$file" ".watcher.ignore_bot" bool
-    validate_required "$file" ".watcher.state_file"
 
     # access_control
     validate_required "$file" ".access_control.enabled"

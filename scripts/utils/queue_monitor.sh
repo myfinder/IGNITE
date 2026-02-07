@@ -38,21 +38,55 @@ log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[QUEUE]${NC} $1"
 log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[QUEUE]${NC} $1" >&2; }
 log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[QUEUE]${NC} $1" >&2; }
 
-# リトライ/DLQ ハンドラーの読み込み（SCRIPT_DIR保護）
+# リトライ/DLQ ハンドラーの読み込み（SCRIPT_DIR/WORKSPACE_DIR保護）
 _QM_SCRIPT_DIR="$SCRIPT_DIR"
+_QM_WORKSPACE_DIR="${WORKSPACE_DIR:-}"
 source "${SCRIPT_DIR}/../lib/retry_handler.sh"
 source "${SCRIPT_DIR}/../lib/dlq_handler.sh"
 SCRIPT_DIR="$_QM_SCRIPT_DIR"
+WORKSPACE_DIR="${_QM_WORKSPACE_DIR}"
 
 # yaml_utils（task_timeout動的読み取り用）
 if [[ -f "${SCRIPT_DIR}/../lib/yaml_utils.sh" ]]; then
     source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 fi
 
+# Bot Token キャッシュのプリウォーム（有効期限前に更新）
+_refresh_bot_token_cache() {
+    local config_dir="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+    local watcher_config="$config_dir/github-watcher.yaml"
+    [[ -f "$watcher_config" ]] || return 0
+
+    # NOTE: 同一の sed パターンが agent.sh _resolve_bot_token にも存在する
+    local repo
+    repo=$(sed -n '/repositories:/,/^[^ ]/{
+        /- repo:/{
+            s/.*- repo: *//
+            s/ *#.*//
+            s/["\x27]//g
+            s/ *$//
+            p; q
+        }
+    }' "$watcher_config" 2>/dev/null)
+    [[ -z "$repo" ]] && return 0
+
+    (
+        SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+        source "${SCRIPT_DIR}/github_helpers.sh" 2>/dev/null
+        get_cached_bot_token "$repo" >/dev/null 2>&1
+    ) && log_info "Bot Tokenキャッシュを更新しました" || true
+}
+
 # 設定
 WORKSPACE_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}"
 POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
 TMUX_SESSION="${IGNITE_TMUX_SESSION:-}"
+
+# tmux window名を system.yaml から取得
+_QM_CONFIG_DIR="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+TMUX_WINDOW_NAME=$(sed -n '/^tmux:/,/^[^ ]/p' "$_QM_CONFIG_DIR/system.yaml" 2>/dev/null \
+    | awk -F': ' '/^  window_name:/{print $2; exit}' | tr -d '"' | tr -d "'")
+TMUX_WINDOW_NAME="${TMUX_WINDOW_NAME:-ignite}"
 
 # task_timeout を system.yaml から動的取得（デフォルト: 300秒）
 _TASK_TIMEOUT=""
@@ -100,12 +134,8 @@ send_to_agent() {
     # ペインインデックス計算ロジック
     # =========================================================================
     # IGNITEのtmuxレイアウト:
-    #   ペイン 0: Leader (伊羽ユイ)
-    #   ペイン 1: Strategist (義賀リオ)
-    #   ペイン 2: Architect (祢音ナナ)
-    #   ペイン 3: Evaluator (衣結ノア)
-    #   ペイン 4: Coordinator (通瀬アイナ)
-    #   ペイン 5: Innovator (恵那ツムギ)
+    #   ペイン 0: Leader
+    #   ペイン 1-5: Sub-Leaders (strategist, architect, evaluator, coordinator, innovator)
     #   ペイン 6+: IGNITIANs (ワーカー)
     #
     # IGNITIANのペイン番号計算（IDは1始まり）:
@@ -137,7 +167,7 @@ send_to_agent() {
     if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
         # ペインにメッセージを送信
         # 形式: session:window.pane (window は省略すると現在のウィンドウ)
-        local target="${TMUX_SESSION}:ignite.${pane_index}"
+        local target="${TMUX_SESSION}:${TMUX_WINDOW_NAME}.${pane_index}"
 
         # メッセージを送信してからEnter（C-m）を送信
         # 少し間を置いてから送信することで確実に入力される
@@ -569,9 +599,6 @@ scan_queue() {
         # at-least-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
         mv "$file" "$dest" 2>/dev/null || continue
 
-        # status=processing + processed_at を追記
-        printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
-
         # status=processing + processed_at を追記（タイムアウト検知の基点）
         printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
 
@@ -598,6 +625,13 @@ scan_for_timeouts() {
     # mtime が timeout_sec 秒以上前のファイルを候補取得
     while IFS= read -r -d '' file; do
         [[ -f "$file" ]] || continue
+
+        # 前セッションのファイルはスキップ（再起動時のリトライ暴走防止）
+        local file_mtime
+        file_mtime=$(stat -c %Y "$file" 2>/dev/null) || file_mtime=$(stat -f %m "$file" 2>/dev/null) || true
+        if [[ -n "$file_mtime" ]] && [[ -n "${_MONITOR_START_EPOCH:-}" ]] && [[ "$file_mtime" -lt "$_MONITOR_START_EPOCH" ]]; then
+            continue
+        fi
 
         # status フィールドを取得
         local status
@@ -655,6 +689,9 @@ scan_for_timeouts() {
 monitor_queues() {
     log_info "キュー監視を開始します（間隔: ${POLL_INTERVAL}秒）"
 
+    # モニター起動時刻を記録（scan_for_timeouts で前セッションのファイルを除外するため）
+    _MONITOR_START_EPOCH=$(date +%s)
+
     # DLQ ディレクトリ事前作成
     mkdir -p "$WORKSPACE_DIR/queue/dead_letter"
 
@@ -704,6 +741,7 @@ monitor_queues() {
         poll_count=$((poll_count + 1))
         if (( poll_count % SYNC_INTERVAL == 0 )); then
             _sync_dashboard_to_reports &
+            _refresh_bot_token_cache &
         fi
 
         sleep "$POLL_INTERVAL"

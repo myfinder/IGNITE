@@ -241,12 +241,12 @@ ignite plan \
 
 **3. IGNITIANs数の調整（オプション）**
 
-通常の実装タスクはデフォルト（8並列）で十分ですが、必要に応じて調整できます:
+通常の実装タスクはデフォルト（3並列）で十分ですが、必要に応じて調整できます:
 
-`config/ignitians.yaml` を編集:
+`config/system.yaml` の `defaults.worker_count` を編集:
 ```yaml
-ignitians:
-  default: 4  # より複雑なタスクのため並列数を減らす
+defaults:
+  worker_count: 4  # より複雑なタスクのため並列数を減らす
 ```
 
 再起動:
@@ -314,10 +314,10 @@ python src/main.py list
 
 **1. IGNITIANS数を最大化**
 
-`config/ignitians.yaml`:
+`config/system.yaml` の `defaults.worker_count`:
 ```yaml
-ignitians:
-  default: 16  # 軽量タスクのため並列数を増やす
+defaults:
+  worker_count: 16  # 軽量タスクのため並列数を増やす
 ```
 
 **2. システム起動**

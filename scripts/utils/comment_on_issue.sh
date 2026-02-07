@@ -198,13 +198,22 @@ post_comment() {
             GH_TOKEN="$bot_token" gh api "/repos/${repo}/issues/${issue_number}/comments" \
                 -f body="$body" --silent
             return $?
+        fi
+        # フォールバック: ペイン起動時の GH_TOKEN を確認
+        if [[ -n "${GH_TOKEN:-}" && "${GH_TOKEN}" == ghs_* ]]; then
+            log_warn "キャッシュBot Token取得失敗。環境変数GH_TOKENを使用します。"
+            if gh api "/repos/${repo}/issues/${issue_number}/comments" \
+                -f body="$body" --silent 2>/dev/null; then
+                return 0
+            fi
+            log_warn "環境変数GH_TOKENでの投稿失敗（期限切れの可能性）。通常のトークンで投稿します。"
         else
             log_warn "Bot Token取得失敗。通常のトークンで投稿します。"
         fi
     fi
 
     log_info "コメントを投稿中..."
-    gh api "/repos/${repo}/issues/${issue_number}/comments" -f body="$body" --silent
+    env -u GH_TOKEN gh api "/repos/${repo}/issues/${issue_number}/comments" -f body="$body" --silent
 }
 
 # =============================================================================

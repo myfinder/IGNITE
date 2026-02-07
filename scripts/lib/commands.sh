@@ -47,7 +47,7 @@ cmd_activate() {
     # 各paneに対してEnterを送信して、入力待ちのコマンドを実行
     for ((i=1; i<pane_count; i++)); do
         print_info "pane $i をアクティベート中..."
-        tmux send-keys -t "$SESSION_NAME:ignite.$i" Enter
+        tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$i" Enter
         sleep 1
     done
 
@@ -146,7 +146,7 @@ cmd_notify() {
 
     # ペインの存在確認
     local pane_count
-    pane_count=$(tmux list-panes -t "$SESSION_NAME:ignite" 2>/dev/null | wc -l)
+    pane_count=$(tmux list-panes -t "$SESSION_NAME:$TMUX_WINDOW_NAME" 2>/dev/null | wc -l)
     if [[ "$pane_num" -ge "$pane_count" ]]; then
         print_error "ターゲット '${target}' のペイン (${pane_num}) が存在しません（ペイン数: ${pane_count}）"
         exit 1
@@ -168,14 +168,14 @@ type: notification
 from: user
 to: ${target}
 timestamp: "${timestamp}"
-priority: normal
+priority: ${DEFAULT_MESSAGE_PRIORITY}
 payload:
   message: "${escaped_message}"
 EOF
 
     print_success "メッセージを送信しました: $message_file"
 
-    tmux send-keys -t "$SESSION_NAME:ignite.$pane_num" \
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane_num" \
         "$WORKSPACE_DIR/queue/${target}/processed/ に新しいメッセージがあります。${message_file} を確認してください。" Enter
 
     print_success "pane $pane_num に通知を送信しました"

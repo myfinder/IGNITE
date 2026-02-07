@@ -237,7 +237,13 @@ create_pull_request() {
         fi
         rm -f "$_token_err"
         if [[ -z "$bot_token" ]]; then
-            log_warn "Bot Token の取得に失敗しました。通常のトークンで作成します。"
+            # フォールバック: ペイン起動時の GH_TOKEN を確認
+            if [[ -n "${GH_TOKEN:-}" && "${GH_TOKEN}" == ghs_* ]]; then
+                log_warn "直接のBot Token取得失敗。環境変数GH_TOKENを使用します。"
+                bot_token="${GH_TOKEN}"
+            else
+                log_warn "Bot Token取得失敗。通常のトークンで作成します。"
+            fi
         fi
     fi
 
@@ -255,9 +261,12 @@ create_pull_request() {
     fi
 
     if [[ -n "$bot_token" ]]; then
-        pr_url=$(GH_TOKEN="$bot_token" gh pr create "${gh_args[@]}")
+        if ! pr_url=$(GH_TOKEN="$bot_token" gh pr create "${gh_args[@]}"); then
+            log_warn "Bot TokenでのPR作成失敗（期限切れの可能性）。通常のトークンでリトライします。"
+            pr_url=$(env -u GH_TOKEN gh pr create "${gh_args[@]}")
+        fi
     else
-        pr_url=$(gh pr create "${gh_args[@]}")
+        pr_url=$(env -u GH_TOKEN gh pr create "${gh_args[@]}")
     fi
 
     echo "$pr_url"

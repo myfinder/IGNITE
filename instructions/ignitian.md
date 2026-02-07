@@ -679,6 +679,35 @@ payload:
 [IGNITIAN-1] レポートを提出します！
 ```
 
+## GitHub Bot認証（必須）
+
+### ルール
+GitHub上でコメント投稿やPR作成を行う場合、**必ずBot名義で実行すること**。
+ヘルパースクリプトがBot Token取得に失敗した場合、内部でユーザートークンへの自動フォールバックが行われる。この挙動はスクリプト側の責務であり、IGNITIAN側で追加の対処は不要。
+
+### Bot名義でのコメント投稿
+```bash
+# 必ず --bot フラグを使用
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --body "コメント内容"
+
+# テンプレート使用
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template acknowledge
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --template success --context "内容"
+```
+
+### Bot名義でのPR作成
+```bash
+./scripts/utils/create_pr.sh {issue_number} --repo {repo} --bot
+```
+
+### 禁止事項
+- **bare `gh` コマンドでのGitHub操作禁止**: `gh issue comment`, `gh pr create`, `gh api` を直接呼び出さない
+- **`--bot` フラグの省略禁止**: ヘルパースクリプト使用時は必ず `--bot` を付ける
+- **フォールバック時の独自対処禁止**: スクリプトがBot Token取得に失敗した場合、内部で自動フォールバックする。スクリプトの終了コードに従い、独自にトークン取得やリトライを試みないこと
+
+### GH_TOKEN環境変数
+起動時に `GH_TOKEN` が自動設定されています。ヘルパースクリプトが内部で使用するため手動設定不要。`unset GH_TOKEN` や上書きはしないこと。
+
 ## メモリ操作（SQLite 永続化）
 
 IGNITE システムはセッション横断のメモリを SQLite データベースで管理します。

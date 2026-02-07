@@ -61,7 +61,7 @@ cmd_status() {
             local _formatted
             _formatted=$(format_health_status "$_status")
             echo -e "  ${_formatted} pane ${_pane_idx}: ${_agent_name}"
-        done < <(get_all_agents_health "$SESSION_NAME:ignite")
+        done < <(get_all_agents_health "$SESSION_NAME:$TMUX_WINDOW_NAME")
     else
         print_error "tmuxセッション: 停止"
         exit 1
@@ -87,11 +87,12 @@ cmd_status() {
         if [[ -d "$queue_dir" ]]; then
             local queue_name
             queue_name=$(basename "$queue_dir")
+            [[ "$queue_name" == "dead_letter" ]] && continue
             local message_count
-            message_count=$(find "$queue_dir" -name "*.yaml" -type f 2>/dev/null | wc -l)
+            message_count=$(find "$queue_dir" -maxdepth 1 -name "*.yaml" -type f 2>/dev/null | wc -l)
 
             if [[ "$message_count" -gt 0 ]]; then
-                echo -e "${YELLOW}  $queue_name: $message_count メッセージ${NC}"
+                echo -e "${YELLOW}  $queue_name: $message_count メッセージ（未処理）${NC}"
             else
                 echo -e "${GREEN}  $queue_name: 0 メッセージ${NC}"
             fi

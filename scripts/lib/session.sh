@@ -69,10 +69,10 @@ session_exists() {
 
 # 設定ファイルからワーカー数を取得
 get_worker_count() {
-    local config_file="$IGNITE_CONFIG_DIR/ignitians.yaml"
+    local config_file="$IGNITE_CONFIG_DIR/system.yaml"
     if [[ -f "$config_file" ]]; then
         local count
-        count=$(yaml_get "$config_file" 'default')
+        count=$(yaml_get "$config_file" 'worker_count')
         if [[ -n "$count" ]] && [[ "$count" =~ ^[0-9]+$ ]]; then
             echo "$count"
             return

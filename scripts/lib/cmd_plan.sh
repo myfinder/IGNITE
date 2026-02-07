@@ -116,10 +116,10 @@ EOF
 
     # Leaderに通知（自然言語プロンプトで送信）- pane 0 を明示的に指定
     sleep 0.5
-    tmux send-keys -t "$SESSION_NAME:ignite.0" \
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" \
         "$WORKSPACE_DIR/queue/leader/processed/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
     sleep 0.3
-    tmux send-keys -t "$SESSION_NAME:ignite.0" C-m
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" C-m
 
     echo ""
     print_success "タスク '${goal}' を投入しました"

@@ -501,8 +501,6 @@ ignite/
 │
 ├── config/                     # 設定ファイル
 │   ├── system.yaml             # システム全体の設定
-│   ├── agents.yaml             # 各エージェントの設定
-│   ├── ignitians.yaml          # IGNITIANS並列数設定
 │   ├── pricing.yaml            # Claude API料金設定
 │   └── github-watcher.yaml     # GitHub Watcher設定
 │
@@ -675,18 +673,13 @@ ignite plan "プロジェクトのコードベースを分析して改善点を�
 **設定ファイル編集:**
 
 ```bash
-# config/ignitians.yamlを編集
-nano config/ignitians.yaml
+# config/system.yamlを編集
+nano config/system.yaml
 ```
 
 ```yaml
-ignitians:
-  default: 3    # デフォルト
-
-  presets:
-    light: 16   # 軽量タスク（ファイル操作など）
-    normal: 8   # 通常タスク（実装など）
-    heavy: 4    # 重量タスク（分析など）
+defaults:
+  worker_count: 3    # IGNITIANs並列数
 ```
 
 変更後はシステムを再起動:

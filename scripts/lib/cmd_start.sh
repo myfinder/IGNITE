@@ -188,7 +188,7 @@ IGNITEバージョン: v$VERSION
 更新日時: $(date '+%Y-%m-%d %H:%M:%S')
 
 ## システム状態
-⏳ Leader (伊羽ユイ): 起動中...
+⏳ Leader ($LEADER_NAME): 起動中...
 
 ## 現在のタスク
 タスクなし - システム起動中
@@ -219,7 +219,7 @@ EOF
 
     # tmuxセッション作成
     print_info "tmuxセッションを作成中..."
-    tmux new-session -d -s "$SESSION_NAME" -n ignite
+    tmux new-session -d -s "$SESSION_NAME" -n "$TMUX_WINDOW_NAME"
     sleep "$(get_delay session_create 0.5)"  # セッション作成を待機
 
     # ペインボーダーにキャラクター名を常時表示
@@ -228,9 +228,17 @@ EOF
 
     # Leader ペイン (pane 0)
     print_info "Leader ($LEADER_NAME) を起動中..."
-    tmux set-option -t "$SESSION_NAME:ignite.0" -p @agent_name "$LEADER_NAME (Leader)"
-    tmux send-keys -t "$SESSION_NAME:ignite" \
-        "cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
+    tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" -p @agent_name "$LEADER_NAME (Leader)"
+
+    # Bot Token を取得して GH_TOKEN を設定
+    local _bot_token _gh_export=""
+    _bot_token=$(_resolve_bot_token 2>/dev/null) || true
+    if [[ -n "$_bot_token" ]]; then
+        _gh_export="export GH_TOKEN='${_bot_token}' && "
+    fi
+
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" \
+        "${_gh_export}cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
 
     # 起動待機（確認プロンプト表示を待つ）
     print_warning "Leaderの起動を待機中... (3秒)"
@@ -238,9 +246,9 @@ EOF
 
     # 確認プロンプトを通過（下矢印で "Yes, I accept" を選択してEnter）
     print_info "権限確認を承諾中..."
-    tmux send-keys -t "$SESSION_NAME:ignite" Down
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" Down
     sleep "$(get_delay permission_accept 0.5)"
-    tmux send-keys -t "$SESSION_NAME:ignite" Enter
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" Enter
 
     # Claude Codeの起動完了を待機
     print_warning "Claude Codeの起動を待機中... (8秒)"
@@ -255,10 +263,10 @@ EOF
         character_file="$IGNITE_CHARACTERS_DIR/leader-solo.md"
         print_info "単独モード: $instruction_file を使用"
     fi
-    tmux send-keys -t "$SESSION_NAME:ignite" \
-        "$character_file と $instruction_file を読んで、あなたはLeader（伊羽ユイ）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/leader/ 内のメッセージを確認してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" \
+        "$character_file と $instruction_file を読んで、あなたはLeader（${LEADER_NAME}）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。$WORKSPACE_DIR/queue/leader/ 内のメッセージを確認してください。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
     sleep "$(get_delay prompt_send 0.3)"
-    tmux send-keys -t "$SESSION_NAME:ignite" C-m
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" C-m
 
     # プロンプトロード完了を待機
     print_warning "Leaderの初期化を待機中... (10秒)"
@@ -293,7 +301,7 @@ EOF
             local role="${SUB_LEADERS[$i]}"
             local name="${SUB_LEADER_NAMES[$i]}"
 
-            if ! start_agent "$role" "$name" "$pane_num"; then
+            if ! start_agent "$role" "$name" "$pane_num" "$_gh_export"; then
                 print_warning "Sub-Leader ${name} の起動に失敗しましたが、続行します"
             fi
 
@@ -316,7 +324,7 @@ EOF
         for ((i=1; i<=worker_count; i++)); do
             local pane_num=$((start_pane + i - 1))
 
-            if ! start_ignitian "$i" "$pane_num"; then
+            if ! start_ignitian "$i" "$pane_num" "$_gh_export"; then
                 print_warning "IGNITIAN-${i} の起動に失敗しましたが、続行します"
             else
                 actual_ignitian_count=$((actual_ignitian_count + 1))
@@ -383,7 +391,7 @@ EOF
     cat >> "$WORKSPACE_DIR/costs/sessions.yaml" <<EOF
   leader:
     pane: 0
-    name: "伊羽ユイ"
+    name: "${LEADER_NAME//\"/\\\"}"
     started_at: "${agent_started_at}"
     session_id: null
 EOF
@@ -392,7 +400,7 @@ EOF
     if [[ "$agent_mode" != "leader" ]]; then
         for i in "${!SUB_LEADERS[@]}"; do
             local role="${SUB_LEADERS[$i]}"
-            local name="${SUB_LEADER_NAMES[$i]}"
+            local name="${SUB_LEADER_NAMES[$i]//\"/\\\"}"
             local pane=$((i + 1))
             cat >> "$WORKSPACE_DIR/costs/sessions.yaml" <<EOF
   ${role}:
@@ -460,25 +468,25 @@ EOF
             echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
             print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
             print_info "ログ: $watcher_log"
-
-            # キューモニター起動（Watcher有効時のみ）
-            # Leaderのキュー監視のため、単独モードでも起動が必要
-            print_info "キューモニターを起動中..."
-            local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
-            echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
-            export WORKSPACE_DIR="$WORKSPACE_DIR"
-            "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
-            local queue_pid=$!
-            echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
-            print_success "キューモニター起動完了 (PID: $queue_pid)"
-            print_info "ログ: $queue_log"
         else
             print_warning "github-watcher.yaml が見つかりません。Watcher起動をスキップ"
         fi
     fi
 
-    # 自動アタッチ
-    if [[ "$no_attach" == false ]]; then
+    # キューモニター起動（エージェント間通信に必須）
+    print_info "キューモニターを起動中..."
+    local queue_log="$WORKSPACE_DIR/logs/queue_monitor.log"
+    echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
+    export WORKSPACE_DIR="$WORKSPACE_DIR"
+    export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+    "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+    local queue_pid=$!
+    echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
+    print_success "キューモニター起動完了 (PID: $queue_pid)"
+    print_info "ログ: $queue_log"
+
+    # 自動アタッチ（対話環境のみ）
+    if [[ "$no_attach" == false ]] && [[ -t 0 ]]; then
         read -p "tmuxセッションにアタッチしますか? (Y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then

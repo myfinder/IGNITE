@@ -126,9 +126,9 @@ cmd_cost() {
         elapsed="${hours}h ${minutes}m"
     fi
 
-    # エージェント定義
-    local -a agents=("leader" "strategist" "architect" "evaluator" "coordinator" "innovator")
-    local -a agent_names=("伊羽ユイ" "義賀リオ" "祢音ナナ" "衣結ノア" "通瀬アイナ" "恵那ツムギ")
+    # エージェント定義（agents と agent_names は同じ長さであること）
+    local -a agents=("leader" "${SUB_LEADERS[@]}")
+    local -a agent_names=("$LEADER_NAME" "${SUB_LEADER_NAMES[@]}")
 
     # 各エージェントのトークン使用量を集計
     declare -A agent_input

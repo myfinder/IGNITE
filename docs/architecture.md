@@ -180,9 +180,7 @@ ignite/
 │   └── ignitian.md
 │
 ├── config/              # 設定ファイル
-│   ├── system.yaml      # システム設定
-│   ├── agents.yaml      # エージェント設定
-│   ├── ignitians.yaml   # IGNITIANS設定
+│   ├── system.yaml      # システム設定（IGNITIANs並列数含む）
 │   └── github-watcher.yaml  # GitHub Watcher設定
 │
 ├── workspace/           # 実行時ワークスペース（.gitignore）
@@ -283,11 +281,11 @@ claude-code --dangerously-skip-permissions
 
 タスクの性質に応じてIGNITIANS数を調整:
 
-- **light**: 16並列 - ファイル操作など軽量タスク
-- **normal**: 8並列 - 通常の実装タスク
-- **heavy**: 4並列 - 複雑な分析タスク
+- **light**: 8並列 - ファイル操作など軽量タスク
+- **normal**: 3並列 - 通常の実装タスク（デフォルト）
+- **heavy**: 1並列 - 複雑な分析タスク
 
-設定ファイル: `config/ignitians.yaml`
+設定ファイル: `config/system.yaml` の `defaults.worker_count`
 
 ### 負荷分散
 
@@ -301,8 +299,8 @@ Coordinatorが以下を考慮してタスク配分:
 ### 新しいSub-Leaderの追加
 
 1. `instructions/{role}.md` を作成
-2. `config/agents.yaml` に設定追加
-3. `scripts/ignite` の `cmd_start()` に起動処理追加
+2. `scripts/lib/core.sh` の `SUB_LEADERS` 配列に追加
+3. `scripts/lib/cmd_start.sh` に起動処理追加
 
 ### 新しいメッセージタイプの追加
 
