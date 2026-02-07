@@ -128,6 +128,7 @@ to: leader
 timestamp: "2026-01-31T17:10:00+09:00"
 priority: normal
 payload:
+  repository: "owner/repo"
   total_tasks: 3
   completed: 1
   in_progress: 2
@@ -580,6 +581,7 @@ type: evaluation_result
 from: evaluator
 to: coordinator  # または leader（直接送信の場合）
 payload:
+  repository: "owner/repo"
   task_id: "task_001"
   verdict: "approve"       # approve / revise / reject
   summary: "全必須セクションが存在し、Markdown構文も問題なし"

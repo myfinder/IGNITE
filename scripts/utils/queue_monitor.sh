@@ -176,8 +176,10 @@ _report_progress() {
     tasks_total=$(grep -E '^\s+tasks_total:' "$file" | head -1 | awk '{print $2}')
     local issue_id
     issue_id=$(grep -E '^\s+issue_id:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+    # repository フィールドを抽出（あれば per-repo フィルタ）
+    local msg_repo
+    msg_repo=$(grep -E '^\s+repository:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
 
-    # report_issues.json から当日の全リポジトリを取得してコメント
     local cache_dir
     cache_dir=$(_get_report_cache_dir)
     local cache_file="$cache_dir/report_issues.json"
@@ -186,9 +188,11 @@ _report_progress() {
     local today
     today=$(date +%Y-%m-%d)
 
-    local repos
-    repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
-    [[ -n "$repos" ]] || return 0
+    # repository 必須: なければ投稿スキップ
+    if [[ -z "$msg_repo" ]]; then
+        return 0
+    fi
+    local repos="$msg_repo"
 
     local comment_body
     comment_body="### Progress Update
@@ -227,6 +231,9 @@ _report_evaluation() {
     score=$(grep -E '^\s+score:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
     local title
     title=$(grep -E '^\s+title:' "$file" | head -1 | sed 's/^.*title: *//; s/^"//; s/"$//')
+    # repository フィールドを抽出（あれば per-repo フィルタ）
+    local msg_repo
+    msg_repo=$(grep -E '^\s+repository:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
 
     local cache_dir
     cache_dir=$(_get_report_cache_dir)
@@ -236,9 +243,11 @@ _report_evaluation() {
     local today
     today=$(date +%Y-%m-%d)
 
-    local repos
-    repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
-    [[ -n "$repos" ]] || return 0
+    # repository 必須: なければ投稿スキップ
+    if [[ -z "$msg_repo" ]]; then
+        return 0
+    fi
+    local repos="$msg_repo"
 
     local verdict_emoji
     case "$verdict" in
