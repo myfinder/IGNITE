@@ -114,6 +114,14 @@ send_to_agent() {
 # 日次レポート連携
 # =============================================================================
 
+_get_report_cache_dir() {
+    if [[ -n "${WORKSPACE_DIR:-}" ]]; then
+        echo "$WORKSPACE_DIR/state"
+    else
+        echo "/tmp/ignite-token-cache"
+    fi
+}
+
 _trigger_daily_report() {
     local repo="$1"
     local issue_num="${2:-}"
@@ -149,6 +157,116 @@ _trigger_daily_report() {
         --body "$comment_body" 2>/dev/null || {
         log_warn "日次レポートへのコメント追加に失敗しました ($repo)"
     }
+}
+
+_report_progress() {
+    local file="$1"
+
+    local daily_report_script="${SCRIPT_DIR}/daily_report.sh"
+    if [[ ! -x "$daily_report_script" ]]; then
+        return 0
+    fi
+
+    # progress_update から情報を抽出
+    local summary
+    summary=$(grep -E '^\s+summary:' "$file" | head -1 | sed 's/^.*summary: *//; s/^"//; s/"$//')
+    local tasks_completed
+    tasks_completed=$(grep -E '^\s+tasks_completed:' "$file" | head -1 | awk '{print $2}')
+    local tasks_total
+    tasks_total=$(grep -E '^\s+tasks_total:' "$file" | head -1 | awk '{print $2}')
+    local issue_id
+    issue_id=$(grep -E '^\s+issue_id:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+
+    # report_issues.json から当日の全リポジトリを取得してコメント
+    local cache_dir
+    cache_dir=$(_get_report_cache_dir)
+    local cache_file="$cache_dir/report_issues.json"
+    [[ -f "$cache_file" ]] || return 0
+
+    local today
+    today=$(date +%Y-%m-%d)
+
+    local repos
+    repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
+    [[ -n "$repos" ]] || return 0
+
+    local comment_body
+    comment_body="### Progress Update
+
+- **Issue:** ${issue_id}
+- **Tasks:** ${tasks_completed:-?}/${tasks_total:-?} completed
+- **Summary:** ${summary:-N/A}
+- **Time:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+    while IFS= read -r repo; do
+        [[ -z "$repo" ]] && continue
+        local report_issue
+        report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
+        [[ -n "$report_issue" ]] || continue
+
+        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+            --repo "$repo" \
+            --issue "$report_issue" \
+            --body "$comment_body" 2>/dev/null || true
+    done <<< "$repos"
+}
+
+_report_evaluation() {
+    local file="$1"
+
+    local daily_report_script="${SCRIPT_DIR}/daily_report.sh"
+    if [[ ! -x "$daily_report_script" ]]; then
+        return 0
+    fi
+
+    local issue_number
+    issue_number=$(grep -E '^\s+issue_number:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+    local verdict
+    verdict=$(grep -E '^\s+verdict:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+    local score
+    score=$(grep -E '^\s+score:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+    local title
+    title=$(grep -E '^\s+title:' "$file" | head -1 | sed 's/^.*title: *//; s/^"//; s/"$//')
+
+    local cache_dir
+    cache_dir=$(_get_report_cache_dir)
+    local cache_file="$cache_dir/report_issues.json"
+    [[ -f "$cache_file" ]] || return 0
+
+    local today
+    today=$(date +%Y-%m-%d)
+
+    local repos
+    repos=$(jq -r --arg date "$today" 'to_entries[] | select(.value[$date] != null) | .key' "$cache_file" 2>/dev/null)
+    [[ -n "$repos" ]] || return 0
+
+    local verdict_emoji
+    case "$verdict" in
+        approve) verdict_emoji="✅" ;;
+        reject|needs_revision) verdict_emoji="❌" ;;
+        *) verdict_emoji="📋" ;;
+    esac
+
+    local comment_body
+    comment_body="### Evaluation Result
+
+- **Issue:** #${issue_number:-?}
+- **Title:** ${title:-N/A}
+- **Verdict:** ${verdict_emoji} ${verdict:-N/A}
+- **Score:** ${score:-N/A}
+- **Time:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+    while IFS= read -r repo; do
+        [[ -z "$repo" ]] && continue
+        local report_issue
+        report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
+        [[ -n "$report_issue" ]] || continue
+
+        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+            --repo "$repo" \
+            --issue "$report_issue" \
+            --body "$comment_body" 2>/dev/null || true
+    done <<< "$repos"
 }
 
 # =============================================================================
@@ -189,6 +307,18 @@ process_message() {
             local event_type
             event_type=$(grep -E '^\s*event_type:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
             instruction="新しいGitHubイベントが来ました。$file を読んで必要に応じて対応してください。イベントタイプ: $event_type"
+            ;;
+        progress_update)
+            instruction="進捗報告が来ました。$file を読んで確認してください。"
+            # 日次レポートに進捗を記録（バックグラウンド）
+            _report_progress "$file" &
+            ;;
+        evaluation_result)
+            local eval_verdict
+            eval_verdict=$(grep -E '^\s+verdict:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+            instruction="評価結果が来ました。$file を読んで確認してください。判定: $eval_verdict"
+            # 日次レポートに評価結果を記録（バックグラウンド）
+            _report_evaluation "$file" &
             ;;
         task)
             instruction="新しいタスクが来ました。$file を読んで処理してください。"
