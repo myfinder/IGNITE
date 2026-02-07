@@ -123,6 +123,12 @@ copy_main_script() {
     local count
     count=$(ls -1 "$BUILD_DIR/share/scripts/lib"/*.sh 2>/dev/null | wc -l)
     print_success "$count 個の lib モジュールをコピーしました"
+
+    # scripts/schema.sql（メモリDB スキーマ）
+    if [[ -f "$SCRIPT_DIR/schema.sql" ]]; then
+        cp "$SCRIPT_DIR/schema.sql" "$BUILD_DIR/share/scripts/schema.sql"
+        print_success "schema.sql をコピーしました"
+    fi
 }
 
 copy_installers() {

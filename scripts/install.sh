@@ -277,6 +277,22 @@ install_data() {
             print_success "scripts/utils を $DATA_DIR/scripts/utils にインストールしました"
         fi
     fi
+
+    # scripts/schema.sql（メモリDB スキーマ）
+    local source_schema="$source_scripts/schema.sql"
+    if [[ -f "$source_schema" ]]; then
+        cp "$source_schema" "$DATA_DIR/scripts/schema.sql"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "scripts/schema.sql を $DATA_DIR/scripts にアップグレードしました"
+        else
+            print_success "scripts/schema.sql を $DATA_DIR/scripts にインストールしました"
+        fi
+    fi
+
+    # sqlite3 存在チェック
+    if ! command -v sqlite3 &>/dev/null; then
+        print_warning "sqlite3 が見つかりません。メモリ機能は無効になります。"
+    fi
 }
 
 check_path() {
