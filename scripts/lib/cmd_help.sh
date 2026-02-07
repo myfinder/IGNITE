@@ -253,6 +253,7 @@ cmd_help() {
             ;;
         "")
             echo -e "${BOLD}IGNITE${NC} - Intelligent Generative Networked Interaction-driven Task Engine"
+            echo -e "IGNITEバージョン: v$VERSION"
             echo ""
             echo "使用方法: ./scripts/ignite <command> [options] [arguments]"
             echo ""

@@ -19,6 +19,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# バージョン取得（core.sh から）
+IGNITE_VERSION=$(grep -oP '^VERSION="\K[^"]+' "$SCRIPT_DIR/../lib/core.sh" 2>/dev/null || echo "unknown")
+
 # =============================================================================
 # XDG パス解決（インストールモード vs 開発モード）
 # =============================================================================
@@ -353,6 +356,7 @@ generate_initial_body() {
     cat <<EOF
 # IGNITE Daily Report
 
+**IGNITE Version:** v$IGNITE_VERSION
 **Repository:** \`$repo\`
 **Date:** $date
 

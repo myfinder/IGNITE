@@ -86,6 +86,7 @@ cmd_start() {
 
     print_header "IGNITE システム起動"
     echo ""
+    echo -e "${BLUE}IGNITEバージョン:${NC} v$VERSION"
     echo -e "${BLUE}セッションID:${NC} $SESSION_NAME"
     echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo -e "${BLUE}起動モード:${NC} $agent_mode"
@@ -134,6 +135,7 @@ cmd_start() {
     cat > "$WORKSPACE_DIR/dashboard.md" <<EOF
 # IGNITE Dashboard
 
+IGNITEバージョン: v$VERSION
 更新日時: $(date '+%Y-%m-%d %H:%M:%S')
 
 ## システム状態

@@ -33,6 +33,7 @@ cmd_status() {
 
     print_header "IGNITE システム状態"
     echo ""
+    echo -e "${BLUE}IGNITEバージョン:${NC} v$VERSION"
     echo -e "${BLUE}セッション:${NC} $SESSION_NAME"
     echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo ""
