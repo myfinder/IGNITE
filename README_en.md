@@ -370,7 +370,7 @@ IGNITE manages data across two complementary layers: **YAML file queues** and a 
 
 | Layer | Technology | Role | Lifetime |
 |-------|-----------|------|----------|
-| **Messaging Layer** | YAML file queue | Real-time inter-agent communication (delivering instructions & responses) | Ephemeral (disposed after delivery) |
+| **Messaging Layer** | YAML file queue | Asynchronous inter-agent communication (delivering instructions & responses) | Ephemeral (disposed after delivery) |
 | **Storage Layer** | SQLite (`memory.db`) | Memory persistence, task state tracking, dashboard generation | Persistent (retained across sessions) |
 
 - **YAML Queue**: `queue_monitor.sh` polls every 10 seconds, providing at-least-once delivery guarantee, Exponential Backoff retry, and DLQ escalation
