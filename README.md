@@ -23,6 +23,9 @@ IGNITEは今はまだ歌って踊ってライブ配信することはできま�
 - **エージェントメモリ永続化**: SQLiteによるセッション間の学習・決定記録保持
 - **日次レポート管理**: 作業進捗をリポジトリ別 GitHub Issues で自動追跡
 - **設定可能な遅延**: エージェント間の通信遅延をカスタマイズ可能
+- **メッセージ配信保証**: DLQ（デッドレターキュー）とExponential Backoffリトライによる信頼性確保
+- **GitHub App連携**: Bot名義でのIssueコメント・PR作成（[設定手順](docs/github-app-setup.md)）
+- **per-IGNITIANリポジトリ分離**: 複数IGNITIANが同一リポジトリの異なるIssueに安全に並列作業
 - **Memory Insights**: エージェントの学習・エラー記録を自動分析し、改善提案をGitHub Issueとして起票
 
 ## 📋 必要環境
@@ -181,18 +184,28 @@ ignite start -f
 # セッションIDとワークスペースを指定して起動
 ignite start -s my-session -w /path/to/workspace
 
-# GitHub Watcherも一緒に起動
+# GitHub Watcherも一緒に起動（--no-watcher で無効化）
 ignite start --with-watcher
 
 # Leaderオンリーモード（単独モード）で起動
 ignite start -a leader
-# または
-ignite start --agents leader
+
+# Leader + Sub-Leadersのみ（IGNITIANsなし）
+ignite start -a sub
+
+# IGNITIANs並列数を指定（1-32）
+ignite start --workers 4
+
+# IGNITIANsを起動しない
+ignite start --no-workers
+
+# 設定ファイル検証をスキップして起動
+ignite start --skip-validation
 ```
 
 `-s`/`--session` と `-w`/`--workspace` オプションを使用することで、複数のプロジェクトを並行して実行できます。詳細は「複数プロジェクトの並行実行」セクションを参照してください。
 
-`-a`/`--agents` オプションで `leader` を指定すると、Leaderのみで動作する単独モードで起動します。詳細は「Leaderオンリーモード」セクションを参照してください。
+`-a`/`--agents` オプションでエージェント起動モードを指定できます: `full`（デフォルト）、`leader`（Leaderのみ）、`sub`（Leader + Sub-Leaders）。詳細は「エージェント起動モード」セクションを参照してください。
 
 ### 2. タスクを投入
 
@@ -256,6 +269,9 @@ ignite stop
 
 # 確認をスキップ
 ignite stop -y
+
+# 特定セッションを停止
+ignite stop -s my-session -w /path/to/workspace
 ```
 
 ### 5. コスト確認
@@ -266,6 +282,12 @@ ignite cost
 
 # 詳細表示（IGNITIANs個別表示）
 ignite cost -d
+
+# 特定エージェントのみ表示
+ignite cost -a leader
+
+# コスト履歴一覧
+ignite cost -l
 
 # JSON形式で出力
 ignite cost -j
@@ -370,12 +392,16 @@ IGNITEは **YAMLファイルキュー** と **SQLiteデータベース** の2層
 | 層 | 技術 | 役割 | 寿命 |
 |----|------|------|------|
 | **メッセージング層** | YAMLファイルキュー | エージェント間の非同期通信（指示・応答の配信） | 短命（配信完了で役目終了） |
-| **ストレージ層** | SQLite (`memory.db`) | メモリ永続化・タスク状態追跡・ダッシュボード生成 | 永続（セッション横断で保持） |
+| **ストレージ層** | SQLite (`state/memory.db`) | メモリ永続化・タスク状態追跡・ダッシュボード生成 | 永続（セッション横断で保持） |
 
 - **YAMLキュー**: `queue_monitor.sh` が10秒ポーリングで監視し、at-least-once配信保証・Exponential Backoffリトライ・DLQエスカレーションを提供
 - **SQLite**: WALモードで並行アクセスに対応。全エージェントが学習・決定・タスク状態をセッション横断で記録し、再起動時の状態復元やMemory Insightsに活用
 
 詳細は [docs/architecture.md](docs/architecture.md) の「データストレージアーキテクチャ」セクションを参照してください。
+
+### per-IGNITIANリポジトリ分離
+
+複数のIGNITIANが同一リポジトリの異なるIssueに並列作業する場合、各IGNITIANは独立したローカルクローン（`repos/{owner}_{repo}_ignitian_{n}`）を使用します。`--no-hardlinks` による完全な `.git` 分離でgitロック競合を防止します。
 
 ## 👥 メンバー紹介
 
@@ -476,46 +502,39 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 ```
 ignite/
 ├── scripts/                    # 実行スクリプト
-│   ├── ignite                  # 統合コマンド (start/stop/plan/status/attach/logs/clean)
+│   ├── ignite                  # 統合コマンド
+│   ├── install.sh              # インストーラ
+│   ├── uninstall.sh            # アンインストーラ
+│   ├── build.sh                # リリースビルド
 │   ├── schema.sql              # SQLiteメモリDBスキーマ
+│   ├── schema_migrate.sh       # DBマイグレーション
 │   ├── lib/                    # コアライブラリ
 │   │   ├── core.sh             # 定数・カラー・出力ヘルパー
-│   │   ├── agent.sh            # エージェント起動・管理
-│   │   ├── session.sh          # tmuxセッション管理
 │   │   ├── commands.sh         # コマンドルーター
-│   │   ├── cmd_start.sh        # start コマンド
-│   │   ├── cmd_stop.sh         # stop コマンド
-│   │   ├── cmd_plan.sh         # plan コマンド
-│   │   ├── cmd_status.sh       # status コマンド
-│   │   ├── cmd_cost.sh         # cost コマンド
-│   │   ├── cmd_help.sh         # help コマンド
-│   │   ├── cmd_work_on.sh      # work-on コマンド
-│   │   ├── cost_utils.sh       # コスト計算ユーティリティ
-│   │   ├── dlq_handler.sh      # デッドレターキュー処理
-│   │   └── retry_handler.sh    # リトライ処理
+│   │   ├── session.sh          # tmuxセッション管理
+│   │   └── ...                 # 各コマンド実装・ユーティリティ（詳細は docs/architecture.md）
 │   └── utils/                  # ユーティリティスクリプト
 │       ├── queue_monitor.sh    # メッセージキュー監視デーモン
-│       ├── daily_report.sh     # 日次レポートIssue管理
 │       ├── github_watcher.sh   # GitHubイベント監視
-│       ├── comment_on_issue.sh # Issue コメント投稿
-│       ├── create_pr.sh        # PR作成
-│       ├── update_pr.sh        # PR更新
 │       ├── setup_repo.sh       # リポジトリ初期設定
-│       └── get_github_app_token.sh  # GitHub App トークン取得
+│       ├── memory_insights.sh  # Memory Insights分析
+│       └── ...                 # PR作成・コメント投稿等（詳細は docs/architecture.md）
+│
+├── characters/                 # キャラクター定義
+│   ├── leader.md               # Leader用
+│   └── ...                     # 各Sub-Leader・IGNITIAN用
 │
 ├── instructions/               # エージェントのシステムプロンプト
 │   ├── leader.md               # Leader用
-│   ├── strategist.md           # Strategist用
-│   ├── architect.md            # Architect用
-│   ├── evaluator.md            # Evaluator用
-│   ├── coordinator.md          # Coordinator用
-│   ├── innovator.md            # Innovator用
-│   └── ignitian.md             # IGNITIAN用
+│   ├── leader-solo.md          # Leader単独モード用
+│   └── ...                     # 各Sub-Leader・IGNITIAN用
 │
 ├── config/                     # 設定ファイル
 │   ├── system.yaml             # システム全体の設定
+│   ├── characters.yaml         # キャラクター名設定
 │   ├── pricing.yaml            # Claude API料金設定
-│   └── github-watcher.yaml     # GitHub Watcher設定
+│   ├── github-watcher.yaml.example  # GitHub Watcher設定テンプレート
+│   └── github-app.yaml.example      # GitHub App設定テンプレート
 │
 ├── workspace/                  # 実行時ワークスペース（.gitignoreで除外）
 │   ├── queue/                  # メッセージキュー（各エージェント用）
@@ -525,25 +544,28 @@ ignite/
 │   │   ├── evaluator/
 │   │   ├── coordinator/
 │   │   ├── innovator/
-│   │   ├── ignitian_1/          # IGNITIAN-1キュー
-│   │   ├── ignitian_2/          # IGNITIAN-2キュー
-│   │   └── ignitian_{n}/        # IGNITIAN-Nキュー（動的）
+│   │   └── ignitian_{n}/       # IGNITIANキュー（動的生成）
 │   ├── context/                # プロジェクトコンテキスト
 │   ├── state/                  # 状態管理ファイル
+│   │   ├── memory.db           # SQLiteエージェントメモリDB
 │   │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
-│   ├── memory.db               # SQLiteエージェントメモリDB
 │   ├── logs/                   # ログファイル
 │   └── dashboard.md            # リアルタイム進捗ダッシュボード
 │
 ├── docs/                       # ドキュメント
 │   ├── architecture.md         # アーキテクチャ詳細
 │   ├── protocol.md             # 通信プロトコル仕様
+│   ├── github-app-setup.md     # GitHub App設定手順
+│   ├── github-watcher.md       # GitHub Watcher詳細
 │   └── examples/
 │       └── basic-usage.md      # 基本的な使用例
 │
+├── images/                     # キャラクター画像・ロゴ
+├── tests/                      # テスト（bats）
+├── .github/workflows/          # CI/CD
+├── CONTRIBUTING.md             # コントリビューションガイド
 ├── README.md                   # このファイル
-├── README_en.md                # READMEの英語版
-└── IMPLEMENTATION_STATUS.md   # 実装状況
+└── README_en.md                # READMEの英語版
 ```
 
 ## 🛠 詳細な使い方
@@ -555,13 +577,16 @@ ignite/
 | `start` | システム起動 | `ignite start` |
 | `stop` | システム停止 | `ignite stop` |
 | `plan` | タスク投入 | `ignite plan "目標"` |
+| `work-on` | Issue番号を指定して実装開始 | `ignite work-on 123 --repo owner/repo` |
 | `status` | 状態確認 | `ignite status` |
+| `cost` | トークン消費量・費用を表示 | `ignite cost` |
 | `attach` | tmuxセッションに接続 | `ignite attach` |
+| `activate` | エージェントをアクティベート | `ignite activate` |
+| `notify` | エージェントにメッセージ送信 | `ignite notify leader "メッセージ"` |
 | `logs` | ログ表示 | `ignite logs` |
 | `clean` | workspaceクリア | `ignite clean` |
-| `cost` | トークン消費量・費用を表示 | `ignite cost` |
-| `work-on` | Issue番号を指定して実装開始 | `ignite work-on 123 --repo owner/repo` |
 | `watcher` | GitHub Watcherを管理 | `ignite watcher start` |
+| `validate` | 設定ファイル検証 | `ignite validate` |
 | `list` | セッション一覧表示 | `ignite list` |
 | `help` | ヘルプ表示 | `ignite help` |
 
@@ -599,18 +624,31 @@ ignite attach -s proj-b
 - セッションIDを指定しない場合、デフォルトの `ignite-session` が使用されます
 - ワークスペースを指定しない場合、デフォルトの `workspace/` ディレクトリが使用されます
 
-### Leaderオンリーモード（単独モード）
+### エージェント起動モード
 
-Sub-LeadersやIGNITIANSを起動せず、Leaderのみでタスクを処理する軽量モードです。
+`-a`/`--agents` オプションで起動するエージェントの構成を選択できます。
 
 ```bash
-# Leaderオンリーモードで起動
+# 全エージェント起動（デフォルト）
+ignite start -a full
+
+# Leaderオンリーモード（単独モード）
 ignite start -a leader
-# または
-ignite start --agents leader
+
+# Leader + Sub-Leadersのみ（IGNITIANsなし）
+ignite start -a sub
 ```
 
-**ユースケース:**
+**モード比較:**
+
+| 項目 | full（デフォルト） | sub | leader |
+|------|-------------------|-----|--------|
+| 起動エージェント | Leader + Sub-Leaders + IGNITIANs | Leader + Sub-Leaders | Leaderのみ |
+| 戦略立案 | Strategistが担当 | Strategistが担当 | Leaderが直接実行 |
+| タスク実行 | IGNITIANsが並列実行 | Leaderが直接実行 | Leaderが直接実行 |
+| tmuxペイン数 | 6+（Sub-Leaders + IGNITIANs） | 6（Leader + Sub-Leaders） | 1（Leaderのみ） |
+
+**leader モードのユースケース:**
 
 | シナリオ | 説明 |
 |---------|------|
@@ -619,20 +657,9 @@ ignite start --agents leader
 | **迅速な対応** | 複雑な協調プロセスをスキップして素早く処理 |
 | **デバッグ・テスト** | システムの動作確認やテスト時に最小構成で実行 |
 
-**動作の違い:**
-
-| 項目 | 通常モード | Leaderオンリーモード |
-|------|-----------|---------------------|
-| 起動エージェント | Leader + 5 Sub-Leaders + IGNITIANs | Leaderのみ |
-| 戦略立案 | Strategistが担当 | Leaderが直接実行 |
-| 設計判断 | Architectが担当 | Leaderが直接実行 |
-| タスク実行 | IGNITIANsが並列実行 | Leaderが直接実行 |
-| 品質評価 | Evaluatorが担当 | Leaderが直接確認 |
-| tmuxペイン数 | 6+（Sub-Leaders + IGNITIANs） | 1（Leaderのみ） |
-
 **注意事項:**
-- 複雑なタスクや大規模な変更には通常モード（協調モード）を推奨します
-- 単独モードではLeaderのログに `[SOLO]` タグが追加されます
+- 複雑なタスクや大規模な変更には `full` モード（協調モード）を推奨します
+- `leader` モードではLeaderのログに `[SOLO]` タグが追加されます
 - 設定は `workspace/system_config.yaml` の `system.agent_mode` で管理されます
 
 ### タスクの種類別の使用例
@@ -683,7 +710,13 @@ ignite plan "プロジェクトのコードベースを分析して改善点を�
 
 タスクの性質に応じて並列数を調整できます。
 
-**設定ファイル編集:**
+**方法1: コマンドラインオプションで指定（再起動不要）:**
+
+```bash
+ignite start --workers 4
+```
+
+**方法2: 設定ファイルで変更:**
 
 ```bash
 # config/system.yamlを編集
@@ -692,7 +725,7 @@ nano config/system.yaml
 
 ```yaml
 defaults:
-  worker_count: 3    # IGNITIANs並列数
+  worker_count: 3    # IGNITIANs並列数（デフォルト: 3）
 ```
 
 変更後はシステムを再起動:
@@ -826,6 +859,20 @@ sudo apt install tmux
 
 # macOS
 brew install tmux
+```
+
+### 設定ファイルのエラーで起動に失敗する
+
+```bash
+# 設定ファイルを検証
+ignite validate
+
+# 特定の設定のみ検証
+ignite validate --config system
+ignite validate --config watcher
+
+# 検証をスキップして起動（一時的な回避策）
+ignite start --skip-validation
 ```
 
 ### タスクが進行しない
@@ -1060,7 +1107,7 @@ GitHub の Issue やPR のコメントで：
 - **基本使用例**: [docs/examples/basic-usage.md](docs/examples/basic-usage.md) - 実際の使用例とシナリオ
 - **アーキテクチャ**: [docs/architecture.md](docs/architecture.md) - システム構造の詳細
 - **プロトコル仕様**: [docs/protocol.md](docs/protocol.md) - メッセージフォーマットと通信フロー
-- **実装状況**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - 実装済み機能の一覧
+- **コントリビューション**: [CONTRIBUTING.md](CONTRIBUTING.md) - 開発参加ガイド
 - **GitHub App設定**: [docs/github-app-setup.md](docs/github-app-setup.md) - Bot用GitHub Appの作成手順
 - **GitHub Watcher**: [docs/github-watcher.md](docs/github-watcher.md) - GitHubイベント監視システムの使い方
 
@@ -1076,12 +1123,16 @@ IGNITEプロジェクトへの貢献を歓迎します！
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
 
+テストは [bats](https://github.com/bats-core/bats-core) で実行できます。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+
+```bash
+bats tests/
+```
+
 ### 拡張のアイデア
 
 - 新しいSub-Leaderの追加
 - WebUIの開発
-- Memory MCP統合による永続化
-- 自動テスト機能
 - パフォーマンスモニタリング
 
 ## 📄 ライセンス
