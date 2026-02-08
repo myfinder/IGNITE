@@ -2,7 +2,7 @@
 # lib/core.sh - 定数・カラー定義・出力ヘルパー
 [[ -n "${__LIB_CORE_LOADED:-}" ]] && return; __LIB_CORE_LOADED=1
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
