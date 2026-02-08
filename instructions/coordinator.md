@@ -189,6 +189,12 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO tasks (
 
 > **注意**: `NULL` はSQLリテラルです。`'NULL'`（クォート付き）は文字列 "NULL" になるため使用しないでください。
 
+> **重要: repository名はGitHub APIが返す正式な大文字小文字表記を使用してください。**
+> 例: `myfinder/IGNITE`（正）、`myfinder/ignite`（誤）。
+> Daily ReportのCurrent Tasks表示がrepositoryカラムのcase-sensitive比較に依存するため、
+> 表記が不一致だとタスクが正しく表示されません。
+> GitHub APIの `full_name` フィールドの値をそのまま使用することを推奨します。
+
 #### タスク完了更新
 IGNITIANから完了レポートを受信したら、tasks テーブルを更新します:
 

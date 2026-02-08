@@ -381,7 +381,7 @@ _generate_repo_report() {
         local safe_repo="${repo//\'/\'\'}"
         local raw
         raw=$(sqlite3 "$db" \
-            "PRAGMA busy_timeout=5000; SELECT task_id, title, status FROM tasks WHERE repository='${safe_repo}' AND status != 'completed' ORDER BY task_id;" 2>/dev/null \
+            "PRAGMA busy_timeout=5000; SELECT task_id, title, status FROM tasks WHERE repository COLLATE NOCASE = '${safe_repo}' AND status != 'completed' ORDER BY task_id;" 2>/dev/null \
             | grep '|') || raw=""
         if [[ -n "$raw" ]]; then
             task_lines="| Task ID | Title | Status |"$'\n'

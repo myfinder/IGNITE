@@ -762,9 +762,13 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
   VALUES ('ignitian_{n}', 'error', 'ファイル書き込み権限エラー', 'README.md作成時', 'task_001');"
 
 # タスク状態の更新（開始）
+# 注意: INSERT OR REPLACEではなくUPDATEを使用すること。
+# INSERT OR REPLACEはrepository/issue_numberカラムを消失させるため禁止。
+# CoordinatorがINSERT済みのレコードを更新する形で使用する。
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT OR REPLACE INTO tasks (task_id, assigned_to, status, title, started_at) \
-  VALUES ('task_001', 'ignitian_{n}', 'in_progress', 'README骨組み作成', datetime('now', '+9 hours'));"
+  UPDATE tasks SET assigned_to='ignitian_{n}', status='in_progress', \
+  title='README骨組み作成', started_at=datetime('now', '+9 hours') \
+  WHERE task_id='task_001';"
 
 # タスク状態の更新（完了）
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
