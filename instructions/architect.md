@@ -497,18 +497,23 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FRO
 ```bash
 # 設計レビュー結果の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('architect', 'decision', '戦略ドラフトの設計面レビュー: approved', 'Strategistからのdesign_review_request', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('architect', 'decision', '戦略ドラフトの設計面レビュー: approved', 'Strategistからのdesign_review_request', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 設計判断の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('architect', 'decision', 'レイヤードアーキテクチャを採用', 'CLIツール実装の構造設計', 'task_002');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('architect', 'decision', 'レイヤードアーキテクチャを採用', 'CLIツール実装の構造設計', 'task_002', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 設計パターンの学びの記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('architect', 'learning', 'Strategy Patternがフォーマッター切替に有効', '設計判断時の知見', 'task_002');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('architect', 'learning', 'Strategy Patternがフォーマッター切替に有効', '設計判断時の知見', 'task_002', '${REPOSITORY}', ${ISSUE_NUMBER});"
+
+# repository/issue_number が不明な場合は NULL を使用
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('architect', 'decision', '内容', 'コンテキスト', 'task_id', NULL, NULL);"
 ```
 
 ### アイドル時の状態保存

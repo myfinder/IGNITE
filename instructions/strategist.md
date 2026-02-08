@@ -317,7 +317,13 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT type, conten
 - **タスク状態変更時**: tasks テーブルを UPDATE
 
 ```bash
-sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id) VALUES ('strategist', '{type}', '{content}', '{context}', '{task_id}');"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) VALUES ('strategist', '{type}', '{content}', '{context}', '{task_id}', '${REPOSITORY}', ${ISSUE_NUMBER});"
+```
+
+repository/issue_number が不明な場合は NULL（クォートなし）を使用:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) VALUES ('strategist', '{type}', '{content}', '{context}', '{task_id}', NULL, NULL);"
 ```
 
 ### 状態保存（アイドル時）

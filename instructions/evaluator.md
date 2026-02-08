@@ -625,18 +625,23 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FRO
 ```bash
 # 評価結果の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('evaluator', 'decision', 'verdict: approve (score: 95)', 'README骨組み作成の品質評価', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('evaluator', 'decision', 'verdict: approve (score: 95)', 'README骨組み作成の品質評価', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 品質プラン策定の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('evaluator', 'decision', '3タスク分の品質確認基準を策定', 'Strategistからのquality_plan_request', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('evaluator', 'decision', '3タスク分の品質確認基準を策定', 'Strategistからのquality_plan_request', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 品質上の学びの記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('evaluator', 'learning', 'Markdown構文チェックにはリンター併用が効果的', '評価実施時の知見', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('evaluator', 'learning', 'Markdown構文チェックにはリンター併用が効果的', '評価実施時の知見', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
+
+# repository/issue_number が不明な場合は NULL を使用
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('evaluator', 'decision', '内容', 'コンテキスト', 'task_id', NULL, NULL);"
 ```
 
 ### アイドル時の状態保存

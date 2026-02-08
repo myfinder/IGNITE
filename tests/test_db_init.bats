@@ -55,16 +55,16 @@ teardown() {
     [[ "$columns" == *"issue_number"* ]]
 }
 
-@test "新規DB: user_version = 2" {
+@test "新規DB: user_version = 3" {
     init_db_production_sequence "$DB_PATH"
 
     local version
     version=$(get_user_version "$DB_PATH")
 
-    [[ "$version" -eq 2 ]]
+    [[ "$version" -eq 3 ]]
 }
 
-@test "新規DB: インデックス全6個が作成される" {
+@test "新規DB: インデックス全7個が作成される" {
     init_db_production_sequence "$DB_PATH"
 
     local indices
@@ -72,6 +72,7 @@ teardown() {
 
     [[ "$indices" == *"idx_insight_log_repo"* ]]
     [[ "$indices" == *"idx_memories_agent_type"* ]]
+    [[ "$indices" == *"idx_memories_repo_issue"* ]]
     [[ "$indices" == *"idx_memories_task"* ]]
     [[ "$indices" == *"idx_strategist_status"* ]]
     [[ "$indices" == *"idx_tasks_repo"* ]]
@@ -79,7 +80,7 @@ teardown() {
 
     local count
     count=$(sqlite3 "$DB_PATH" "SELECT count(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%';")
-    [[ "$count" -eq 6 ]]
+    [[ "$count" -eq 7 ]]
 }
 
 @test "二重初期化: データが消えない" {

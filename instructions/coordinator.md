@@ -100,6 +100,11 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
+  repository: "myfinder/IGNITE"
+  issue_number: 174
+  team_memory_context: |
+    ## チームメモリ（自動付与）
+    - [2026-01-31T16:00:00+09:00] strategist: README作成の戦略が承認済み
 ```
 
 **進捗報告メッセージ例:**
@@ -161,7 +166,13 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; SELECT type, conten
 - **タスク状態変更時**: tasks テーブルを UPDATE
 
 ```bash
-sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id) VALUES ('coordinator', '{type}', '{content}', '{context}', '{task_id}');"
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) VALUES ('coordinator', '{type}', '{content}', '{context}', '{task_id}', '${REPOSITORY}', ${ISSUE_NUMBER});"
+```
+
+repository/issue_number が不明な場合は NULL（クォートなし）を使用:
+
+```bash
+sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) VALUES ('coordinator', '{type}', '{content}', '{context}', '{task_id}', NULL, NULL);"
 ```
 
 ### 状態保存（アイドル時）
@@ -284,15 +295,31 @@ cat workspace/system_config.yaml
    - アイドル状態のIGNITIANを優先
    - 負荷を均等に分散
 
-4. **タスク割り当てメッセージを作成**
+4. **チームメモリコンテキストを取得**
+   タスク割り当て前に `memory_context.sh` を実行し、関連メモリを取得:
+   ```bash
+   # memory_context.sh でリポジトリ/Issue に関連するチームメモリを取得
+   TEAM_MEMORY=$(./scripts/utils/memory_context.sh --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER} 2>/dev/null) || TEAM_MEMORY=""
+   ```
+   - `memory_context.sh` が失敗した場合（スクリプト未存在・エラー等）は `TEAM_MEMORY=""` として続行
+   - `TEAM_MEMORY` が空でない場合のみ、task_assignment YAML に `team_memory_context` セクションを含める
+
+5. **タスク割り当てメッセージを作成**
    ```bash
    cat > workspace/queue/ignitian_1/task_assignment_$(date +%s%6N).yaml <<EOF
    type: task_assignment
    from: coordinator
    to: ignitian_1
    ...
+   payload:
+     ...
+     repository: "${REPOSITORY}"
+     issue_number: ${ISSUE_NUMBER}
+     team_memory_context: |
+       ${TEAM_MEMORY}
    EOF
    ```
+   > **注**: `team_memory_context` は `TEAM_MEMORY` が空でない場合のみ含めてください。空の場合はセクション自体を省略します（IGNITIANは `team_memory_context` がなくても正常動作します）。
 
 ### IGNITIAN状態トラッキング
 

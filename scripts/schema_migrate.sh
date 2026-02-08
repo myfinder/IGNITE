@@ -48,33 +48,37 @@ fi
 
 CURRENT_VERSION=$(sqlite3 "$DB_PATH" "PRAGMA user_version;")
 
-if [[ "$CURRENT_VERSION" -ge 2 ]]; then
+if [[ "$CURRENT_VERSION" -ge 3 ]]; then
     echo "[schema_migrate] Already at version $CURRENT_VERSION (skip)" >&2
     exit 0
 fi
 
-echo "[schema_migrate] Migrating from version $CURRENT_VERSION to 2..." >&2
+# ============================================================
+# Version 1 → 2: tasks テーブルに repository/issue_number 追加
+# ============================================================
+if [[ "$CURRENT_VERSION" -lt 2 ]]; then
+    echo "[schema_migrate] Migrating from version $CURRENT_VERSION to 2..." >&2
 
-REPO_NAME=$(get_repository_name)
+    REPO_NAME=$(get_repository_name)
 
-# カラム存在チェック（pragma_table_info）で冪等なALTER TABLE
-HAS_REPO=$(sqlite3 "$DB_PATH" \
-  "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='repository';")
-HAS_ISSUE=$(sqlite3 "$DB_PATH" \
-  "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='issue_number';")
+    # カラム存在チェック（pragma_table_info）で冪等なALTER TABLE
+    HAS_REPO=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='repository';")
+    HAS_ISSUE=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='issue_number';")
 
-if [[ "$HAS_REPO" -eq 0 ]]; then
-    sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
-      ALTER TABLE tasks ADD COLUMN repository TEXT;"
-    echo "[schema_migrate] Added column: repository" >&2
-fi
-if [[ "$HAS_ISSUE" -eq 0 ]]; then
-    sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
-      ALTER TABLE tasks ADD COLUMN issue_number INTEGER;"
-    echo "[schema_migrate] Added column: issue_number" >&2
-fi
+    if [[ "$HAS_REPO" -eq 0 ]]; then
+        sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
+          ALTER TABLE tasks ADD COLUMN repository TEXT;"
+        echo "[schema_migrate] Added column: tasks.repository" >&2
+    fi
+    if [[ "$HAS_ISSUE" -eq 0 ]]; then
+        sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
+          ALTER TABLE tasks ADD COLUMN issue_number INTEGER;"
+        echo "[schema_migrate] Added column: tasks.issue_number" >&2
+    fi
 
-sqlite3 "$DB_PATH" <<SQL
+    sqlite3 "$DB_PATH" <<SQL
 PRAGMA busy_timeout = 5000;
 
 -- 既存全行にデフォルトのリポジトリを設定
@@ -106,4 +110,45 @@ CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repository, status);
 PRAGMA user_version = 2;
 SQL
 
-echo "[schema_migrate] Migration to version 2 completed successfully." >&2
+    echo "[schema_migrate] Migration to version 2 completed successfully." >&2
+fi
+
+# ============================================================
+# Version 2 → 3: memories テーブルに repository/issue_number 追加
+# ============================================================
+if [[ "$CURRENT_VERSION" -lt 3 ]]; then
+    echo "[schema_migrate] Migrating from version $(sqlite3 "$DB_PATH" "PRAGMA user_version;") to 3..." >&2
+
+    # カラム存在チェック（pragma_table_info）で冪等なALTER TABLE
+    HAS_MEM_REPO=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name='repository';")
+    HAS_MEM_ISSUE=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name='issue_number';")
+
+    if [[ "$HAS_MEM_REPO" -eq 0 ]]; then
+        sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
+          ALTER TABLE memories ADD COLUMN repository TEXT;"
+        echo "[schema_migrate] Added column: memories.repository" >&2
+    fi
+    if [[ "$HAS_MEM_ISSUE" -eq 0 ]]; then
+        sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
+          ALTER TABLE memories ADD COLUMN issue_number INTEGER;"
+        echo "[schema_migrate] Added column: memories.issue_number" >&2
+    fi
+
+    # Determine the time column name (schema.sql uses 'timestamp', legacy DBs use 'created_at')
+    time_col=$(sqlite3 "$DB_PATH" "PRAGMA table_info(memories);" | grep -E '\|timestamp\||\|created_at\|' | head -1 | cut -d'|' -f2)
+    time_col="${time_col:-created_at}"
+
+    sqlite3 "$DB_PATH" <<SQL
+PRAGMA busy_timeout = 5000;
+
+-- 複合インデックス: リポジトリ+Issue番号でのメモリ検索を高速化
+CREATE INDEX IF NOT EXISTS idx_memories_repo_issue ON memories(repository, issue_number, ${time_col} DESC);
+
+-- バージョン更新
+PRAGMA user_version = 3;
+SQL
+
+    echo "[schema_migrate] Migration to version 3 completed successfully." >&2
+fi
