@@ -926,9 +926,31 @@ process_issues() {
 
         log_event "新規Issue検知: #$(echo "$issue" | jq -r '.number') by $author"
 
-        local message_file
-        message_file=$(create_event_message "issue_created" "$repo" "$issue")
-        log_success "メッセージ作成: $message_file"
+        local body
+        body=$(echo "$issue" | jq -r '.body // ""')
+
+        # トリガーパターンをチェック（Issue body内のメンション検出）
+        if [[ "$body" =~ $MENTION_PATTERN ]]; then
+            log_event "トリガー検知: $MENTION_PATTERN (by $author)"
+
+            # トリガータイプを判別
+            local trigger_type="implement"
+            if [[ "$body" =~ (インサイト|insights?) ]]; then
+                trigger_type="insights"
+            elif [[ "$body" =~ (レビュー|review) ]]; then
+                trigger_type="review"
+            elif [[ "$body" =~ (説明|explain) ]]; then
+                trigger_type="explain"
+            fi
+
+            local message_file
+            message_file=$(create_task_message "issue_created" "$repo" "$issue" "$trigger_type")
+            log_success "タスクメッセージ作成: $message_file"
+        else
+            local message_file
+            message_file=$(create_event_message "issue_created" "$repo" "$issue")
+            log_success "メッセージ作成: $message_file"
+        fi
 
         mark_event_processed "issue" "$id"
     done
