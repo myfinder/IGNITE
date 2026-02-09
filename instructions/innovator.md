@@ -786,18 +786,23 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FRO
 ```bash
 # 改善提案の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('innovator', 'decision', '動的負荷分散アルゴリズムの導入を提案', 'タスク配分の最適化検討', 'task_003');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('innovator', 'decision', '動的負荷分散アルゴリズムの導入を提案', 'タスク配分の最適化検討', 'task_003', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 改善実施の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('innovator', 'learning', 'README.md誤字修正で品質向上を確認', 'Evaluatorからの改善依頼対応', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('innovator', 'learning', 'README.md誤字修正で品質向上を確認', 'Evaluatorからの改善依頼対応', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # インサイト提供の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('innovator', 'message_sent', 'Strategistにベストプラクティスとインサイトを送信', 'insight_request対応', 'task_002');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('innovator', 'message_sent', 'Strategistにベストプラクティスとインサイトを送信', 'insight_request対応', 'task_002', '${REPOSITORY}', ${ISSUE_NUMBER});"
+
+# repository/issue_number が不明な場合は NULL を使用
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('innovator', 'decision', '内容', 'コンテキスト', 'task_id', NULL, NULL);"
 ```
 
 ### アイドル時の状態保存

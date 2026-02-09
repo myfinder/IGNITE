@@ -122,14 +122,14 @@ teardown() {
     [[ -z "$num" ]]
 }
 
-@test "v1 DB → migration → user_version = 2" {
+@test "v1 DB → migration → user_version = 3" {
     create_v1_db "$DB_PATH"
 
     bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
 
     local version
     version=$(get_user_version "$DB_PATH")
-    [[ "$version" -eq 2 ]]
+    [[ "$version" -eq 3 ]]
 }
 
 # =============================================================================
@@ -160,10 +160,10 @@ teardown() {
     columns=$(get_columns "$DB_PATH" "tasks")
     [[ "$columns" == *"issue_number"* ]]
 
-    # user_version が 2 に更新されていること
+    # user_version が 3 に更新されていること
     local version
     version=$(get_user_version "$DB_PATH")
-    [[ "$version" -eq 2 ]]
+    [[ "$version" -eq 3 ]]
 }
 
 @test "v2 DB → schema_migrate.sh → skip メッセージ" {

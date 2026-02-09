@@ -53,7 +53,16 @@ payload:
     - "README.md (基本構造)"
   skills_required: ["file_write", "markdown"]
   estimated_time: 60
+  repository: "myfinder/IGNITE"
+  issue_number: 174
+  team_memory_context: |
+    ## チームメモリ（自動付与）
+    - [2026-01-31T16:00:00+09:00] coordinator: README作成の戦略が承認済み
+    - [2026-01-31T16:30:00+09:00] strategist: Markdown構造はATX heading推奨
 ```
+
+> **team_memory_context について**: Coordinatorが `memory_context.sh` を実行して自動付与します。
+> このセクションがない場合（旧バージョンのCoordinator等）でも、IGNITIANは正常に動作します（後方互換）。
 
 **送信メッセージ例（完了レポート）:**
 ```yaml
@@ -120,6 +129,14 @@ queue_monitorから通知が来たら、以下を実行してください:
 1. **タスクの読み込み**
    - 通知で指定されたファイルをReadツールで読み込む
    - `payload` セクションの内容を理解
+   - `repository` と `issue_number` をメモリ書き込み用の変数として記録:
+     ```bash
+     REPOSITORY="myfinder/IGNITE"    # payload.repository の値
+     ISSUE_NUMBER=210                 # payload.issue_number の値（整数）
+     # 不明な場合: REPOSITORY="" / ISSUE_NUMBER="NULL"
+     ```
+   - `team_memory_context` セクションがある場合は内容を読み、タスク実行時の追加コンテキストとして活用する
+   - `team_memory_context` セクションがない場合は従来通り動作する（後方互換）
 
 2. **タスク実行の開始**
    - ログ出力: "[IGNITIAN-{n}] タスク {task_id} を開始します"
@@ -748,18 +765,23 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FRO
 ```bash
 # タスク開始の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('ignitian_{n}', 'decision', 'README骨組み作成を開始', 'Coordinatorから割り当て', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('ignitian_{n}', 'decision', 'README骨組み作成を開始', 'Coordinatorから割り当て', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # タスク完了・学びの記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('ignitian_{n}', 'learning', 'Markdown構造のベストプラクティスを習得', 'task_001完了時', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('ignitian_{n}', 'learning', 'Markdown構造のベストプラクティスを習得', 'task_001完了時', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # エラーの記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('ignitian_{n}', 'error', 'ファイル書き込み権限エラー', 'README.md作成時', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('ignitian_{n}', 'error', 'ファイル書き込み権限エラー', 'README.md作成時', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
+
+# repository/issue_number が不明な場合は NULL を使用
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('ignitian_{n}', 'decision', '内容', 'コンテキスト', 'task_id', NULL, NULL);"
 
 # タスク状態の更新（開始）
 # 注意: INSERT OR REPLACEではなくUPDATEを使用すること。

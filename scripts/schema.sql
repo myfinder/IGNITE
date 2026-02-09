@@ -3,6 +3,10 @@
 -- NOTE: user_version は schema_migrate.sh が管理する（ここでは設定しない）
 
 -- メモリテーブル（全エージェント共通：学習・決定・観察・エラーを記録）
+-- repository / issue_number の非正規化設計根拠:
+--   1. task_id が NULL のメモリ（全体の約28.4%）にも直接 repo/issue を付与可能
+--   2. JOIN 不要で O(1) フィルタリング（WHERE repository = ? AND issue_number = ?）
+--   3. メモリ作成時点のスナップショット値として保持（tasks テーブルとの自動同期なし）
 CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
@@ -10,6 +14,8 @@ CREATE TABLE IF NOT EXISTS memories (
     content TEXT NOT NULL,
     context TEXT,
     task_id TEXT,
+    repository TEXT,            -- リポジトリ名 (owner/repo)
+    issue_number INTEGER,       -- Issue番号
     timestamp DATETIME DEFAULT (datetime('now', '+9 hours'))
 );
 
@@ -59,6 +65,7 @@ CREATE TABLE IF NOT EXISTS insight_log (
 -- インデックス
 CREATE INDEX IF NOT EXISTS idx_memories_agent_type ON memories(agent, type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_task ON memories(task_id);
+CREATE INDEX IF NOT EXISTS idx_memories_repo_issue ON memories(repository, issue_number, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, assigned_to);
 -- NOTE: idx_tasks_repo は schema_migrate.sh が作成する（既存DBとの互換性のため）
 CREATE INDEX IF NOT EXISTS idx_strategist_status ON strategist_state(status);

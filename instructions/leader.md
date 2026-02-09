@@ -863,18 +863,18 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; SELECT * FRO
 ```bash
 # 戦略依頼の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('leader', 'decision', 'Strategistに戦略立案を依頼', 'ユーザー目標: CLIツール実装', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('leader', 'decision', 'Strategistに戦略立案を依頼', 'ユーザー目標: CLIツール実装', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # 進捗判断の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('leader', 'decision', 'Phase 1完了を承認、Phase 2に進行', 'Evaluator verdict: approve', 'task_001');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('leader', 'decision', 'Phase 1完了を承認、Phase 2に進行', 'Evaluator verdict: approve', 'task_001', '${REPOSITORY}', ${ISSUE_NUMBER});"
 
 # GitHub タスク受付の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
-  INSERT INTO memories (agent, type, content, context, task_id) \
-  VALUES ('leader', 'message_received', 'Issue #123 実装リクエスト受付', 'github_task trigger: implement', 'task_005');"
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('leader', 'message_received', 'Issue #123 実装リクエスト受付', 'github_task trigger: implement', 'task_005', '${REPOSITORY}', ${ISSUE_NUMBER});"
 ```
 
 ### アイドル時の状態保存
