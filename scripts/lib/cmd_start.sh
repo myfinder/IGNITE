@@ -106,10 +106,10 @@ cmd_start() {
         _VALIDATION_ERRORS=()
         _VALIDATION_WARNINGS=()
         local xdg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
-        validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml"
+        validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml" || true
         if [[ -d "$xdg_dir" ]]; then
-            validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml"
-            validate_github_app_yaml "${xdg_dir}/github-app.yaml"
+            validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml" || true
+            validate_github_app_yaml "${xdg_dir}/github-app.yaml" || true
         fi
 
         # 警告の表示

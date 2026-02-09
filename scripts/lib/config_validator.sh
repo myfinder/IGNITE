@@ -335,15 +335,15 @@ validate_all_configs() {
 
     # config_dir の system.yaml は必須
     if [[ -d "$config_dir" ]]; then
-        validate_system_yaml "${config_dir}/system.yaml"
+        validate_system_yaml "${config_dir}/system.yaml" || true
     else
         validation_error "$config_dir" "(dir)" "設定ディレクトリが見つかりません"
     fi
 
     # XDG 設定はオプショナル（不在時スキップ）
     if [[ -d "$xdg_config_dir" ]]; then
-        validate_watcher_yaml    "${xdg_config_dir}/github-watcher.yaml"
-        validate_github_app_yaml "${xdg_config_dir}/github-app.yaml"
+        validate_watcher_yaml    "${xdg_config_dir}/github-watcher.yaml" || true
+        validate_github_app_yaml "${xdg_config_dir}/github-app.yaml" || true
     fi
 
     validation_report
