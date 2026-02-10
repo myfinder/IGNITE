@@ -38,6 +38,11 @@ DEFAULT_CONFIG_FILE="github-watcher.yaml"
 # SIGHUP設定リロード用フラグ（trap内では直接load_config()を呼ばない）
 _RELOAD_REQUESTED=false
 
+# グレースフル停止用フラグ（trap内ではフラグを立てるだけ、exit()を呼ばない）
+_SHUTDOWN_REQUESTED=false
+_SHUTDOWN_SIGNAL=""
+_EXIT_CODE=0
+
 # カラー定義
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -1307,7 +1312,7 @@ run_daemon() {
 
     local refresh_counter=0
 
-    while true; do
+    while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
         # tmuxセッション生存チェック（環境変数が設定されている場合のみ）
         if [[ -n "${IGNITE_TMUX_SESSION:-}" ]]; then
             if ! tmux has-session -t "$IGNITE_TMUX_SESSION" 2>/dev/null; then
@@ -1342,8 +1347,15 @@ run_daemon() {
             log_info "設定リロード完了: 監視対象=${REPOSITORIES[*]}"
         fi
 
-        sleep "$POLL_INTERVAL" || true
+        # sleep分割: SIGTERM応答性改善（最大1秒以内に停止可能）
+        local i=0
+        while [[ $i -lt $POLL_INTERVAL ]] && [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
+            sleep 1
+            ((i++))
+        done
     done
+
+    exit "${_EXIT_CODE:-0}"
 }
 
 run_once() {
@@ -1444,10 +1456,34 @@ main() {
         _RELOAD_REQUESTED=true
     }
 
-    # グレースフル停止用の trap
-    trap 'log_info "シグナル受信: 停止します"; exit 0' SIGTERM SIGINT
+    # グレースフル停止: フラグベース（trap内でexit()を呼ばない）
+    # process_events()完了を待ってから安全に停止する
+    graceful_shutdown() {
+        _SHUTDOWN_SIGNAL="$1"
+        _SHUTDOWN_REQUESTED=true
+        _EXIT_CODE=$((128 + $1))
+        log_info "シグナル受信 (${1}): 安全に停止します"
+    }
+    trap 'graceful_shutdown 15' SIGTERM
+    trap 'graceful_shutdown 2' SIGINT
     trap '_handle_sighup' SIGHUP
-    trap 'log_info "GitHub Watcher を終了しました"' EXIT
+
+    # EXIT trap: 終了理由をログに記録
+    cleanup_and_log() {
+        local exit_code=$?
+        [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
+        if [[ -n "$_SHUTDOWN_SIGNAL" ]]; then
+            log_info "GitHub Watcher 終了: シグナル${_SHUTDOWN_SIGNAL}による停止"
+        elif [[ $exit_code -eq 0 ]]; then
+            log_info "GitHub Watcher 終了: 正常終了"
+        elif [[ $exit_code -gt 128 ]]; then
+            local sig=$((exit_code - 128))
+            log_warn "GitHub Watcher 終了: 未捕捉シグナル$(kill -l $sig 2>/dev/null || echo UNKNOWN)"
+        else
+            log_error "GitHub Watcher 終了: 異常終了 (exit_code=$exit_code)"
+        fi
+    }
+    trap cleanup_and_log EXIT
 
     # 実行モード
     case "$mode" in
