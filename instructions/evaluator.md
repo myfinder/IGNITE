@@ -89,6 +89,9 @@ payload:
       - item: "必須セクション（概要、インストール、使用方法、ライセンス）が存在する"
         status: "pass"
         note: "使用方法セクションは存在するが内容が薄い"
+    should:
+      - item: "セクション構造が明確で読みやすい"
+        status: "pass"
   coordinator_concern: |
     IGNITIANは全must項目をpassとしていますが、
     「使用方法」セクションの内容が薄く、要件達成と言えるか判断に迷います。
