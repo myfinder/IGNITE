@@ -35,6 +35,9 @@ DEFAULT_INTERVAL=60
 DEFAULT_STATE_FILE="workspace/state/github_watcher_state.json"
 DEFAULT_CONFIG_FILE="github-watcher.yaml"
 
+# SIGHUP設定リロード用フラグ（trap内では直接load_config()を呼ばない）
+_RELOAD_REQUESTED=false
+
 # カラー定義
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -1329,6 +1332,16 @@ run_daemon() {
         # 定期的に古いイベントをクリーンアップ
         cleanup_old_events || log_warn "cleanup_old_events failed, continuing..."
 
+        # SIGHUP による設定リロード（フラグベース遅延実行）
+        if [[ "$_RELOAD_REQUESTED" == true ]]; then
+            _RELOAD_REQUESTED=false
+            load_config || log_warn "設定リロード失敗"
+            if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+                expand_patterns "${REPO_PATTERNS[@]}" || log_warn "パターン展開失敗"
+            fi
+            log_info "設定リロード完了: 監視対象=${REPOSITORIES[*]}"
+        fi
+
         sleep "$POLL_INTERVAL" || true
     done
 }
@@ -1422,8 +1435,18 @@ main() {
     # ステート初期化
     init_state
 
+    # SIGHUP ハンドラ（フラグベース遅延リロード）
+    # trap内で直接load_config()を呼ぶと、process_events()実行中に
+    # REPOSITORIES[]変更やSTATE_FILE競合が発生するリスクがあるため、
+    # フラグを立てるだけにしてメインループ内で安全にリロードする
+    _handle_sighup() {
+        log_info "SIGHUP受信: リロード予約"
+        _RELOAD_REQUESTED=true
+    }
+
     # グレースフル停止用の trap
     trap 'log_info "シグナル受信: 停止します"; exit 0' SIGTERM SIGINT
+    trap '_handle_sighup' SIGHUP
     trap 'log_info "GitHub Watcher を終了しました"' EXIT
 
     # 実行モード
