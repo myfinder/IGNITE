@@ -57,6 +57,7 @@ cmd_plan() {
         exit 1
     fi
 
+    require_workspace
     cd "$WORKSPACE_DIR" || return 1
 
     # セッションの存在確認

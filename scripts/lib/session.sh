@@ -49,6 +49,15 @@ setup_workspace() {
     fi
 }
 
+# ワークスペースディレクトリの存在チェック（start以外のコマンド用）
+require_workspace() {
+    if [[ ! -d "$WORKSPACE_DIR" ]]; then
+        print_error "ワークスペースディレクトリが見つかりません: $WORKSPACE_DIR"
+        print_info "先に 'ignite start' でワークスペースを作成してください"
+        exit 1
+    fi
+}
+
 # 実行中の全IGNITEセッションを一覧表示
 list_sessions() {
     local sessions

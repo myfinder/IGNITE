@@ -30,6 +30,7 @@ cmd_status() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
 

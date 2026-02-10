@@ -152,6 +152,7 @@ cmd_notify() {
         exit 1
     fi
 
+    require_workspace
     cd "$WORKSPACE_DIR" || return 1
 
     # メッセージファイル作成
@@ -247,6 +248,7 @@ cmd_logs() {
 
     # ワークスペースを設定
     setup_workspace
+    require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
 
@@ -304,6 +306,7 @@ cmd_clean() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
 
