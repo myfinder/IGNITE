@@ -70,7 +70,7 @@ start_agent() {
 
         # Claude CLI 起動（ワークスペースディレクトリで実行）
         tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" \
-            "${_gh_export}cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
+            "${_gh_export}export WORKSPACE_DIR='$WORKSPACE_DIR' && cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
         sleep "$(get_delay leader_startup 3)"
 
         # 権限確認通過
@@ -123,7 +123,7 @@ start_ignitian() {
 
         # IGNITE_WORKER_ID を設定して Claude CLI 起動（per-IGNITIAN リポジトリ分離用）
         tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" \
-            "${_gh_export}export IGNITE_WORKER_ID=${id} && cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
+            "${_gh_export}export WORKSPACE_DIR='$WORKSPACE_DIR' && export IGNITE_WORKER_ID=${id} && cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
         sleep "$(get_delay leader_startup 3)"
 
         # 権限確認通過

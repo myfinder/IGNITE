@@ -240,7 +240,7 @@ EOF
     fi
 
     tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" \
-        "${_gh_export}cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
+        "${_gh_export}export WORKSPACE_DIR='$WORKSPACE_DIR' && cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter
 
     # 起動待機（確認プロンプト表示を待つ）
     print_warning "Leaderの起動を待機中... (3秒)"
