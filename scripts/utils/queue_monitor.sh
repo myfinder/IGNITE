@@ -7,14 +7,14 @@
 #   - タイムアウト検知 + process_retry() でリトライ保証
 #
 # 状態遷移図:
-#   queue/*.yaml
+#   queue/*.mime
 #     │ mv → processed/
 #     ▼
 #   [processing] ── send_to_agent成功 ──→ [delivered] (完了)
 #     │
 #     │ timeout (mtime > task_timeout)
 #     ▼
-#   [retrying] ── retry_count < MAX ──→ queue/*.yaml に戻す (再処理)
+#   [retrying] ── retry_count < MAX ──→ queue/*.mime に戻す (再処理)
 #     │
 #     │ retry_count >= MAX
 #     ▼
@@ -58,6 +58,31 @@ WORKSPACE_DIR="${_QM_WORKSPACE_DIR}"
 if [[ -f "${SCRIPT_DIR}/../lib/yaml_utils.sh" ]]; then
     source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 fi
+
+# MIME ヘルパー
+IGNITE_MIME="${SCRIPT_DIR}/../lib/ignite_mime.py"
+
+# MIMEメッセージからフィールドを取得する
+mime_get() {
+    local file="$1" field="$2"
+    python3 "$IGNITE_MIME" parse "$file" 2>/dev/null | jq -r ".${field} // empty" 2>/dev/null
+}
+
+# MIMEメッセージからボディ内のYAMLフィールドを取得する
+mime_body_get() {
+    local file="$1" field="$2"
+    python3 "$IGNITE_MIME" extract-body "$file" 2>/dev/null | grep -E "^\\s*${field}:" | head -1 | sed "s/.*${field}:[[:space:]]*//" | tr -d '"'
+}
+
+# MIMEメッセージのステータスを更新する
+mime_update_status() {
+    local file="$1" new_status="$2"
+    local extra_args=()
+    if [[ $# -ge 3 ]]; then
+        extra_args=("--processed-at" "$3")
+    fi
+    python3 "$IGNITE_MIME" update-status "$file" "$new_status" "${extra_args[@]}" 2>/dev/null
+}
 
 # Bot Token キャッシュのプリウォーム（有効期限前に更新）
 _refresh_bot_token_cache() {
@@ -491,9 +516,9 @@ process_message() {
     local filename
     filename=$(basename "$file")
 
-    # YAMLからタイプを読み取り
+    # MIMEヘッダーからタイプを読み取り
     local msg_type
-    msg_type=$(grep -E '^type:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    msg_type=$(mime_get "$file" "type")
 
     log_info "新規メッセージ検知: $filename (type: $msg_type)"
 
@@ -501,12 +526,10 @@ process_message() {
     local instruction=""
     case "$msg_type" in
         github_task)
-            local trigger
-            trigger=$(grep -E '^\s*trigger:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
-            local repo
-            repo=$(grep -E '^\s*repository:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
-            local issue_num
-            issue_num=$(grep -E '^\s*issue_number:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+            local trigger repo issue_num
+            trigger=$(mime_body_get "$file" "trigger")
+            repo=$(mime_get "$file" "repository")
+            issue_num=$(mime_get "$file" "issue")
             instruction="新しいGitHubタスクが来ました。$file を読んで処理してください。リポジトリ: $repo, Issue/PR: #$issue_num, トリガー: $trigger"
             # 日次レポートに作業開始を記録（バックグラウンド）
             if [[ -n "$repo" ]]; then
@@ -515,7 +538,7 @@ process_message() {
             ;;
         github_event)
             local event_type
-            event_type=$(grep -E '^\s*event_type:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+            event_type=$(mime_body_get "$file" "event_type")
             instruction="新しいGitHubイベントが来ました。$file を読んで必要に応じて対応してください。イベントタイプ: $event_type"
             ;;
         progress_update)
@@ -525,7 +548,7 @@ process_message() {
             ;;
         evaluation_result)
             local eval_verdict
-            eval_verdict=$(grep -E '^\s+verdict:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+            eval_verdict=$(mime_body_get "$file" "verdict")
             instruction="評価結果が来ました。$file を読んで確認してください。判定: $eval_verdict"
             # 日次レポートに評価結果を記録（バックグラウンド）
             _report_evaluation "$file" &
@@ -547,8 +570,7 @@ process_message() {
     # エージェントに送信（開始後は完了まで中断しない）
     if send_to_agent "$queue_name" "$instruction"; then
         # 配信成功: status=delivered に更新
-        sed_inplace 's/^status:.*/status: delivered/' "$file" 2>/dev/null || \
-            printf 'status: delivered\n' >> "$file"
+        mime_update_status "$file" "delivered"
     fi
     # 失敗時は status=processing のまま（リトライ対象）
 }
@@ -557,7 +579,7 @@ process_message() {
 # キュー監視
 # =============================================================================
 
-# ファイル名を {type}_{timestamp}.yaml パターンに正規化
+# ファイル名を {type}_{timestamp}.mime パターンに正規化
 # 正規化が不要な場合はそのままのパスを返す
 normalize_filename() {
     local file="$1"
@@ -566,23 +588,23 @@ normalize_filename() {
     local dir
     dir=$(dirname "$file")
 
-    # {任意の文字列}_{数字16桁}.yaml パターンに一致すれば正規化不要
-    if [[ "$filename" =~ ^.+_[0-9]{16}\.yaml$ ]]; then
+    # {任意の文字列}_{数字16桁}.mime パターンに一致すれば正規化不要
+    if [[ "$filename" =~ ^.+_[0-9]{16}\.mime$ ]]; then
         echo "$file"
         return
     fi
 
-    # YAMLから type と timestamp を読み取り
+    # MIMEヘッダーから type と timestamp を読み取り
     local msg_type
-    msg_type=$(grep -E '^type:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    msg_type=$(mime_get "$file" "type")
     if [[ -z "$msg_type" ]]; then
         # type フィールドがない場合はファイル名からベスト・エフォートで推測
-        msg_type="${filename%.yaml}"
+        msg_type="${filename%.mime}"
     fi
 
-    # YAML timestamp からエポックマイクロ秒を算出（元の時系列順を保持）
+    # Date ヘッダーからエポックマイクロ秒を算出（元の時系列順を保持）
     local yaml_ts
-    yaml_ts=$(grep -E '^timestamp:' "$file" 2>/dev/null | head -1 | sed 's/^timestamp: *"\?\([^"]*\)"\?/\1/')
+    yaml_ts=$(mime_get "$file" "date")
     local epoch_usec=""
     if [[ -n "$yaml_ts" ]]; then
         local epoch_sec
@@ -600,19 +622,19 @@ normalize_filename() {
     fi
 
     # 衝突回避: 同名ファイルが存在する場合は連番サフィックス
-    local new_path="${dir}/${msg_type}_${epoch_usec}.yaml"
+    local new_path="${dir}/${msg_type}_${epoch_usec}.mime"
     if [[ -f "$new_path" ]]; then
         local suffix=1
-        while [[ -f "${dir}/${msg_type}_${epoch_usec}_${suffix}.yaml" ]]; do
-            suffix=$((suffix + 1))
+        while [[ -f "${dir}/${msg_type}_${epoch_usec}_${suffix}.mime" ]]; do
+            ((suffix++))
         done
-        new_path="${dir}/${msg_type}_${epoch_usec}_${suffix}.yaml"
+        new_path="${dir}/${msg_type}_${epoch_usec}_${suffix}.mime"
     fi
 
     local from
-    from=$(grep -E '^from:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    from=$(mime_get "$file" "from")
     local to
-    to=$(grep -E '^to:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    to=$(mime_get "$file" 'to[0]')
     log_warn "ファイル名を正規化: ${filename} → $(basename "$new_path") (from: ${from:-unknown}, to: ${to:-unknown})"
 
     mv "$file" "$new_path" 2>/dev/null || { echo "$file"; return; }
@@ -628,11 +650,11 @@ scan_queue() {
     # processed/ ディレクトリを確保（処理済みファイルの移動先）
     mkdir -p "$queue_dir/processed"
 
-    # キューディレクトリ直下の .yaml ファイル = 未処理メッセージ
-    for file in "$queue_dir"/*.yaml; do
+    # キューディレクトリ直下の .mime ファイル = 未処理メッセージ
+    for file in "$queue_dir"/*.mime; do
         [[ -f "$file" ]] || continue
 
-        # ファイル名が {type}_{timestamp}.yaml パターンに一致しない場合は正規化
+        # ファイル名が {type}_{timestamp}.mime パターンに一致しない場合は正規化
         file=$(normalize_filename "$file")
         [[ -f "$file" ]] || continue
 
@@ -644,7 +666,7 @@ scan_queue() {
         mv "$file" "$dest" 2>/dev/null || continue
 
         # status=processing + processed_at を追記（タイムアウト検知の基点）
-        printf 'status: processing\nprocessed_at: "%s"\n' "$(date -Iseconds)" >> "$dest"
+        mime_update_status "$dest" "processing" "$(date -Iseconds)"
 
         # 処理（processed/ 内のパスを渡す）
         process_message "$dest" "$queue_name"
@@ -677,9 +699,9 @@ scan_for_timeouts() {
             continue
         fi
 
-        # status フィールドを取得
+        # status フィールドを取得（MIMEヘッダーから）
         local status
-        status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        status=$(mime_get "$file" "status")
 
         # delivered/completed はスキップ
         case "$status" in
@@ -687,7 +709,7 @@ scan_for_timeouts() {
             retrying)
                 # next_retry_after を確認（バックオフ待機中はスキップ）
                 local next_retry
-                next_retry=$(grep -E '^next_retry_after:' "$file" 2>/dev/null | head -1 | sed 's/.*next_retry_after:[[:space:]]*//' | tr -d '"')
+                next_retry=$(mime_body_get "$file" "next_retry_after")
                 if [[ -n "$next_retry" ]]; then
                     local next_epoch now_epoch
                     next_epoch=$(date -d "$next_retry" +%s 2>/dev/null) || true
@@ -705,9 +727,9 @@ scan_for_timeouts() {
                 ;;
         esac
 
-        # retry_count を取得
+        # retry_count を取得（MIMEボディから）
         local retry_count
-        retry_count=$(grep -E '^retry_count:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        retry_count=$(mime_body_get "$file" "retry_count")
         retry_count="${retry_count:-0}"
 
         if [[ "$retry_count" -ge "$max_retries" ]]; then
@@ -720,14 +742,14 @@ scan_for_timeouts() {
             log_info "タイムアウトリトライ: $(basename "$file") (試行: $((retry_count + 1)))"
             process_retry "$file"
             # status を retrying に設定
-            sed_inplace 's/^status:.*/status: retrying/' "$file" 2>/dev/null || true
+            mime_update_status "$file" "retrying"
 
             # queue/ に戻す（再処理対象にする）
             local filename
             filename=$(basename "$file")
             mv "$file" "$queue_dir/$filename" 2>/dev/null || true
         fi
-    done < <(find "$processed_dir" -name "*.yaml" -not -newermt "${timeout_sec} seconds ago" -print0 2>/dev/null)
+    done < <(find "$processed_dir" -name "*.mime" -not -newermt "${timeout_sec} seconds ago" -print0 2>/dev/null)
 }
 
 monitor_queues() {

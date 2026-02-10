@@ -30,6 +30,9 @@ fi
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 
+# MIMEメッセージ構築ツール
+IGNITE_MIME="${SCRIPT_DIR}/../lib/ignite_mime.py"
+
 # デフォルト設定
 DEFAULT_INTERVAL=60
 DEFAULT_STATE_FILE="workspace/state/github_watcher_state.json"
@@ -640,12 +643,15 @@ create_event_message() {
     local message_id
     message_id=$(date +%s%6N)
     local queue_dir="${WORKSPACE_DIR}/queue/leader"
+    # IGNITE_MIME はファイルスコープで定義済み
 
     mkdir -p "$queue_dir"
 
-    local message_file="${queue_dir}/github_event_${message_id}.yaml"
+    local message_file="${queue_dir}/github_event_${message_id}.mime"
 
-    # イベントタイプに応じてメッセージを構築
+    # イベントタイプに応じてボディYAMLを構築
+    local body_yaml=""
+    local issue_val=""
     case "$event_type" in
         issue_created|issue_updated)
             local issue_number issue_title issue_body author author_type url
@@ -655,24 +661,15 @@ create_event_message() {
             author=$(echo "$event_data" | jq -r '.author')
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
-
-            cat > "$message_file" <<EOF
-type: github_event
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  event_type: ${event_type}
-  repository: ${repo}
-  issue_number: ${issue_number}
-  issue_title: "${issue_title//\"/\\\"}"
-  author: ${author}
-  author_type: ${author_type}
-  body: |
-$(echo "$issue_body" | sed 's/^/    /')
-  url: "${url}"
-EOF
+            issue_val="$issue_number"
+            body_yaml="event_type: ${event_type}
+issue_number: ${issue_number}
+issue_title: \"${issue_title//\"/\\\"}\"
+author: ${author}
+author_type: ${author_type}
+body: |
+$(echo "$issue_body" | sed 's/^/  /')
+url: \"${url}\""
             ;;
 
         issue_comment)
@@ -683,24 +680,15 @@ EOF
             author=$(echo "$event_data" | jq -r '.author')
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
-
-            cat > "$message_file" <<EOF
-type: github_event
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  event_type: ${event_type}
-  repository: ${repo}
-  issue_number: ${issue_number}
-  comment_id: ${comment_id}
-  author: ${author}
-  author_type: ${author_type}
-  body: |
-$(echo "$body" | sed 's/^/    /')
-  url: "${url}"
-EOF
+            issue_val="$issue_number"
+            body_yaml="event_type: ${event_type}
+issue_number: ${issue_number}
+comment_id: ${comment_id}
+author: ${author}
+author_type: ${author_type}
+body: |
+$(echo "$body" | sed 's/^/  /')
+url: \"${url}\""
             ;;
 
         pr_created|pr_updated)
@@ -713,26 +701,17 @@ EOF
             url=$(echo "$event_data" | jq -r '.url')
             head_ref=$(echo "$event_data" | jq -r '.head_ref')
             base_ref=$(echo "$event_data" | jq -r '.base_ref')
-
-            cat > "$message_file" <<EOF
-type: github_event
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  event_type: ${event_type}
-  repository: ${repo}
-  pr_number: ${pr_number}
-  pr_title: "${pr_title//\"/\\\"}"
-  author: ${author}
-  author_type: ${author_type}
-  head_ref: ${head_ref}
-  base_ref: ${base_ref}
-  body: |
-$(echo "$pr_body" | sed 's/^/    /')
-  url: "${url}"
-EOF
+            issue_val="$pr_number"
+            body_yaml="event_type: ${event_type}
+pr_number: ${pr_number}
+pr_title: \"${pr_title//\"/\\\"}\"
+author: ${author}
+author_type: ${author_type}
+head_ref: ${head_ref}
+base_ref: ${base_ref}
+body: |
+$(echo "$pr_body" | sed 's/^/  /')
+url: \"${url}\""
             ;;
 
         pr_comment)
@@ -743,24 +722,15 @@ EOF
             author=$(echo "$event_data" | jq -r '.author')
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
-
-            cat > "$message_file" <<EOF
-type: github_event
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  event_type: ${event_type}
-  repository: ${repo}
-  pr_number: ${pr_number}
-  comment_id: ${comment_id}
-  author: ${author}
-  author_type: ${author_type}
-  body: |
-$(echo "$body" | sed 's/^/    /')
-  url: "${url}"
-EOF
+            issue_val="$pr_number"
+            body_yaml="event_type: ${event_type}
+pr_number: ${pr_number}
+comment_id: ${comment_id}
+author: ${author}
+author_type: ${author_type}
+body: |
+$(echo "$body" | sed 's/^/  /')
+url: \"${url}\""
             ;;
 
         pr_review)
@@ -772,27 +742,24 @@ EOF
             author_type=$(echo "$event_data" | jq -r '.author_type')
             review_state=$(echo "$event_data" | jq -r '.state')
             url=$(echo "$event_data" | jq -r '.url')
-
-            cat > "$message_file" <<EOF
-type: github_event
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  event_type: ${event_type}
-  repository: ${repo}
-  pr_number: ${pr_number}
-  review_id: ${review_id}
-  review_state: ${review_state}
-  author: ${author}
-  author_type: ${author_type}
-  body: |
-$(echo "$body" | sed 's/^/    /')
-  url: "${url}"
-EOF
+            issue_val="$pr_number"
+            body_yaml="event_type: ${event_type}
+pr_number: ${pr_number}
+review_id: ${review_id}
+review_state: ${review_state}
+author: ${author}
+author_type: ${author_type}
+body: |
+$(echo "$body" | sed 's/^/  /')
+url: \"${url}\""
             ;;
     esac
+
+    # MIME構築
+    local mime_args=(--from github_watcher --to leader --type github_event
+                     --priority "${DEFAULT_MESSAGE_PRIORITY}" --repo "$repo")
+    [[ -n "$issue_val" ]] && mime_args+=(--issue "$issue_val")
+    python3 "$IGNITE_MIME" build "${mime_args[@]}" --body "$body_yaml" -o "$message_file"
 
     echo "$message_file"
 }
@@ -811,7 +778,7 @@ create_task_message() {
 
     mkdir -p "$queue_dir"
 
-    local message_file="${queue_dir}/github_task_${message_id}.yaml"
+    local message_file="${queue_dir}/github_task_${message_id}.mime"
 
     local issue_number author body url
     issue_number=$(echo "$event_data" | jq -r '.issue_number // .pr_number // .number // 0')
@@ -837,25 +804,23 @@ create_task_message() {
         issue_body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
     fi
 
-    cat > "$message_file" <<EOF
-type: github_task
-from: github_watcher
-to: leader
-timestamp: "${timestamp}"
-priority: high
-payload:
-  trigger: "${trigger_type}"
-  repository: ${repo}
-  issue_number: ${issue_number}
-  issue_title: "${issue_title//\"/\\\"}"
-  issue_body: |
-$(echo "$issue_body" | sed 's/^/    /')
-  requested_by: ${author}
-  trigger_comment: |
-$(echo "$body" | sed 's/^/    /')
-  branch_prefix: "ignite/"
-  url: "${url}"
-EOF
+    local body_yaml
+    body_yaml="trigger: ${trigger_type}
+repository: ${repo}
+issue_number: ${issue_number}
+issue_title: \"${issue_title//\"/\\\"}\"
+issue_body: |
+$(echo "$issue_body" | sed 's/^/  /')
+requested_by: ${author}
+trigger_comment: |
+$(echo "$body" | sed 's/^/  /')
+branch_prefix: \"ignite/\"
+url: \"${url}\""
+
+    local mime_args=(--from github_watcher --to leader --type github_task
+                     --priority high --repo "$repo")
+    [[ "$issue_number" != "0" ]] && mime_args+=(--issue "$issue_number")
+    python3 "$IGNITE_MIME" build "${mime_args[@]}" --body "$body_yaml" -o "$message_file"
 
     echo "$message_file"
 }

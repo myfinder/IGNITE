@@ -56,7 +56,7 @@ ignite plan "READMEファイルを作成する"
 
 目標: READMEファイルを作成する
 
-✓ メッセージを作成しました: workspace/queue/leader/user_goal_1738315200123456.yaml
+✓ メッセージを作成しました: workspace/queue/leader/user_goal_1738315200123456.mime
 
 ✓ タスク 'READMEファイルを作成する' を投入しました
 
@@ -427,7 +427,7 @@ tmux attach -t ignite-session
 
 キューをクリア:
 ```bash
-rm workspace/queue/*/*.yaml
+rm workspace/queue/*/*.mime
 ```
 
 ### エラーメッセージが出る

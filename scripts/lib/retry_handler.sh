@@ -21,8 +21,11 @@ if [[ -n "${__RETRY_HANDLER_LOADED:-}" ]]; then
 fi
 __RETRY_HANDLER_LOADED=1
 
-# core.sh の共通関数（sed_inplace等）を利用
+# core.sh の共通関数を利用
 source "${BASH_SOURCE[0]%/*}/core.sh"
+
+# MIMEメッセージ操作ツール
+_RETRY_IGNITE_MIME="${BASH_SOURCE[0]%/*}/ignite_mime.py"
 
 # =============================================================================
 # 設定（環境変数で上書き可能）
@@ -62,7 +65,7 @@ check_timeout() {
 
     # ステータス確認（processingでなければ対象外）
     local status
-    status=$(grep -E '^status:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    status=$(grep -m1 "^X-IGNITE-Status:" "$file" 2>/dev/null | sed 's/^X-IGNITE-Status:[[:space:]]*//')
     if [[ "$status" != "processing" ]]; then
         return 1
     fi
@@ -103,21 +106,14 @@ mark_as_error() {
         return 1
     fi
 
-    # ステータスをerrorに変更
-    if ! sed_inplace 's/^status:.*/status: error/' "$file" 2>/dev/null; then
+    # ステータスをerrorに変更し、エラー情報をヘッダーに記録
+    local error_time
+    error_time=$(date -Iseconds)
+    if ! python3 "$_RETRY_IGNITE_MIME" update-status "$file" error \
+        --extra "X-IGNITE-Error-Reason=${reason}" "X-IGNITE-Error-At=${error_time}" 2>/dev/null; then
         _rh_log_error "ステータスの更新に失敗: $file"
         return 1
     fi
-
-    # エラー理由を記録（既存行を削除してから追記で安全にする）
-    sed_inplace '/^error_reason:/d' "$file" 2>/dev/null
-    printf 'error_reason: "%s"\n' "$reason" >> "$file"
-
-    # エラー発生時刻を記録
-    local error_time
-    error_time=$(date -Iseconds)
-    sed_inplace '/^error_at:/d' "$file" 2>/dev/null
-    printf 'error_at: "%s"\n' "$error_time" >> "$file"
 
     _rh_log_error "エラーステータスに変更: $file (理由: ${reason})"
     return 0
@@ -172,9 +168,9 @@ process_retry() {
         return 1
     fi
 
-    # 現在のretry_countを取得
+    # 現在のretry_countを取得（MIMEヘッダーから）
     local current_count
-    current_count=$(grep -E '^retry_count:' "$file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+    current_count=$(grep -m1 "^X-IGNITE-Retry-Count:" "$file" 2>/dev/null | sed 's/^X-IGNITE-Retry-Count:[[:space:]]*//')
     current_count="${current_count:-0}"
 
     local new_count=$((current_count + 1))
@@ -185,30 +181,22 @@ process_retry() {
 
     _rh_log_info "リトライ処理: $file (試行: ${new_count}, バックオフ: ${backoff}秒)"
 
-    # retry_countを更新（既存行を削除してから追記）
-    sed_inplace '/^retry_count:/d' "$file" 2>/dev/null
-    printf 'retry_count: %d\n' "$new_count" >> "$file"
-
-    # last_retry_at を記録
+    # リトライ情報をMIMEヘッダーに記録
     local retry_time
     retry_time=$(date -Iseconds)
-    sed_inplace '/^last_retry_at:/d' "$file" 2>/dev/null
-    printf 'last_retry_at: "%s"\n' "$retry_time" >> "$file"
-
-    # next_retry_after を記録（バックオフ後の時刻）
     local next_retry
     next_retry=$(date -Iseconds -d "+${backoff} seconds" 2>/dev/null) || true
+
+    # エラー関連ヘッダーを削除
+    python3 "$_RETRY_IGNITE_MIME" remove-header "$file" "X-IGNITE-Error-Reason" 2>/dev/null
+    python3 "$_RETRY_IGNITE_MIME" remove-header "$file" "X-IGNITE-Error-At" 2>/dev/null
+
+    # ステータスをretryingに設定し、リトライ情報を更新
+    local extra_args=("X-IGNITE-Retry-Count=${new_count}" "X-IGNITE-Last-Retry-At=${retry_time}")
     if [[ -n "$next_retry" ]]; then
-        sed_inplace '/^next_retry_after:/d' "$file" 2>/dev/null
-        printf 'next_retry_after: "%s"\n' "$next_retry" >> "$file"
+        extra_args+=("X-IGNITE-Next-Retry-After=${next_retry}")
     fi
-
-    # エラー関連フィールドをクリア
-    sed_inplace '/^error_reason:/d' "$file" 2>/dev/null
-    sed_inplace '/^error_at:/d' "$file" 2>/dev/null
-
-    # ステータスをretryingに設定（キューに戻された後にscan_queueで再処理される）
-    sed_inplace 's/^status:.*/status: retrying/' "$file" 2>/dev/null
+    python3 "$_RETRY_IGNITE_MIME" update-status "$file" retrying --extra "${extra_args[@]}" 2>/dev/null
 
     _rh_log_success "リトライ完了: $file (試行: ${new_count}, 次回リトライ: ${next_retry:-不明})"
     return 0

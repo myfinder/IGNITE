@@ -119,28 +119,26 @@ cmd_work_on() {
     local message_id
     message_id=$(date +%s%6N)
 
-    # github_taskメッセージを作成
+    # github_taskメッセージを作成（MIMEフォーマット）
+    local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
     mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
-    local message_file="$WORKSPACE_DIR/queue/leader/processed/github_task_${message_id}.yaml"
+    local message_file="$WORKSPACE_DIR/queue/leader/processed/github_task_${message_id}.mime"
 
-    cat > "$message_file" <<EOF
-type: github_task
-from: user
-to: leader
-timestamp: "${timestamp}"
-priority: high
-payload:
-  trigger: "implement"
-  repository: ${repo}
-  issue_number: ${issue_number}
-  issue_title: "${issue_title//\"/\\\"}"
-  issue_body: |
-$(echo "$issue_body" | sed 's/^/    /')
-  requested_by: user
-  trigger_comment: "work-onコマンドによる手動トリガー"
-  branch_prefix: "ignite/"
-  url: "${issue_url}"
-EOF
+    local body_yaml
+    body_yaml="trigger: implement
+repository: ${repo}
+issue_number: ${issue_number}
+issue_title: \"${issue_title//\"/\\\"}\"
+issue_body: |
+$(echo "$issue_body" | sed 's/^/  /')
+requested_by: user
+trigger_comment: \"work-onコマンドによる手動トリガー\"
+branch_prefix: \"ignite/\"
+url: \"${issue_url}\""
+    python3 "$IGNITE_MIME" build \
+        --from user --to leader --type github_task \
+        --priority high --repo "$repo" --issue "$issue_number" \
+        --body "$body_yaml" -o "$message_file"
 
     print_success "タスクメッセージを作成しました: $message_file"
 

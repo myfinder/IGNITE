@@ -85,33 +85,20 @@ cmd_plan() {
     message_id=$(date +%s%6N)
     local escaped_goal="${goal//\"/\\\"}"
 
-    # Leaderへメッセージ送信
+    # Leaderへメッセージ送信（MIMEフォーマット）
+    local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
     mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
-    local message_file="$WORKSPACE_DIR/queue/leader/processed/user_goal_${message_id}.yaml"
+    local message_file="$WORKSPACE_DIR/queue/leader/processed/user_goal_${message_id}.mime"
 
+    local body_yaml="goal: \"${escaped_goal}\""
     if [[ -n "$context" ]]; then
         local escaped_context="${context//\"/\\\"}"
-        cat > "$message_file" <<EOF
-type: user_goal
-from: user
-to: leader
-timestamp: "${timestamp}"
-priority: high
-payload:
-  goal: "${escaped_goal}"
-  context: "${escaped_context}"
-EOF
-    else
-        cat > "$message_file" <<EOF
-type: user_goal
-from: user
-to: leader
-timestamp: "${timestamp}"
-priority: high
-payload:
-  goal: "${escaped_goal}"
-EOF
+        body_yaml="${body_yaml}
+context: \"${escaped_context}\""
     fi
+    python3 "$IGNITE_MIME" build \
+        --from user --to leader --type user_goal \
+        --priority high --body "$body_yaml" -o "$message_file"
 
     print_success "メッセージを作成しました: $message_file"
 

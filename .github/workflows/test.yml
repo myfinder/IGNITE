@@ -41,15 +41,34 @@ jobs:
           severity: warning
           format: tty
 
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v
+
   test:
     name: test
     runs-on: ubuntu-latest
-    needs: [bats-test, shellcheck]
+    needs: [bats-test, shellcheck, pytest]
     if: always()
     steps:
       - name: Check results
         run: |
-          if [[ "${{ needs.bats-test.result }}" != "success" || "${{ needs.shellcheck.result }}" != "success" ]]; then
+          if [[ "${{ needs.bats-test.result }}" != "success" || "${{ needs.shellcheck.result }}" != "success" || "${{ needs.pytest.result }}" != "success" ]]; then
             echo "One or more checks failed"
             exit 1
           fi

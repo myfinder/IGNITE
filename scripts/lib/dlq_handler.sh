@@ -10,6 +10,9 @@ if [[ -n "${__DLQ_HANDLER_LOADED:-}" ]]; then
 fi
 __DLQ_HANDLER_LOADED=1
 
+# MIMEメッセージ操作ツール
+_DLQ_IGNITE_MIME="${BASH_SOURCE[0]%/*}/ignite_mime.py"
+
 # =============================================================================
 # 設定
 # =============================================================================
@@ -60,29 +63,31 @@ move_to_dlq() {
     local timestamp
     timestamp=$(date -Iseconds)
 
+    local base="${filename%.mime}"
+    base="${base%.yaml}"
     local dlq_file
-    dlq_file="${dlq_dir}/${filename%.yaml}_dlq_$(date +%s).yaml"
+    dlq_file="${dlq_dir}/${base}_dlq_$(date +%s).mime"
 
     # dead_letter ディレクトリ作成
     mkdir -p "$dlq_dir"
 
     # 元のメッセージ内容を読み取り（インデント付きで保持）
     local original_content
-    original_content=$(sed 's/^/    /' < "$task_file")
+    original_content=$(sed 's/^/  /' < "$task_file")
 
-    # DLQ エントリ作成（失敗履歴 + 元メッセージ保持）
-    cat > "$dlq_file" <<EOF
-type: dead_letter
-timestamp: "${timestamp}"
-original_file: "${filename}"
+    # DLQ エントリ作成（MIMEフォーマット）
+    local body_yaml="original_file: \"${filename}\"
 failure_info:
   retry_count: ${retry_count}
   max_retries: ${DLQ_MAX_RETRIES}
-  last_error: "${error_reason}"
-  moved_at: "${timestamp}"
+  last_error: \"${error_reason}\"
+  moved_at: \"${timestamp}\"
 original_message: |
-${original_content}
-EOF
+${original_content}"
+    python3 "$_DLQ_IGNITE_MIME" build \
+        --from queue_monitor --to leader --type dead_letter \
+        --priority critical --status dead_letter \
+        --body "$body_yaml" -o "$dlq_file"
 
     # 元ファイル削除
     rm -f "$task_file"
@@ -112,7 +117,7 @@ should_escalate() {
     # 条件2: critical priority のタスク失敗
     if [[ -f "$task_file" ]]; then
         local priority
-        priority=$(grep -E '^priority:' "$task_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        priority=$(grep -m1 "^X-IGNITE-Priority:" "$task_file" 2>/dev/null | sed 's/^X-IGNITE-Priority:[[:space:]]*//')
         if [[ "$priority" == "critical" ]]; then
             return 0
         fi
@@ -144,7 +149,7 @@ escalate_to_leader() {
     local timestamp
     timestamp=$(date -Iseconds)
 
-    # タスク情報の抽出
+    # タスク情報の抽出（MIMEヘッダー + ボディ）
     local task_id="unknown"
     local title="unknown"
     local original_assignee="unknown"
@@ -152,13 +157,13 @@ escalate_to_leader() {
     if [[ -f "$task_file" ]]; then
         local extracted
 
-        extracted=$(grep -E '^\s*task_id:' "$task_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        extracted=$(python3 "$_DLQ_IGNITE_MIME" extract-body "$task_file" 2>/dev/null | grep -m1 "^\\s*task_id:" | sed 's/.*task_id:[[:space:]]*//' | tr -d '"')
         [[ -n "$extracted" ]] && task_id="$extracted"
 
-        extracted=$(grep -E '^\s*title:' "$task_file" 2>/dev/null | head -1 | sed 's/.*title:[[:space:]]*//' | tr -d '"')
+        extracted=$(python3 "$_DLQ_IGNITE_MIME" extract-body "$task_file" 2>/dev/null | grep -m1 "^\\s*title:" | sed 's/.*title:[[:space:]]*//' | tr -d '"')
         [[ -n "$extracted" ]] && title="$extracted"
 
-        extracted=$(grep -E '^to:' "$task_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"')
+        extracted=$(grep -m1 "^To:" "$task_file" 2>/dev/null | sed 's/^To:[[:space:]]*//')
         [[ -n "$extracted" ]] && original_assignee="$extracted"
     fi
 
@@ -166,27 +171,22 @@ escalate_to_leader() {
     mkdir -p "$leader_queue_dir"
 
     local escalation_file
-    escalation_file="${leader_queue_dir}/escalation_$(date +%s).yaml"
+    escalation_file="${leader_queue_dir}/escalation_$(date +%s).mime"
 
-    # エスカレーション通知YAML作成
-    cat > "$escalation_file" <<EOF
-type: escalation
-from: queue_monitor
-to: leader
-timestamp: "${timestamp}"
-priority: critical
-payload:
-  task_id: "${task_id}"
-  title: "${title}"
-  original_assignee: "${original_assignee}"
-  failure_reason: "${error_reason}"
-  retry_count: ${retry_count}
-  max_retries: ${DLQ_MAX_RETRIES}
-  recommended_action: "${recommended_action}"
-  dlq_path: "${workspace_dir}/queue/dead_letter/"
-  notes: "リトライ上限に到達したためエスカレーションします"
-status: queued
-EOF
+    # エスカレーション通知MIME作成
+    local body_yaml="task_id: \"${task_id}\"
+title: \"${title}\"
+original_assignee: \"${original_assignee}\"
+failure_reason: \"${error_reason}\"
+retry_count: ${retry_count}
+max_retries: ${DLQ_MAX_RETRIES}
+recommended_action: \"${recommended_action}\"
+dlq_path: \"${workspace_dir}/queue/dead_letter/\"
+notes: \"リトライ上限に到達したためエスカレーションします\""
+    python3 "$_DLQ_IGNITE_MIME" build \
+        --from queue_monitor --to leader --type escalation \
+        --priority critical --status queued \
+        --body "$body_yaml" -o "$escalation_file"
 
     log_warn "[DLQ] Leaderへエスカレーション通知を送信しました: ${escalation_file}"
 

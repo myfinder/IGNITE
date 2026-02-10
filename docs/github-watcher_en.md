@@ -23,7 +23,7 @@ flowchart TB
         Leader[Leader<br/>Yui Iha]
         SubLeaders[Sub-Leaders / IGNITIANs]
 
-        GW -->|"github_event_*.yaml<br/>workspace/queue/leader/"| Leader
+        GW -->|"github_event_*.mime<br/>workspace/queue/leader/"| Leader
         Leader -->|Existing flow| SubLeaders
     end
 
@@ -396,7 +396,7 @@ gh api /rate_limit
 tail -f workspace/logs/github_watcher.log
 
 # Check generated messages
-ls -la workspace/queue/leader/github_*.yaml
+ls -la workspace/queue/leader/github_*.mime
 ```
 
 ## Security Notes

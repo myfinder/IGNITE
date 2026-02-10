@@ -155,28 +155,22 @@ cmd_notify() {
     require_workspace
     cd "$WORKSPACE_DIR" || return 1
 
-    # メッセージファイル作成
+    # メッセージファイル作成（MIMEフォーマット）
+    local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
     local timestamp
     timestamp=$(date -Iseconds)
     local message_id
     message_id=$(date +%s%6N)
     mkdir -p "$WORKSPACE_DIR/queue/${target}/processed"
-    local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.yaml"
+    local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.mime"
 
-    # マルチラインメッセージ対応: YAMLブロックスカラー(|)とsedインデント付与
-    local indented_message
-    indented_message=$(printf '%s' "$message" | sed 's/^/    /')
-
-    cat > "$message_file" <<EOF
-type: notification
-from: user
-to: ${target}
-timestamp: "${timestamp}"
-priority: ${DEFAULT_MESSAGE_PRIORITY}
-payload:
-  message: |
-${indented_message}
-EOF
+    local body_yaml
+    body_yaml="message: |
+$(printf '%s' "$message" | sed 's/^/  /')"
+    python3 "$IGNITE_MIME" build \
+        --from user --to "$target" --type notification \
+        --priority "${DEFAULT_MESSAGE_PRIORITY}" \
+        --body "$body_yaml" -o "$message_file"
 
     print_success "メッセージを送信しました: $message_file"
 

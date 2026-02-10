@@ -2,26 +2,57 @@
 
 ## 概要
 
-IGNITEシステムでは、すべてのエージェント間通信をYAML形式のファイルベースメッセージで行います。各エージェントは自身のキューディレクトリを監視し、新しいメッセージを処理します。
+IGNITEシステムでは、すべてのエージェント間通信をMIME形式（RFC 2045準拠）のファイルベースメッセージで行います。メッセージのメタデータ（送信元、送信先、タイプ、優先度等）はMIMEヘッダーに、ペイロードはYAML形式のボディに格納されます。各エージェントは自身のキューディレクトリを監視し、新しいメッセージを処理します。
 
 ## メッセージ構造
 
 ### 基本フォーマット
 
-```yaml
-type: {message_type}          # メッセージタイプ（必須）
-from: {sender}                # 送信元エージェント（必須）
-to: {receiver}                # 送信先エージェント（必須）
-timestamp: {ISO8601}          # タイムスタンプ（必須）
-priority: {priority_level}    # 優先度（必須）
-payload:                      # ペイロード（必須）
-  {key}: {value}
+```
+MIME-Version: 1.0
+Message-ID: <{epoch}.{pid}.{hash}@ignite.local>
+From: {sender}
+To: {receiver}
+Date: {RFC 2822 date}
+X-IGNITE-Type: {message_type}
+X-IGNITE-Priority: {priority_level}
+Content-Type: text/x-yaml; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+{YAML body}
 ```
 
-### フィールド仕様
+**ヘッダー部** と **ボディ部** は空行で区切られます。ボディはYAML形式で、従来の `payload:` セクションの内容がそのまま入ります。
 
-#### type
-メッセージタイプを示す文字列。
+### ヘッダーフィールド
+
+#### 標準MIMEヘッダー
+
+| ヘッダー | 必須 | 説明 |
+|----------|------|------|
+| `MIME-Version` | ○ | 常に `1.0` |
+| `Message-ID` | ○ | 一意のメッセージID |
+| `From` | ○ | 送信元エージェント |
+| `To` | ○ | 送信先エージェント（複数はカンマ区切り） |
+| `Cc` | × | CC先エージェント |
+| `Date` | ○ | RFC 2822形式の日時 |
+| `Content-Type` | ○ | 常に `text/x-yaml; charset=utf-8` |
+| `Content-Transfer-Encoding` | ○ | 常に `8bit` |
+
+#### X-IGNITE-* カスタムヘッダー
+
+| ヘッダー | 必須 | 説明 |
+|----------|------|------|
+| `X-IGNITE-Type` | ○ | メッセージタイプ |
+| `X-IGNITE-Priority` | ○ | 優先度（`high` / `normal` / `low`） |
+| `X-IGNITE-Status` | × | 配信状態（queue_monitorが管理） |
+| `X-IGNITE-Thread-ID` | × | スレッドID |
+| `X-IGNITE-Repository` | × | 関連リポジトリ |
+| `X-IGNITE-Issue` | × | 関連Issue番号 |
+| `X-IGNITE-Processed-At` | × | 配信処理日時 |
+| `X-IGNITE-Retry-Count` | × | リトライ回数 |
+
+### メッセージタイプ（X-IGNITE-Type）
 
 **標準タイプ:**
 - `user_goal` - ユーザー目標
@@ -39,11 +70,13 @@ payload:                      # ペイロード（必須）
 - `improvement_completed` - 改善完了
 - `progress_update` - 進捗報告
 - `system_init` - システム初期化
+- `github_event` - GitHubイベント通知
+- `github_task` - GitHubタスク（トリガー検出）
+- `escalation` - エスカレーション通知
+- `dead_letter` - DLQ（配信不能メッセージ）
 
-#### from
-送信元エージェントの識別子。
+### エージェント識別子（From / To）
 
-**有効な値:**
 - `user` - ユーザー
 - `leader` - Leader
 - `strategist` - Strategist
@@ -53,332 +86,306 @@ payload:                      # ペイロード（必須）
 - `innovator` - Innovator
 - `ignitian_{n}` - IGNITIAN（nは番号）
 - `system` - システム
+- `github_watcher` - GitHub Watcher
+- `queue_monitor` - キューモニター
 
-#### to
-送信先エージェントの識別子。fromと同じ値が有効。
+### 優先度（X-IGNITE-Priority）
 
-#### timestamp
-ISO8601形式のタイムスタンプ。
-
-**形式:** `YYYY-MM-DDTHH:MM:SS±HH:MM`
-**例:** `2026-01-31T17:00:00+09:00`
-
-Bashでの生成:
-```bash
-date -Iseconds
-```
-
-#### priority
-メッセージの優先度。
-
-**有効な値:**
+- `critical` - 緊急（エスカレーション等）
 - `high` - 高優先度、即座に処理
 - `normal` - 通常優先度
-- `low` - 低優先度、時間があれば処理
+- `low` - 低優先度
 
-#### payload
-メッセージの本体。メッセージタイプによって構造が異なる。
+### メッセージライフサイクル
 
-#### メッセージライフサイクル
-
-メッセージの処理状態は、ファイルの存在と位置で管理されます。
-**statusフィールドは使用しません。**
+メッセージの処理状態は、ファイルの位置と `X-IGNITE-Status` ヘッダーで管理されます。
 
 | 状態 | 表現 |
 |------|------|
 | 未処理 | `queue/<agent>/` にファイルが存在 |
-| 配信済み | queue_monitorが `processed/` に移動後、エージェントに通知 |
+| 処理中 | queue_monitorが `processed/` に移動、`X-IGNITE-Status: processing` |
+| 配信済み | エージェントに通知完了、`X-IGNITE-Status: delivered` |
 | 処理完了 | エージェントがファイルを削除 |
 
-> **後方互換性:** statusフィールドが存在しても無視されます。
+## メッセージの作成・パース
+
+### CLIツール: ignite_mime.py
+
+メッセージの作成・パース・更新には `scripts/lib/ignite_mime.py` を使用します。
+
+#### メッセージ作成
+
+```bash
+python3 scripts/lib/ignite_mime.py build \
+    --from coordinator --to ignitian_1 \
+    --type task_assignment --priority high \
+    --repo owner/repo --issue 42 \
+    --body "$body_yaml" \
+    -o "$message_file"
+```
+
+#### メッセージパース
+
+```bash
+python3 scripts/lib/ignite_mime.py parse message.mime
+# → JSON出力（ヘッダー + ボディ）
+```
+
+#### ボディ抽出
+
+```bash
+python3 scripts/lib/ignite_mime.py extract-body message.mime
+# → YAML形式のボディのみ出力
+```
+
+#### ステータス更新
+
+```bash
+python3 scripts/lib/ignite_mime.py update-status message.mime delivered \
+    --processed-at "$(date -Iseconds)"
+```
+
+#### ヘッダー更新・削除
+
+```bash
+python3 scripts/lib/ignite_mime.py update-header message.mime X-IGNITE-Retry-Count 3
+python3 scripts/lib/ignite_mime.py remove-header message.mime X-IGNITE-Error-Reason
+```
 
 ## メッセージタイプ別仕様
+
+以下の例はボディ（YAML）部分のみを示します。実際のメッセージにはMIMEヘッダーが付与されます。
 
 ### user_goal
 
 ユーザーからLeaderへの目標設定。
 
+**ボディ:**
 ```yaml
-type: user_goal
-from: user
-to: leader
-timestamp: "2026-01-31T17:00:00+09:00"
-priority: high
-payload:
-  goal: "目標の説明"
-  context: "追加のコンテキスト（オプション）"
+goal: "目標の説明"
+context: "追加のコンテキスト（オプション）"
+```
+
+**作成例:**
+```bash
+python3 scripts/lib/ignite_mime.py build \
+    --from user --to leader --type user_goal --priority high \
+    --body 'goal: "READMEファイルを作成する"' \
+    -o "workspace/queue/leader/processed/user_goal_$(date +%s%6N).mime"
 ```
 
 ### strategy_request
 
 LeaderからStrategistへの戦略立案依頼。
 
+**ボディ:**
 ```yaml
-type: strategy_request
-from: leader
-to: strategist
-timestamp: "2026-01-31T17:01:00+09:00"
-priority: high
-payload:
-  goal: "目標の説明"
-  requirements:
-    - "要件1"
-    - "要件2"
-  context: "背景情報"
+goal: "目標の説明"
+requirements:
+  - "要件1"
+  - "要件2"
+context: "背景情報"
 ```
 
 ### strategy_response
 
 StrategistからLeaderへの戦略提案。
 
+**ボディ:**
 ```yaml
-type: strategy_response
-from: strategist
-to: leader
-timestamp: "2026-01-31T17:03:00+09:00"
-priority: high
-payload:
-  goal: "目標の説明"
-  strategy:
-    approach: "アプローチ名"
-    phases:
-      - phase: 1
-        name: "フェーズ名"
-        description: "説明"
-  task_count: 3
-  estimated_duration: 300
-  risks:
-    - "リスク1"
-  recommendations:
-    - "推奨事項1"
+goal: "目標の説明"
+strategy:
+  approach: "アプローチ名"
+  phases:
+    - phase: 1
+      name: "フェーズ名"
+      description: "説明"
+task_count: 3
+estimated_duration: 300
+risks:
+  - "リスク1"
+recommendations:
+  - "推奨事項1"
 ```
 
 ### task_list
 
 StrategistからCoordinatorへのタスクリスト。
 
+**ボディ:**
 ```yaml
-type: task_list
-from: strategist
-to: coordinator
-timestamp: "2026-01-31T17:04:00+09:00"
-priority: high
-payload:
-  goal: "目標の説明"
-  strategy_summary: "戦略の要約"
-  tasks:
-    - task_id: "task_001"
-      title: "タスク名"
-      description: "タスクの説明"
-      phase: 1
-      priority: high
-      estimated_time: 60
-      dependencies: []
-      skills_required:
-        - "skill1"
-        - "skill2"
-      deliverables:
-        - "成果物1"
+goal: "目標の説明"
+strategy_summary: "戦略の要約"
+tasks:
+  - task_id: "task_001"
+    title: "タスク名"
+    description: "タスクの説明"
+    phase: 1
+    priority: high
+    estimated_time: 60
+    dependencies: []
+    skills_required:
+      - "skill1"
+    deliverables:
+      - "成果物1"
 ```
 
 ### task_assignment
 
 CoordinatorからIGNITIANへのタスク割り当て。
 
-```yaml
-type: task_assignment
-from: coordinator
-to: ignitian_1
-timestamp: "2026-01-31T17:06:00+09:00"
-priority: high
-payload:
-  task_id: "task_001"
-  title: "タスク名"
-  description: "タスクの説明"
-  instructions: |
-    詳細な実行手順
-  deliverables:
-    - "成果物1"
-  skills_required:
-    - "skill1"
-  estimated_time: 60
+**完全なMIMEメッセージ例:**
+```
+MIME-Version: 1.0
+Message-ID: <1770263544.12345.abcdef@ignite.local>
+From: coordinator
+To: ignitian_1
+Date: Mon, 10 Feb 2026 12:00:00 +0900
+X-IGNITE-Type: task_assignment
+X-IGNITE-Priority: high
+X-IGNITE-Repository: owner/repo
+X-IGNITE-Issue: 42
+Content-Type: text/x-yaml; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+task_id: "task_001"
+title: "タスク名"
+description: "タスクの説明"
+instructions: |
+  詳細な実行手順
+deliverables:
+  - "成果物1"
+skills_required:
+  - "skill1"
+estimated_time: 60
 ```
 
 ### task_completed
 
 IGNITIANからCoordinatorへの完了報告。
 
-**成功時:**
+**ボディ（成功時）:**
 ```yaml
-type: task_completed
-from: ignitian_1
-to: coordinator
-timestamp: "2026-01-31T17:07:30+09:00"
-priority: normal
-payload:
-  task_id: "task_001"
-  title: "タスク名"
-  status: success
-  deliverables:
-    - file: "ファイル名"
-      description: "説明"
-      location: "パス"
-  execution_time: 90
-  notes: "追加情報"
+task_id: "task_001"
+title: "タスク名"
+status: success
+deliverables:
+  - file: "ファイル名"
+    description: "説明"
+    location: "パス"
+execution_time: 90
+notes: "追加情報"
 ```
 
-**エラー時:**
+**ボディ（エラー時）:**
 ```yaml
-type: task_completed
-from: ignitian_1
-to: coordinator
-timestamp: "2026-01-31T17:07:30+09:00"
-priority: high
-payload:
-  task_id: "task_001"
-  title: "タスク名"
-  status: error
-  error:
-    type: "エラータイプ"
-    message: "エラーメッセージ"
-    details: "詳細"
-  execution_time: 30
-  notes: "追加情報"
+task_id: "task_001"
+title: "タスク名"
+status: error
+error:
+  type: "エラータイプ"
+  message: "エラーメッセージ"
+  details: "詳細"
+execution_time: 30
+notes: "追加情報"
 ```
 
 ### evaluation_request
 
 CoordinatorからEvaluatorへの評価依頼。
 
+**ボディ:**
 ```yaml
-type: evaluation_request
-from: coordinator
-to: evaluator
-timestamp: "2026-01-31T17:15:00+09:00"
-priority: high
-payload:
-  task_id: "task_001"
-  title: "タスク名"
-  deliverables:
-    - file: "ファイル名"
-      location: "パス"
-  requirements:
-    - "要件1"
-    - "要件2"
-  criteria:
-    - "基準1"
-    - "基準2"
+task_id: "task_001"
+title: "タスク名"
+deliverables:
+  - file: "ファイル名"
+    location: "パス"
+requirements:
+  - "要件1"
+criteria:
+  - "基準1"
 ```
 
 ### evaluation_result
 
 EvaluatorからLeaderへの評価結果。
 
+**ボディ:**
 ```yaml
-type: evaluation_result
-from: evaluator
-to: leader
-timestamp: "2026-01-31T17:18:00+09:00"
-priority: high
-payload:
-  repository: "owner/repo"
-  task_id: "task_001"
-  title: "タスク名"
-  overall_status: "pass"  # pass, pass_with_notes, fail
-  score: 95
-
-  checks_performed:
-    - check: "チェック名"
-      status: "pass"  # pass, pass_with_notes, fail
-      details: "詳細"
-
-  issues_found:
-    - severity: "minor"  # critical, major, minor, trivial
-      description: "問題の説明"
-      location: "場所"
-      recommendation: "推奨対応"
-
-  recommendations:
-    - "推奨事項1"
-
-  next_action: "approve"  # approve, request_revision, reject
-
+repository: "owner/repo"
+task_id: "task_001"
+title: "タスク名"
+overall_status: "pass"
+score: 95
+checks_performed:
+  - check: "チェック名"
+    status: "pass"
+    details: "詳細"
+issues_found:
+  - severity: "minor"
+    description: "問題の説明"
+    location: "場所"
+    recommendation: "推奨対応"
+recommendations:
+  - "推奨事項1"
+next_action: "approve"
 ```
 
 ### improvement_request
 
 EvaluatorからInnovatorへの改善依頼。
 
+**ボディ:**
 ```yaml
-type: improvement_request
-from: evaluator
-to: innovator
-timestamp: "2026-01-31T17:18:30+09:00"
-priority: normal
-payload:
-  task_id: "task_001"
-  target: "対象ファイル"
-  issues:
-    - issue: "問題"
-      severity: "minor"
-      location: "場所"
-      suggested_fix: "修正案"
+task_id: "task_001"
+target: "対象ファイル"
+issues:
+  - issue: "問題"
+    severity: "minor"
+    location: "場所"
+    suggested_fix: "修正案"
 ```
 
 ### improvement_suggestion
 
 InnovatorからLeaderへの改善提案。
 
+**ボディ:**
 ```yaml
-type: improvement_suggestion
-from: innovator
-to: leader
-timestamp: "2026-01-31T17:35:00+09:00"
-priority: normal
-payload:
-  title: "改善提案のタイトル"
-  category: "performance"  # performance, quality, process, architecture
-
-  current_situation:
-    description: "現状の説明"
-    issues:
-      - "問題1"
-
-  proposed_improvement:
-    description: "改善案の説明"
-    approach: |
-      詳細なアプローチ
-    benefits:
-      - "メリット1"
-
-  implementation_plan:
-    - step: 1
-      action: "アクション"
-      effort: "medium"  # low, medium, high
-
-  priority: "medium"  # low, medium, high
-  estimated_effort: "工数見積もり"
-
+title: "改善提案のタイトル"
+category: "performance"
+current_situation:
+  description: "現状の説明"
+  issues:
+    - "問題1"
+proposed_improvement:
+  description: "改善案の説明"
+  approach: |
+    詳細なアプローチ
+  benefits:
+    - "メリット1"
+implementation_plan:
+  - step: 1
+    action: "アクション"
+    effort: "medium"
+priority: "medium"
+estimated_effort: "工数見積もり"
 ```
 
 ### progress_update
 
 CoordinatorからLeaderへの進捗報告。
 
+**ボディ:**
 ```yaml
-type: progress_update
-from: coordinator
-to: leader
-timestamp: "2026-01-31T17:10:00+09:00"
-priority: normal
-payload:
-  repository: "owner/repo"
-  total_tasks: 3
-  completed: 1
-  in_progress: 2
-  pending: 0
-  summary: |
-    進捗の要約
+repository: "owner/repo"
+total_tasks: 3
+completed: 1
+in_progress: 2
+pending: 0
+summary: |
+  進捗の要約
 ```
 
 ## ファイル命名規則
@@ -386,19 +393,22 @@ payload:
 メッセージファイルは以下の命名規則に従います:
 
 ```
-{message_type}_{message_id}.yaml
+{message_type}_{message_id}.mime
 ```
 
 `message_id` はマイクロ秒精度のUnixタイムスタンプ（`date +%s%6N`、16桁）です。
 
 **例:**
-- `user_goal_1738315200123456.yaml`
-- `task_assignment_1738315260234567.yaml`
-- `task_completed_1738315350345678.yaml`
+- `user_goal_1738315200123456.mime`
+- `task_assignment_1738315260234567.mime`
+- `task_completed_1738315350345678.mime`
 
 Bashでの生成:
 ```bash
-MESSAGE_FILE="workspace/queue/${TO}/${TYPE}_$(date +%s%6N).yaml"
+MESSAGE_FILE="workspace/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
+python3 scripts/lib/ignite_mime.py build \
+    --from "$FROM" --to "$TO" --type "$TYPE" --priority "$PRIORITY" \
+    --body "$BODY_YAML" -o "$MESSAGE_FILE"
 ```
 
 ## キューディレクトリ
@@ -421,7 +431,7 @@ workspace/queue/
 │   └── processed/
 ├── ignitian_1/       # IGNITIAN-1宛て
 │   ├── processed/
-│   └── task_assignment_1770263544123456.yaml
+│   └── task_assignment_1770263544123456.mime
 ├── ignitian_2/       # IGNITIAN-2宛て
 │   └── processed/
 └── ignitian_3/       # IGNITIAN-3宛て
@@ -432,57 +442,40 @@ workspace/queue/
 
 ### 送信側
 
-1. **メッセージ作成**
-   ```bash
-   cat > workspace/queue/${TO}/${TYPE}_$(date +%s%6N).yaml <<EOF
-   type: ${TYPE}
-   from: ${FROM}
-   to: ${TO}
-   timestamp: "$(date -Iseconds)"
-   priority: ${PRIORITY}
-   payload:
-     ${PAYLOAD}
-   EOF
-   ```
-
-2. **ファイル書き込み**
+```bash
+# ignite_mime.py でMIMEメッセージを作成
+python3 scripts/lib/ignite_mime.py build \
+    --from "$FROM" --to "$TO" --type "$TYPE" --priority "$PRIORITY" \
+    --body "$BODY_YAML" \
+    -o "workspace/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
+```
 
 ### 受信側
 
-1. **キューの監視**
-   ```bash
-   find workspace/queue/${ROLE} -name "*.yaml" -type f -mmin -1
-   ```
-
-2. **メッセージ読み込み**
-   - Readツールでファイルを読み込む
-
-3. **メッセージ処理**
-   - typeに応じて適切に処理
-
-4. **ファイル削除**
-   - 処理済みメッセージを削除または移動
+1. **キューの監視**（queue_monitor.shが自動実行）
+2. **メッセージ読み込み** - Readツールでファイルを読み込む
+3. **メッセージ処理** - X-IGNITE-Typeに応じて適切に処理
+4. **ファイル削除** - 処理済みメッセージを削除
 
 ## エラーハンドリング
 
 ### 不正なメッセージ
 
-- YAMLパースエラー: ログに記録、スキップ
-- 必須フィールド欠如: ログに記録、スキップ
+- MIMEパースエラー: ログに記録、スキップ
+- 必須ヘッダー欠如: ログに記録、スキップ
 - 不明なtype: ログに記録、スキップ
 
-### タイムアウト
+### タイムアウト・リトライ
 
-- メッセージが一定時間処理されない場合:
-  - ログに警告
-  - 優先度を上げて再送
-  - または手動介入
+- `X-IGNITE-Status: processing` のまま一定時間経過した場合:
+  - retry_handler.shがタイムアウトを検知
+  - `X-IGNITE-Retry-Count` をインクリメントし `X-IGNITE-Status: retrying` に設定
+  - Exponential Backoff with Full Jitter でリトライ間隔を計算
+  - リトライ上限到達時は Dead Letter Queue に移動、Leaderにエスカレーション
 
-### 重複メッセージ
+### Dead Letter Queue
 
-- 同じtask_idのメッセージ:
-  - timestampで最新のものを優先
-  - 古いものは削除
+リトライ上限（デフォルト3回）に到達したメッセージは `workspace/queue/dead_letter/` に移動されます。
 
 ## ベストプラクティス
 
@@ -490,77 +483,33 @@ workspace/queue/
 
 1. **明確な目的**: 各メッセージは単一の目的
 2. **必要十分な情報**: 不足も過剰もない
-3. **構造化**: payloadは論理的に構造化
-4. **検証可能**: 必要なフィールドは必須
+3. **構造化**: ボディのYAMLは論理的に構造化
+4. **cat可読性**: CTE=8bitにより、catでそのまま読める
 
-### パフォーマンス
-
-1. **ポーリング間隔**: 10秒がデフォルト
-2. **バッチ処理**: 複数メッセージをまとめて処理
-3. **非同期**: ブロッキングを避ける
-
-### セキュリティ
-
-1. **入力検証**: payloadの値を検証
-2. **パス検証**: ファイルパスの安全性チェック
-3. **権限確認**: 操作権限の確認
-
-## 拡張性
-
-### 新しいメッセージタイプの追加
-
-1. **typeを定義**: 命名規則に従う
-2. **payloadスキーマを設計**: 必要なフィールドを定義
-3. **送信・受信処理を実装**: 各エージェントに実装
-4. **ドキュメント更新**: このファイルに追加
-
-### カスタムフィールド
-
-標準フィールド以外にカスタムフィールドを追加可能:
-
-```yaml
-type: task_assignment
-from: coordinator
-to: ignitian_1
-# ... 標準フィールド ...
-custom_field: "カスタム値"
-metadata:
-  key1: value1
-  key2: value2
-```
-
-## デバッグ
-
-### メッセージのトレース
+### デバッグ
 
 ```bash
 # 最近のメッセージを確認
-find workspace/queue -name "*.yaml" -mmin -5 -exec cat {} \;
+find workspace/queue -name "*.mime" -mmin -5 -exec cat {} \;
 
 # 特定タイプのメッセージを検索
-find workspace/queue -name "task_assignment_*.yaml"
+find workspace/queue -name "task_assignment_*.mime"
 
 # メッセージ数をカウント
-find workspace/queue -name "*.yaml" | wc -l
-```
+find workspace/queue -name "*.mime" | wc -l
 
-### ログ出力
-
-各エージェントは処理したメッセージをログに記録:
-
-```
-[{timestamp}] [{agent}] メッセージ受信: {type} from {from}
-[{timestamp}] [{agent}] メッセージ処理中: {task_id}
-[{timestamp}] [{agent}] メッセージ処理完了: {task_id}
+# メッセージをJSONでパース
+python3 scripts/lib/ignite_mime.py parse workspace/queue/ignitian_1/processed/task.mime
 ```
 
 ## まとめ
 
-IGNITEの通信プロトコルは、シンプルで拡張性の高いファイルベースメッセージングシステムです。YAML形式により可読性が高く、デバッグが容易です。各エージェントは独立して動作し、メッセージキューを通じて協調します。
+IGNITEの通信プロトコルは、RFC 2045準拠のMIME形式によるファイルベースメッセージングシステムです。MIMEヘッダーによりメタデータが構造化され、YAML形式のボディにより可読性が高く、`cat` でそのまま内容を確認できます（CTE=8bit）。各エージェントは独立して動作し、メッセージキューを通じて協調します。
 
 ## 変更履歴
 
 | バージョン | 変更内容 |
 |------------|----------|
+| v3 | YAML形式からMIME形式へ全面移行（Issue #223） |
 | v2 | statusフィールド廃止、ファイル存在モデルへ移行（Issue #116） |
 | v1 | 初版 |

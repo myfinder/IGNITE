@@ -115,19 +115,25 @@ sequenceDiagram
 | 配信済み | queue_monitorが検知・通知済み | エージェントが処理中 |
 | 処理完了 | ファイル削除済み | エージェントが処理後に削除 |
 
-### YAMLメッセージ形式
+### MIMEメッセージ形式
 
-すべてのエージェント間通信はYAML形式のメッセージファイルで行われます。
+すべてのエージェント間通信はMIME形式（RFC 2045準拠）のメッセージファイルで行われます。メタデータはMIMEヘッダー、ペイロードはYAML形式のボディに格納されます。
 
-```yaml
-type: {message_type}
-from: {sender}
-to: {receiver}
-timestamp: {ISO8601}
-priority: {high|normal|low}
-payload:
-  {key}: {value}
 ```
+MIME-Version: 1.0
+Message-ID: <{epoch}.{pid}.{hash}@ignite.local>
+From: {sender}
+To: {receiver}
+Date: {RFC 2822 date}
+X-IGNITE-Type: {message_type}
+X-IGNITE-Priority: {high|normal|low}
+Content-Type: text/x-yaml; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+{YAML payload}
+```
+
+メッセージの作成・パースには `scripts/lib/ignite_mime.py` CLIツールを使用します。
 
 ### 主要メッセージタイプ
 
@@ -342,7 +348,7 @@ graph LR
 | **障害対応** | リトライ + DLQ | 冪等スキーマ + マイグレーション |
 | **主な使用者** | `queue_monitor.sh` | 各エージェント（instructions内で直接実行） |
 
-### YAMLファイルキュー — メッセージング層
+### MIMEファイルキュー — メッセージング層
 
 エージェント間の非同期メッセージングを担います。`queue_monitor.sh` が10秒ポーリングでキューを監視し、tmux経由でエージェントに配信します。
 
@@ -350,7 +356,7 @@ graph LR
 ```
 workspace/queue/
 ├── leader/              # Leaderエージェント用
-│   ├── *.yaml           # 未処理メッセージ
+│   ├── *.mime           # 未処理メッセージ
 │   └── processed/       # 処理中・完了メッセージ
 ├── strategist/          # Strategist用
 ├── architect/           # Architect用
@@ -367,7 +373,7 @@ workspace/queue/
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 未処理: queue/*.yaml 作成
+    [*] --> 未処理: queue/*.mime 作成
     未処理 --> processing: mv to processed/
     processing --> delivered: 配信成功
     processing --> retrying: タイムアウト検知
@@ -416,21 +422,21 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant C as Coordinator
-    participant YQ as YAML Queue
+    participant YQ as MIME Queue
     participant DB as SQLite tasks
     participant IG as IGNITIAN
 
-    C->>YQ: task_assignment_*.yaml 作成（指示の配信）
+    C->>YQ: task_assignment_*.mime 作成（指示の配信）
     C->>DB: INSERT INTO tasks status='in_progress'（状態の記録）
     YQ->>IG: queue_monitor経由で配信
-    IG->>YQ: progress_update_*.yaml 作成（完了の通知）
+    IG->>YQ: progress_update_*.mime 作成（完了の通知）
     IG->>DB: UPDATE tasks SET status='completed'（履歴の永続化）
 
     Note over YQ: 一時的：配信完了で役目終了
     Note over DB: 永続的：ダッシュボード・分析に使用
 ```
 
-- **YAML**: 「このタスクをやれ」という**指示の配信手段**（一時的）
+- **MIME**: 「このタスクをやれ」という**指示の配信手段**（一時的）
 - **SQLite**: 「このタスクは今どうなっている」という**状態の記録**（永続的、ダッシュボード・分析に使用）
 
 ## 日次レポート管理
