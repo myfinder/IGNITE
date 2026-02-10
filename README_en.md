@@ -155,6 +155,12 @@ cd IGNITE
 
 When running from source, use `./scripts/ignite` instead of `ignite`.
 
+### GitHub App Setup
+
+To use GitHub integration features (automatic Issue processing, creating PRs under Bot identity, etc.), install the GitHub App:
+
+- **[GitHub App Installation Guide](docs/github-app-installation_en.md)** — How to install ignite-gh-app
+
 ## 🚀 Quick Start
 
 ### 1. Start the System
@@ -1064,7 +1070,8 @@ The following settings are available in `config/system.yaml`:
 - **Architecture**: [docs/architecture.md](docs/architecture.md) - Detailed system structure
 - **Protocol Specification**: [docs/protocol.md](docs/protocol.md) - Message formats and communication flows
 - **Implementation Status**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - List of implemented features
-- **GitHub App Setup**: [docs/github-app-setup_en.md](docs/github-app-setup_en.md) - Creating GitHub App for Bot
+- **GitHub App Installation**: [docs/github-app-installation_en.md](docs/github-app-installation_en.md) - Installing ignite-gh-app (GitHub App)
+- **GitHub App Setup**: [docs/github-app-setup_en.md](docs/github-app-setup_en.md) - Creating GitHub App for Bot (for developers)
 - **GitHub Watcher**: [docs/github-watcher_en.md](docs/github-watcher_en.md) - GitHub event monitoring system usage
 
 ## 🤝 Contributing
