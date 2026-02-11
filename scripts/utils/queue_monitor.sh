@@ -641,6 +641,46 @@ normalize_filename() {
     echo "$new_path"
 }
 
+# レガシー YAML → MIME 自動変換
+# v0.4.0 移行期間中、エージェントが .yaml で生成したメッセージを
+# MIME 形式に変換して queue_monitor で処理可能にする
+_convert_yaml_to_mime() {
+    local yaml_file="$1"
+    local dir
+    dir=$(dirname "$yaml_file")
+    local basename_noext
+    basename_noext=$(basename "$yaml_file" .yaml)
+
+    # YAML トップレベルフィールドを抽出
+    local msg_type from_agent to_agent priority repo issue
+    msg_type=$(grep -m1 '^type:' "$yaml_file" 2>/dev/null | sed 's/^type:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    from_agent=$(grep -m1 '^from:' "$yaml_file" 2>/dev/null | sed 's/^from:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    to_agent=$(grep -m1 '^to:' "$yaml_file" 2>/dev/null | sed 's/^to:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    priority=$(grep -m1 '^priority:' "$yaml_file" 2>/dev/null | sed 's/^priority:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    repo=$(grep -m1 '^\s*repository:' "$yaml_file" 2>/dev/null | head -1 | sed 's/^.*repository:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    issue=$(grep -m1 '^\s*issue_number:' "$yaml_file" 2>/dev/null | head -1 | sed 's/^.*issue_number:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+    # 最低限の情報がなければフォールバック
+    [[ -z "$msg_type" ]] && msg_type="unknown"
+    [[ -z "$from_agent" ]] && from_agent="unknown"
+    [[ -z "$to_agent" ]] && to_agent="unknown"
+
+    # ignite_mime.py build でMIMEメッセージを構築
+    local mime_args=(--from "$from_agent" --to "$to_agent" --type "$msg_type")
+    [[ -n "$priority" && "$priority" != "normal" ]] && mime_args+=(--priority "$priority")
+    [[ -n "$repo" ]] && mime_args+=(--repo "$repo")
+    [[ -n "$issue" ]] && mime_args+=(--issue "$issue")
+
+    local mime_file="${dir}/${basename_noext}.mime"
+    if python3 "$IGNITE_MIME" build "${mime_args[@]}" --body-file "$yaml_file" -o "$mime_file" 2>/dev/null; then
+        log_success "YAML→MIME変換完了: $(basename "$yaml_file") → $(basename "$mime_file")"
+        return 0
+    else
+        log_error "YAML→MIME変換失敗: $(basename "$yaml_file")"
+        return 1
+    fi
+}
+
 scan_queue() {
     local queue_dir="$1"
     local queue_name="$2"
@@ -649,6 +689,15 @@ scan_queue() {
 
     # processed/ ディレクトリを確保（処理済みファイルの移動先）
     mkdir -p "$queue_dir/processed"
+
+    # レガシー .yaml ファイル検出 → MIME形式に自動変換
+    for yaml_file in "$queue_dir"/*.yaml; do
+        [[ -f "$yaml_file" ]] || continue
+        log_warn "レガシーYAMLメッセージ検出: $(basename "$yaml_file") → MIME変換します"
+        if _convert_yaml_to_mime "$yaml_file"; then
+            rm -f "$yaml_file"
+        fi
+    done
 
     # キューディレクトリ直下の .mime ファイル = 未処理メッセージ
     for file in "$queue_dir"/*.mime; do

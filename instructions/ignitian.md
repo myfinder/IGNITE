@@ -11,7 +11,7 @@
 
 3. **結果の報告**
    - タスク完了時に詳細なレポートを作成
-   - `workspace/queue/coordinator/task_completed_{timestamp}.yaml` に送信
+   - `workspace/queue/coordinator/task_completed_{timestamp}.mime` に送信
    - 成果物（deliverables）を明記
    - queue/ にファイルを書き出す（queue_monitorがCoordinatorに通知）
 
@@ -23,13 +23,23 @@
 ## 通信プロトコル
 
 ### 受信先
-- `workspace/queue/ignitian_{n}/` - あなた宛てのタスク割り当て（アンダースコア形式。ハイフン `ignitian-N` ではない）
-- `workspace/queue/ignitian_{n}/` - Coordinatorからの差し戻し依頼（revision_request）
+- `workspace/queue/ignitian_{n}/` - あなた宛てのタスク割り当て（`task_assignment_{timestamp}.mime`）（アンダースコア形式。ハイフン `ignitian-N` ではない）
+- `workspace/queue/ignitian_{n}/` - Coordinatorからの差し戻し依頼（`revision_request_{timestamp}.mime`）
 
 ### 送信先
-- `workspace/queue/coordinator/task_completed_{timestamp}.yaml` - タスク完了レポート
+- `workspace/queue/coordinator/task_completed_{timestamp}.mime` - タスク完了レポート
 
 ### メッセージフォーマット
+
+すべてのメッセージはMIME形式（`.mime` ファイル）で管理されます。`send_message.sh` が以下のMIMEヘッダーを自動生成するため、エージェントはYAMLボディの内容だけを作成すれば良いです:
+
+- `MIME-Version`, `Message-ID`, `From`, `To`, `Date` — 標準MIMEヘッダー
+- `X-IGNITE-Type` — メッセージタイプ（task_completed 等）
+- `X-IGNITE-Priority` — 優先度（normal / high）
+- `X-IGNITE-Repository`, `X-IGNITE-Issue` — 関連リポジトリ・Issue番号（任意）
+- `Content-Type: text/x-yaml; charset=utf-8`, `Content-Transfer-Encoding: 8bit`
+
+以下の例はボディ（YAML）部分のみ示します。
 
 **受信メッセージ例（タスク割り当て）:**
 ```yaml
@@ -173,14 +183,18 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 5. **完了レポート送信**
    - タスク完了時にレポートを作成
-   - `workspace/queue/coordinator/task_completed_$(date +%s%6N).yaml` に送信
-   - queue/ にファイルを書き出す（queue_monitorがCoordinatorに通知）
+   - 推奨: Write tool で `/tmp/task_completed_body.yaml` にYAMLボディを作成し、`send_message.sh` で送信
+     ```bash
+     ./scripts/utils/send_message.sh task_completed ignitian_{n} coordinator \
+       --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+     ```
+   - queue/ にMIMEファイルが書き出される（queue_monitorがCoordinatorに通知）
    - **セルフレビュー結果（self_review_summary）と残論点（remaining_concerns）を必ず含める**
 
 6. **タスクファイルの削除**
    - 処理済みタスクファイルを削除
    ```bash
-   rm workspace/queue/ignitian_{n}/task_assignment_*.yaml
+   rm workspace/queue/ignitian_{n}/task_assignment_*.mime
    ```
 
 7. **ログ記録**
@@ -204,7 +218,7 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 ### 推奨: Write tool でYAML生成（最も安全）
 
-完了レポートは以下の2ステップで生成してください:
+完了レポートは以下の3ステップで生成してください:
 
 **Step 1**: Bash tool で動的値を取得
 ```bash
@@ -212,10 +226,16 @@ date '+%Y-%m-%dT%H:%M:%S%z'
 # 出力例: 2026-02-06T18:01:42+0900
 ```
 
-**Step 2**: Write tool でYAMLファイルを直接生成
+**Step 2**: Write tool でYAMLボディファイルを `/tmp/task_completed_body.yaml` に直接生成
 - Step 1で取得した値をYAML内に直接記述する
 - Bashのヒアドキュメントは使用しない
 - シェル変数展開の問題が**構造的に発生し得ない**ため最も安全
+
+**Step 3**: send_message.sh で MIME メッセージとして送信
+```bash
+./scripts/utils/send_message.sh task_completed ignitian_{n} coordinator \
+  --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+```
 
 ### 代替: Bash heredoc を使う場合の必須ルール
 
@@ -419,29 +439,24 @@ content: |
 > heredocを使う場合、デリミタは `<<EOF`（クォートなし）を使ってください。
 > `<< 'EOF'` を使うと変数が展開されません。
 
+Step 1: Bash tool で動的値を取得
 ```bash
-cat > workspace/queue/coordinator/task_completed_$(date +%s%6N).yaml <<EOF
-type: task_completed
-from: ignitian_1
-to: coordinator
-timestamp: "$(date -Iseconds)"
-priority: normal
-payload:
-  task_id: "task_001"
-  title: "README骨組み作成"
-  status: success
-  deliverables:
-    - file: "README.md"
-      description: "基本構造を作成しました"
-      location: "./README.md"
-  execution_time: 90
-  notes: "指示通りに基本構造を作成"
-EOF
+date '+%Y-%m-%dT%H:%M:%S%z'
+# 出力例: 2026-02-06T18:01:42+0900
+```
+
+Step 2: Write tool で `/tmp/task_completed_body.yaml` にYAMLボディを作成
+（Step 1で取得したtimestamp値を直接記述する）
+
+Step 3: send_message.sh で送信
+```bash
+./scripts/utils/send_message.sh task_completed ignitian_1 coordinator \
+  --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
 ```
 
 **5. タスクファイル削除**
 ```bash
-rm workspace/queue/ignitian_1/task_assignment_*.yaml
+rm workspace/queue/ignitian_1/task_assignment_*.mime
 ```
 
 **6. ログ出力**

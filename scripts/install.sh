@@ -170,29 +170,47 @@ WRAPPER
     fi
 }
 
-install_config_templates() {
-    print_header "設定テンプレートのインストール"
+install_config() {
+    print_header "設定ファイルのインストール"
 
-    # 設定テンプレートを DATA_DIR/config/ にコピー（ignite init のコピー元）
+    mkdir -p "$CONFIG_DIR"
+
     local source_config="$SCRIPT_DIR/config"
     if [[ ! -d "$source_config" ]]; then
         source_config="$SCRIPT_DIR/../config"
     fi
 
     if [[ ! -d "$source_config" ]]; then
-        print_warning "設定テンプレートディレクトリが見つかりません"
+        print_warning "設定ファイルディレクトリが見つかりません"
         return 0
     fi
 
-    mkdir -p "$DATA_DIR/config"
+    # 設定ファイルをコピー（既存ファイルは保持）
     for file in "$source_config"/*.yaml "$source_config"/*.yaml.example; do
         [[ -f "$file" ]] || continue
         local filename
         filename=$(basename "$file")
-        cp "$file" "$DATA_DIR/config/$filename"
+        local dest="$CONFIG_DIR/$filename"
+
+        # .example ファイルは常にコピー
+        if [[ "$filename" == *.example ]]; then
+            cp "$file" "$dest"
+            print_success "$filename をコピーしました"
+            continue
+        fi
+
+        # 既存設定は保持（--upgrade でも --force 以外はスキップ）
+        if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]]; then
+            if [[ "$UPGRADE" == "true" ]]; then
+                print_info "$filename は既に存在します (設定を保持)"
+            else
+                print_info "$filename は既に存在します (スキップ)"
+            fi
+        else
+            cp "$file" "$dest"
+            print_success "$filename をインストールしました"
+        fi
     done
-    print_success "設定テンプレートを $DATA_DIR/config にインストールしました"
-    print_info "実際の設定は ignite init で .ignite/ に作成されます"
 }
 
 install_data() {
@@ -332,24 +350,17 @@ check_path() {
     fi
 }
 
-show_init_guide() {
-    print_header "ワークスペース初期化ガイド"
-    echo ""
-    echo "設定ファイルは .ignite/ ディレクトリで管理されます。"
-    echo "以下のコマンドでワークスペースを初期化してください:"
-    echo ""
-    echo -e "  ${YELLOW}ignite init /path/to/workspace${NC}"
-    echo ""
-    if [[ -d "${HOME}/.config/ignite" ]]; then
-        echo -e "${CYAN}ヒント:${NC} 既存のグローバル設定が検出されました。"
-        echo -e "移行するには: ${YELLOW}ignite init --migrate${NC}"
-        echo ""
-        echo -e "${CYAN}アップグレード時の注意:${NC}"
-        echo "  - github-app.yaml はセキュリティのため自動移行されません"
-        echo "  - credentials は環境変数での管理を推奨します"
-        echo "  - 移行後、旧ディレクトリは手動で削除してください"
-        echo ""
-    fi
+write_config_paths() {
+    # インストールパスを記録（ignite が参照するため）
+    cat > "$CONFIG_DIR/.install_paths" << EOF
+# IGNITE インストールパス (自動生成)
+BIN_DIR="$BIN_DIR"
+CONFIG_DIR="$CONFIG_DIR"
+DATA_DIR="$DATA_DIR"
+INSTALLED_VERSION="$VERSION"
+INSTALLED_AT="$(date -Iseconds)"
+EOF
+    print_success "インストールパスを記録しました"
 }
 
 # =============================================================================
@@ -397,8 +408,8 @@ main() {
     echo ""
     echo "インストール先:"
     echo "  実行ファイル: $BIN_DIR"
+    echo "  設定ファイル: $CONFIG_DIR"
     echo "  データ:       $DATA_DIR"
-    echo "  設定:         ignite init で .ignite/ に作成"
     echo ""
 
     # 依存関係チェック
@@ -413,13 +424,13 @@ main() {
     # インストール実行
     install_binary
     echo ""
-    install_config_templates
+    install_config
     echo ""
     install_data
     echo ""
-    check_path
+    write_config_paths
     echo ""
-    show_init_guide
+    check_path
 
     echo ""
     if [[ "$UPGRADE" == "true" ]]; then
@@ -433,9 +444,8 @@ main() {
     fi
     echo ""
     echo "使い方:"
-    echo "  ignite init                     # ワークスペース初期化（まずこちら）"
-    echo "  ignite init --migrate           # 既存設定から移行"
     echo "  ignite start                    # システム起動"
+    echo "  ignite start -w ~/my-workspace  # ワークスペース指定"
     echo "  ignite status                   # 状態確認"
     echo "  ignite --help                   # ヘルプ"
     echo ""

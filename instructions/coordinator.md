@@ -41,13 +41,23 @@ cat workspace/system_config.yaml
 - `workspace/queue/coordinator/` - あなた宛てのメッセージ
 
 ### 送信先
-- `workspace/queue/ignitian_{n}/task_assignment_{timestamp}.yaml` - 各IGNITIANへのタスク割り当て
+- `workspace/queue/ignitian_{n}/task_assignment_{timestamp}.mime` - 各IGNITIANへのタスク割り当て
   - **重要**: ディレクトリ名は必ずアンダースコア形式 `ignitian_N` を使用（ハイフン `ignitian-N` は不可）
-- `workspace/queue/ignitian_{n}/revision_request_{timestamp}.yaml` - IGNITIANへの差し戻し依頼
+- `workspace/queue/ignitian_{n}/revision_request_{timestamp}.mime` - IGNITIANへの差し戻し依頼
 - `workspace/queue/leader/` - Leaderへの進捗報告
 - `workspace/queue/evaluator/` - Evaluatorへの評価依頼
 
 ### メッセージフォーマット
+
+すべてのメッセージはMIME形式（`.mime` ファイル）で管理されます。`send_message.sh` が以下のMIMEヘッダーを自動生成するため、エージェントはYAMLボディの内容だけを作成すれば良いです:
+
+- `MIME-Version`, `Message-ID`, `From`, `To`, `Date` — 標準MIMEヘッダー
+- `X-IGNITE-Type` — メッセージタイプ（task_assignment, revision_request 等）
+- `X-IGNITE-Priority` — 優先度（normal / high）
+- `X-IGNITE-Repository`, `X-IGNITE-Issue` — 関連リポジトリ・Issue番号（任意）
+- `Content-Type: text/x-yaml; charset=utf-8`, `Content-Transfer-Encoding: 8bit`
+
+以下の例はボディ（YAML）部分のみ示します。
 
 **受信メッセージ例（タスクリスト）:**
 ```yaml
@@ -313,10 +323,14 @@ cat workspace/system_config.yaml
 
 5. **タスク割り当てメッセージを作成**
    ```bash
-   cat > workspace/queue/ignitian_1/task_assignment_$(date +%s%6N).yaml <<EOF
+   TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+   TEAM_MEMORY=$(./scripts/utils/memory_context.sh --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER} 2>/dev/null) || TEAM_MEMORY=""
+   # ボディYAMLをファイルに書き出し（変数展開が必要なため << EOF クォートなし）
+   cat > /tmp/body.yaml << EOF
    type: task_assignment
    from: coordinator
    to: ignitian_1
+   timestamp: "${TIMESTAMP}"
    ...
    payload:
      ...
@@ -325,6 +339,9 @@ cat workspace/system_config.yaml
      team_memory_context: |
        ${TEAM_MEMORY}
    EOF
+   # send_message.sh で MIME メッセージとして送信
+   ./scripts/utils/send_message.sh task_assignment coordinator ignitian_1 \
+     --body-file /tmp/body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
    ```
    > **注**: `team_memory_context` は `TEAM_MEMORY` が空でない場合のみ含めてください。空の場合はセクション自体を省略します（IGNITIANは `team_memory_context` がなくても正常動作します）。
 
@@ -355,7 +372,7 @@ ignitians:
 
 1. **メッセージ受信**
    ```yaml
-   # workspace/queue/coordinator/task_list_1738315260123456.yaml
+   # workspace/queue/coordinator/task_list_1738315260123456.mime
    type: task_list
    from: strategist
    to: coordinator
@@ -377,9 +394,18 @@ ignitians:
 4. **割り当てメッセージ作成**
    ```bash
    for i in 1 2 3; do
-       cat > workspace/queue/ignitian_${i}/task_assignment_$(date +%s%6N).yaml <<EOF
+       TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+       # ボディYAMLをファイルに書き出し（変数展開が必要なため << EOF クォートなし）
+       cat > /tmp/body.yaml << EOF
+       type: task_assignment
+       from: coordinator
+       to: ignitian_${i}
+       timestamp: "${TIMESTAMP}"
        ...
        EOF
+       # send_message.sh で MIME メッセージとして送信
+       ./scripts/utils/send_message.sh task_assignment coordinator ignitian_${i} \
+         --body-file /tmp/body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
    done
    ```
 
@@ -402,7 +428,7 @@ ignitians:
 
 1. **レポート検出**
    ```yaml
-   # workspace/queue/coordinator/task_completed_1738712345123456.yaml
+   # workspace/queue/coordinator/task_completed_1738712345123456.mime
    type: task_completed
    from: ignitian_1
    to: coordinator

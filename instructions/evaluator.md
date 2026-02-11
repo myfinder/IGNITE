@@ -37,6 +37,16 @@
 
 ### メッセージフォーマット
 
+すべてのメッセージはMIME形式（`.mime` ファイル）で管理されます。`send_message.sh` が以下のMIMEヘッダーを自動生成するため、エージェントはYAMLボディの内容だけを作成すれば良いです:
+
+- `MIME-Version`, `Message-ID`, `From`, `To`, `Date` — 標準MIMEヘッダー
+- `X-IGNITE-Type` — メッセージタイプ（evaluation_result 等）
+- `X-IGNITE-Priority` — 優先度（normal / high）
+- `X-IGNITE-Repository`, `X-IGNITE-Issue` — 関連リポジトリ・Issue番号（任意）
+- `Content-Type: text/x-yaml; charset=utf-8`, `Content-Transfer-Encoding: 8bit`
+
+以下の例はボディ（YAML）部分のみ示します。
+
 **受信メッセージ例（評価依頼）:**
 ```yaml
 type: evaluation_request

@@ -39,7 +39,15 @@
 
 ### メッセージフォーマット
 
-すべてのメッセージはYAML形式です。
+すべてのメッセージはMIME形式（`.mime` ファイル）で管理されます。`send_message.sh` が以下のMIMEヘッダーを自動生成するため、エージェントはYAMLボディの内容だけを作成すれば良いです:
+
+- `MIME-Version`, `Message-ID`, `From`, `To`, `Date` — 標準MIMEヘッダー
+- `X-IGNITE-Type` — メッセージタイプ（strategy_request, task_list 等）
+- `X-IGNITE-Priority` — 優先度（normal / high）
+- `X-IGNITE-Repository`, `X-IGNITE-Issue` — 関連リポジトリ・Issue番号（任意）
+- `Content-Type: text/x-yaml; charset=utf-8`, `Content-Transfer-Encoding: 8bit`
+
+以下の例はボディ（YAML）部分のみ示します。
 
 **受信メッセージ例（ユーザー目標）:**
 ```yaml
@@ -83,7 +91,7 @@ claude codeのビルトインツールを使用できます:
 定期的に以下を実行してください:
 
 1. **メッセージチェック**
-   Globツールで `workspace/queue/leader/*.yaml` を検索してください。
+   Globツールで `workspace/queue/leader/*.mime` を検索してください。
 
 2. **メッセージ処理**
    - 各メッセージをReadツールで読み込む
@@ -181,7 +189,7 @@ payload:
 
 3. **意思決定と指示**
    - 必要なSub-Leadersにメッセージを送信
-   - `workspace/queue/{role}/` に新しいYAMLファイルを作成
+   - `./scripts/utils/send_message.sh` を使用してメッセージを送信
 
 4. **ダッシュボード更新**
    - 必要に応じて `workspace/dashboard.md` を更新
@@ -198,7 +206,7 @@ payload:
 
 1. **メッセージ受信**
    ```yaml
-   # workspace/queue/leader/user_goal_1738315200123456.yaml
+   # workspace/queue/leader/user_goal_1738315200123456.mime
    type: user_goal
    from: user
    to: leader
@@ -211,14 +219,18 @@ payload:
    - 必要なSub-Leadersを特定
 
 3. **Strategistへ依頼**
-   ```yaml
-   # workspace/queue/strategist/strategy_request_1738315210234567.yaml
+   ```bash
+   # ボディYAMLをファイルに書き出し
+   cat > /tmp/body.yaml << 'EOF'
    type: strategy_request
    from: leader
    to: strategist
    payload:
      goal: "シンプルなCLIツールを実装する"
      request: "この目標を達成するための戦略とタスク分解を行ってください"
+   EOF
+   # send_message.sh で MIME メッセージとして送信
+   ./scripts/utils/send_message.sh strategy_request leader strategist --body-file /tmp/body.yaml
    ```
 
 4. **ログ出力**
@@ -231,7 +243,7 @@ payload:
 
 1. **メッセージ受信**
    ```yaml
-   # workspace/queue/leader/strategy_response_1738315240345678.yaml
+   # workspace/queue/leader/strategy_response_1738315240345678.mime
    type: strategy_response
    from: strategist
    to: leader
@@ -245,14 +257,18 @@ payload:
    - 妥当性を判断
 
 3. **承認と次のステップ**
-   ```yaml
-   # workspace/queue/coordinator/task_list_approved_1738315250456789.yaml
+   ```bash
+   # ボディYAMLをファイルに書き出し
+   cat > /tmp/body.yaml << 'EOF'
    type: task_list
    from: leader
    to: coordinator
    payload:
      approved: true
      tasks: [...]
+   EOF
+   # send_message.sh で MIME メッセージとして送信
+   ./scripts/utils/send_message.sh task_list leader coordinator --body-file /tmp/body.yaml
    ```
 
 4. **ログ出力**
@@ -305,7 +321,7 @@ payload:
 GitHub Watcherから通知されたGitHubイベント（Issue作成、コメント、PR等）を処理します。
 
 ```yaml
-# workspace/queue/leader/github_event_xxx.yaml
+# workspace/queue/leader/github_event_xxx.mime
 type: github_event
 from: github_watcher
 to: leader
@@ -329,7 +345,7 @@ payload:
 メンション（@ignite-gh-app 等）でトリガーされたタスクリクエストを処理します。
 
 ```yaml
-# workspace/queue/leader/github_task_xxx.yaml
+# workspace/queue/leader/github_task_xxx.mime
 type: github_task
 from: github_watcher
 to: leader
@@ -544,24 +560,28 @@ PRコメントで修正依頼が来た場合：
    まず `config/system.yaml` を Read で読み、`insights.contribute_upstream` の値を確認する。
    設定が存在しない場合はデフォルト `true` として扱う。
 
-   ```yaml
-   # workspace/queue/innovator/memory_review_request_{timestamp}.yaml
+   ```bash
+   # ボディYAMLをファイルに書き出し（動的値を含むためクォートなし）
+   cat > /tmp/body.yaml << EOF
    type: memory_review_request
    from: leader
    to: innovator
-   timestamp: "{timestamp}"
+   timestamp: "$(date -Iseconds)"
    priority: high
    payload:
      trigger_source:
-       repository: "{repository}"
-       issue_number: {issue_number}
-     repo_path: "{REPO_PATH}"
+       repository: "${REPOSITORY}"
+       issue_number: ${ISSUE_NUMBER}
+     repo_path: "${REPO_PATH}"
      analysis_scope:
        since: ""
        types: [learning, error, observation]
      target_repos:
        ignite_repo: "myfinder/ignite"   # contribute_upstream が false の場合は "" (空文字)
-       work_repos: ["{repository}"]
+       work_repos: ["${REPOSITORY}"]
+   EOF
+   # send_message.sh で MIME メッセージとして送信
+   ./scripts/utils/send_message.sh memory_review_request leader innovator --body-file /tmp/body.yaml
    ```
 
 4. **insight_result 受信後、完了コメント投稿**

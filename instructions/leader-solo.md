@@ -224,12 +224,16 @@ claude codeのビルトインツールをフル活用します。
 - **WebSearch**: Web検索
 - **WebFetch**: Webページ取得
 
+## メッセージフォーマット
+
+すべてのメッセージはMIME形式（`.mime` ファイル）で管理されます。MIMEヘッダー（`MIME-Version`, `Message-ID`, `From`, `To`, `Date`, `X-IGNITE-Type`, `X-IGNITE-Priority`, `X-IGNITE-Repository`, `X-IGNITE-Issue`, `Content-Type: text/x-yaml; charset=utf-8`, `Content-Transfer-Encoding: 8bit`）は `send_message.sh` が自動生成します。ボディ部分はYAML形式です。
+
 ## メインループ
 
 定期的に以下を実行してください:
 
 1. **メッセージチェック**
-   Globツールで `workspace/queue/leader/*.yaml` を検索してください。
+   Globツールで `workspace/queue/leader/*.mime` を検索してください。
 
 2. **メッセージ処理**
    - 各メッセージをReadツールで読み込む

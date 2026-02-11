@@ -22,8 +22,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # バージョン取得（core.sh から）
 IGNITE_VERSION=$(grep -oP '^VERSION="\K[^"]+' "$SCRIPT_DIR/../lib/core.sh" 2>/dev/null || echo "unknown")
 
-# IGNITE_CONFIG_DIR は .ignite/ から設定される（未設定時はPROJECT_ROOT/config）
-IGNITE_CONFIG_DIR="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+# IGNITE_CONFIG_DIR の解決順序:
+# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
+# 2. WORKSPACE_DIR/.ignite/ が存在すればそれを使用（ワークスペース設定優先）
+# 3. フォールバック: PROJECT_ROOT/config
+if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
+    if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}/.ignite" ]]; then
+        IGNITE_CONFIG_DIR="${WORKSPACE_DIR}/.ignite"
+    else
+        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
+    fi
+fi
 
 # カラー定義
 GREEN='\033[0;32m'
