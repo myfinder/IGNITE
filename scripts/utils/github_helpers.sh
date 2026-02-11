@@ -22,19 +22,10 @@ if [[ -z "${SCRIPT_DIR:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-# =============================================================================
-# XDG パス解決（呼び出し元で未設定の場合のみ）
-# =============================================================================
-
+# IGNITE_CONFIG_DIR は .ignite/ から設定される（未設定時はPROJECT_ROOT/config）
 if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
     _GH_HELPERS_PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-
-    if [[ -f "$XDG_CONFIG_HOME/ignite/.install_paths" ]]; then
-        IGNITE_CONFIG_DIR="$XDG_CONFIG_HOME/ignite"
-    else
-        IGNITE_CONFIG_DIR="$_GH_HELPERS_PROJECT_ROOT/config"
-    fi
+    IGNITE_CONFIG_DIR="$_GH_HELPERS_PROJECT_ROOT/config"
 fi
 
 # =============================================================================

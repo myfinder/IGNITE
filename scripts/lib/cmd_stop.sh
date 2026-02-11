@@ -108,10 +108,6 @@ cmd_stop() {
         rm -f "$WORKSPACE_DIR/queue_monitor.pid"
     fi
 
-    # フォールバック: PIDファイルが消えていてもプロセスが残っている場合
-    pkill -f "queue_monitor.sh.*${SESSION_NAME}" 2>/dev/null || true
-    pkill -f "github_watcher.sh" 2>/dev/null || true
-
     # コスト履歴を保存
     save_cost_history
 

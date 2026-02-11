@@ -10,7 +10,8 @@ _resolve_bot_token() {
     local scripts_dir="${IGNITE_SCRIPTS_DIR:-}"
     [[ -z "$config_dir" || -z "$scripts_dir" ]] && return 1
 
-    local watcher_config="$config_dir/github-watcher.yaml"
+    local watcher_config
+    watcher_config=$(resolve_config "github-watcher.yaml" 2>/dev/null) || return 1
     [[ -f "$watcher_config" ]] || return 1
 
     # github-watcher.yaml から最初のリポジトリ名を取得
@@ -39,9 +40,10 @@ _resolve_bot_token() {
     [[ -n "$token" && "$token" == ghs_* ]] && echo "$token"
 }
 
-# GitHub Watcher自動起動設定を取得
+# GitHub Watcher自動起動設定を取得（resolve_config でワークスペース優先）
 get_watcher_auto_start() {
-    local config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
+    local config_file
+    config_file=$(resolve_config "github-watcher.yaml" 2>/dev/null) || config_file="$IGNITE_CONFIG_DIR/github-watcher.yaml"
     if [[ -f "$config_file" ]]; then
         local enabled
         enabled=$(yaml_get "$config_file" 'enabled')

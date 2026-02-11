@@ -24,6 +24,7 @@ cmd_activate() {
 
     # セッション名を設定
     setup_session_name
+    setup_workspace_config ""
 
     if ! session_exists; then
         print_error "セッション '$SESSION_NAME' が見つかりません"
@@ -202,6 +203,7 @@ cmd_attach() {
 
     # セッション名を設定
     setup_session_name
+    setup_workspace_config ""
 
     if ! session_exists; then
         print_error "セッション '$SESSION_NAME' が見つかりません"
@@ -242,6 +244,7 @@ cmd_logs() {
 
     # ワークスペースを設定
     setup_workspace
+    setup_workspace_config ""
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -448,23 +451,69 @@ cmd_watcher() {
     local action="${1:-}"
     shift 2>/dev/null || true
 
+    # ワークスペース解決（PIDファイル参照に必要）
+    setup_session_name
+    setup_workspace
+    setup_workspace_config ""
+
     case "$action" in
         start)
             print_info "GitHub Watcherを起動します..."
-            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" &
-            print_success "GitHub Watcherをバックグラウンドで起動しました"
+            # 既存プロセスの停止（PIDベース）
+            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+                local old_pid
+                old_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                if kill -0 "$old_pid" 2>/dev/null; then
+                    kill "$old_pid" 2>/dev/null || true
+                    sleep 1
+                fi
+                rm -f "$WORKSPACE_DIR/github_watcher.pid"
+            fi
+            local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
+            mkdir -p "$WORKSPACE_DIR/logs"
+            export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
+            export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
+            export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+            export IGNITE_TMUX_SESSION="${SESSION_NAME:-}"
+            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            local watcher_pid=$!
+            echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
+            print_success "GitHub Watcherをバックグラウンドで起動しました (PID: $watcher_pid)"
             ;;
         stop)
             print_info "GitHub Watcherを停止します..."
-            pkill -f "github_watcher.sh" 2>/dev/null || true
-            print_success "GitHub Watcherを停止しました"
+            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+                local watcher_pid
+                watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                if kill -0 "$watcher_pid" 2>/dev/null; then
+                    kill "$watcher_pid" 2>/dev/null || true
+                    local wait_count=0
+                    while kill -0 "$watcher_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+                        sleep 0.5
+                        wait_count=$((wait_count + 1))
+                    done
+                    if kill -0 "$watcher_pid" 2>/dev/null; then
+                        kill -9 "$watcher_pid" 2>/dev/null || true
+                    fi
+                    print_success "GitHub Watcherを停止しました"
+                else
+                    print_warning "GitHub Watcher (PID: $watcher_pid) は既に停止しています"
+                fi
+                rm -f "$WORKSPACE_DIR/github_watcher.pid"
+            else
+                print_warning "PIDファイルが見つかりません"
+            fi
             ;;
         status)
-            if pgrep -f "github_watcher.sh" > /dev/null; then
-                print_success "GitHub Watcher: 実行中"
-                pgrep -f "github_watcher.sh" | while read -r pid; do
-                    echo "  PID: $pid"
-                done
+            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+                local watcher_pid
+                watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                if kill -0 "$watcher_pid" 2>/dev/null; then
+                    print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
+                else
+                    print_warning "GitHub Watcher: 停止中 (stale PID: $watcher_pid)"
+                    rm -f "$WORKSPACE_DIR/github_watcher.pid"
+                fi
             else
                 print_warning "GitHub Watcher: 停止中"
             fi
@@ -547,15 +596,17 @@ cmd_validate() {
     print_header "IGNITE 設定ファイル検証"
     echo ""
 
+    # ワークスペース設定を解決
+    setup_workspace_config ""
+
     # config_validator.sh の関数が利用可能か確認
     if ! declare -f validate_required &>/dev/null; then
         print_warning "config_validator が読み込まれていません"
         return 1
     fi
 
-    # ディレクトリ解決
+    # ディレクトリ解決（IGNITE_CONFIG_DIRベースに統一）
     local config_dir="$IGNITE_CONFIG_DIR"
-    local xdg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
 
     # エラー蓄積リセット
     _VALIDATION_ERRORS=()
@@ -571,10 +622,7 @@ cmd_validate() {
             validate_system_yaml "$f"
             ;;
         watcher)
-            local f="${xdg_dir}/github-watcher.yaml"
-            if [[ ! -e "$f" ]]; then
-                f="${config_dir}/github-watcher.yaml"
-            fi
+            local f="${config_dir}/github-watcher.yaml"
             if [[ ! -e "$f" ]]; then
                 print_warning "github-watcher.yaml が見つかりません（スキップ）"
                 return 0
@@ -582,10 +630,7 @@ cmd_validate() {
             validate_watcher_yaml "$f"
             ;;
         github-app)
-            local f="${xdg_dir}/github-app.yaml"
-            if [[ ! -e "$f" ]]; then
-                f="${config_dir}/github-app.yaml"
-            fi
+            local f="${config_dir}/github-app.yaml"
             if [[ ! -e "$f" ]]; then
                 print_warning "github-app.yaml が見つかりません（スキップ）"
                 return 0
@@ -593,16 +638,13 @@ cmd_validate() {
             validate_github_app_yaml "$f"
             ;;
         all)
-            # config_dir の system.yaml
+            # config_dir 内の全設定ファイルを検証
             if [[ -d "$config_dir" ]]; then
                 validate_system_yaml "${config_dir}/system.yaml"
+                [[ -f "${config_dir}/github-watcher.yaml" ]] && validate_watcher_yaml "${config_dir}/github-watcher.yaml"
+                [[ -f "${config_dir}/github-app.yaml" ]] && validate_github_app_yaml "${config_dir}/github-app.yaml"
             else
                 validation_error "$config_dir" "(dir)" "設定ディレクトリが見つかりません"
-            fi
-            # XDG 設定はオプショナル
-            if [[ -d "$xdg_dir" ]]; then
-                validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml"
-                validate_github_app_yaml "${xdg_dir}/github-app.yaml"
             fi
             ;;
         *)

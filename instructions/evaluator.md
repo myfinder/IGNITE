@@ -62,6 +62,50 @@ payload:
     - "誤字脱字がない"
 ```
 
+**受信メッセージ例（タスク単位の評価依頼 — Coordinator判断困難ケース）:**
+```yaml
+type: evaluation_request
+from: coordinator
+to: evaluator
+timestamp: "2026-02-01T14:40:00+09:00"
+priority: high
+payload:
+  request_type: "per_task_review"
+  task_id: "task_001"
+  title: "README骨組み作成"
+  repository: "myfinder/IGNITE"
+  issue_number: 123
+  reason: "must項目の達成度が微妙で判断困難"
+  acceptance_criteria:
+    must:
+      - "Markdown形式が正しい"
+      - "必須セクション（概要、インストール、使用方法、ライセンス）が存在する"
+    should:
+      - "セクション構造が明確で読みやすい"
+  ignitian_self_check:
+    must:
+      - item: "Markdown形式が正しい"
+        status: "pass"
+      - item: "必須セクション（概要、インストール、使用方法、ライセンス）が存在する"
+        status: "pass"
+        note: "使用方法セクションは存在するが内容が薄い"
+    should:
+      - item: "セクション構造が明確で読みやすい"
+        status: "pass"
+  coordinator_concern: |
+    IGNITIANは全must項目をpassとしていますが、
+    「使用方法」セクションの内容が薄く、要件達成と言えるか判断に迷います。
+    Evaluatorの専門的な判断をお願いします。
+  deliverables:
+    - file: "README.md"
+      location: "./README.md"
+```
+
+> `request_type: "per_task_review"` でタスク単位の評価依頼と判別する。
+> `request_type` が未設定の場合は従来の全タスク評価として処理する（後方互換）。
+> `acceptance_criteria` が空配列（`must: [], should: []`）の場合は基準未設定と同義とし、
+> 従来通りのセルフレビュー結果とdeliverables検証で評価を行う。
+
 **受信メッセージ例（Strategistからの品質プラン依頼）:**
 ```yaml
 type: quality_plan_request
@@ -151,6 +195,42 @@ payload:
 
 ```
 
+**送信メッセージ例（タスク単位の評価結果 — Coordinator宛て）:**
+```yaml
+type: evaluation_result
+from: evaluator
+to: coordinator
+timestamp: "2026-02-01T14:42:00+09:00"
+priority: high
+payload:
+  request_type: "per_task_review"
+  task_id: "task_001"
+  title: "README骨組み作成"
+  repository: "myfinder/IGNITE"
+  issue_number: 123
+
+  verdict: "approve"
+  summary: "使用方法セクションは最低限の要件を満たしている"
+  score: 78
+
+  acceptance_checklist:
+    must:
+      - item: "Markdown形式が正しい"
+        status: "pass"
+      - item: "必須セクション（概要、インストール、使用方法、ライセンス）が存在する"
+        status: "pass"
+        note: "使用方法は存在するが、充実化を推奨"
+    should:
+      - item: "セクション構造が明確で読みやすい"
+        status: "pass"
+
+  recommendation: |
+    承認可能だが、後続タスクで使用方法セクションの充実を推奨。
+```
+
+> **注意**: タスク単位の evaluation_result は **Coordinator 宛て** に送信する。
+> Leader 宛ての最終サマリーレポートは、全タスク完了後に従来通り送信する。
+
 **送信メッセージ例（改善依頼）:**
 ```yaml
 type: improvement_request
@@ -229,6 +309,33 @@ queue_monitorから通知が来たら、以下を実行してください:
 1. **評価依頼の読み込み**
    - 通知で指定されたファイルをReadツールで読み込む
    - 要件と基準を確認
+   - `request_type` フィールドを確認:
+     - `"per_task_review"` → タスク単位評価（Coordinator相談）フローへ
+     - 未設定 or その他 → 従来の全タスク評価フローへ
+
+### タスク単位評価フロー（per_task_review）
+
+Coordinatorが判断困難と判定したタスクの評価を行う。
+
+1. **コンテキスト確認**
+   - `acceptance_criteria` で基準を把握
+   - `ignitian_self_check` でIGNITIANの自己評価を確認
+   - `coordinator_concern` でCoordinatorの懸念を理解
+
+2. **成果物の直接検証**
+   - `deliverables` に記載されたファイルを Read で取得
+   - acceptance_criteria の各項目を専門的に検証
+
+3. **verdict 判定**
+   - approve: 基準を満たしている（Coordinatorの懸念は杞憂）
+   - revise: 修正すれば基準を満たせる（具体的な修正指示を含める）
+   - reject: 根本的に基準を満たしていない（再実装が必要）
+
+4. **evaluation_result 送信**
+   - **宛先: Coordinator**（Leader ではない）
+   - `request_type: "per_task_review"` を含める
+
+### 全タスク評価フロー（従来フロー）
 
 2. **成果物の取得**
    - deliverables に記載されたファイルを読み込む

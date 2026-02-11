@@ -35,7 +35,7 @@ IGNITEは今はまだ歌って踊ってライブ配信することはできま�
 | **デフォルト構成** (Leader + Sub-Leaders + 8 IGNITIANs) | 14 | 8GB以上 | 4コア以上 | 500MB以上 |
 | **最大構成** (Leader + Sub-Leaders + 32 IGNITIANs) | 38 | 16GB以上 | 8コア以上 | 1GB以上 |
 
-- **OS**: Linux（現在 Linux のみ対応。macOS は開発モードで実行可能）
+- **OS**: Linux / Windows (WSL2) / macOS（開発モード）
 - **アーキテクチャ**: x86_64 / ARM64
 - **ネットワーク**: 常時インターネット接続（Claude API通信）
 
@@ -130,7 +130,7 @@ tar xzf ignite-*.tar.gz
 > export PATH="$HOME/.local/bin:$PATH"
 > ```
 
-> **Note**: 現在 Linux のみ対応しています。macOS ユーザーは「開発モード（ソースから実行）」を参照してください。
+> **Note**: Linux および Windows (WSL2) に対応しています。Windows ユーザーは [Windows (WSL2) セットアップガイド](docs/windows-setup.md)（[English](docs/windows-setup_en.md)）を参照してください。macOS ユーザーは「開発モード（ソースから実行）」を参照してください。
 
 ### アップグレード
 
@@ -1070,6 +1070,7 @@ GitHub の Issue やPR のコメントで：
 - **GitHub App導入**: [docs/github-app-installation.md](docs/github-app-installation.md) - GitHub App（ignite-gh-app）のインストール手順
 - **GitHub App設定**: [docs/github-app-setup.md](docs/github-app-setup.md) - Bot用GitHub Appの作成手順（開発者向け）
 - **GitHub Watcher**: [docs/github-watcher.md](docs/github-watcher.md) - GitHubイベント監視システムの使い方
+- **Windows (WSL2) セットアップ**: [docs/windows-setup.md](docs/windows-setup.md)（[English](docs/windows-setup_en.md)）- WindowsでのWSL2環境構築手順
 
 ## 🤝 コントリビューション
 

@@ -68,6 +68,24 @@ cmd_start() {
     # ワークスペースが未指定の場合はデフォルト
     setup_workspace
 
+    # ワークスペース固有設定の検出
+    setup_workspace_config "$WORKSPACE_DIR"
+
+    # .ignite/ 未検出時のエラー表示
+    if [[ ! -d "$WORKSPACE_DIR/.ignite" ]]; then
+        print_error ".ignite/ ディレクトリが見つかりません: $WORKSPACE_DIR/.ignite"
+        echo ""
+        echo "ワークスペースを初期化してください:"
+        echo -e "  ${YELLOW}ignite init -w $WORKSPACE_DIR${NC}"
+        echo ""
+        # ~/.config/ignite/ が存在する場合は移行を案内
+        if [[ -d "${HOME}/.config/ignite" ]]; then
+            echo -e "${CYAN}ヒント:${NC} 既存のグローバル設定が検出されました。"
+            echo -e "移行するには: ${YELLOW}ignite init -w $WORKSPACE_DIR --migrate${NC}"
+        fi
+        exit 1
+    fi
+
     # ワーカー数の決定
     if [[ -z "$worker_count" ]]; then
         worker_count=$(get_worker_count)
@@ -105,12 +123,9 @@ cmd_start() {
         print_info "設定ファイルを検証中..."
         _VALIDATION_ERRORS=()
         _VALIDATION_WARNINGS=()
-        local xdg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
         validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml" || true
-        if [[ -d "$xdg_dir" ]]; then
-            validate_watcher_yaml    "${xdg_dir}/github-watcher.yaml" || true
-            validate_github_app_yaml "${xdg_dir}/github-app.yaml" || true
-        fi
+        validate_watcher_yaml    "${IGNITE_CONFIG_DIR}/github-watcher.yaml" || true
+        validate_github_app_yaml "${IGNITE_CONFIG_DIR}/github-app.yaml" || true
 
         # 警告の表示
         if [[ ${#_VALIDATION_WARNINGS[@]} -gt 0 ]]; then
@@ -202,21 +217,23 @@ EOF
     print_success "workspace初期化完了"
     echo ""
 
-    # 旧デーモンプロセスをクリーンアップ（前セッションの残骸対策）
+    # 旧デーモンプロセスをクリーンアップ（PIDファイルベース・セッション固有）
     if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
         local old_pid
         old_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
-        kill "$old_pid" 2>/dev/null || true
+        if kill -0 "$old_pid" 2>/dev/null; then
+            kill "$old_pid" 2>/dev/null || true
+        fi
         rm -f "$WORKSPACE_DIR/github_watcher.pid"
     fi
     if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
         local old_pid
         old_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
-        kill "$old_pid" 2>/dev/null || true
+        if kill -0 "$old_pid" 2>/dev/null; then
+            kill "$old_pid" 2>/dev/null || true
+        fi
         rm -f "$WORKSPACE_DIR/queue_monitor.pid"
     fi
-    pkill -f "queue_monitor.sh" 2>/dev/null || true
-    pkill -f "github_watcher.sh" 2>/dev/null || true
     sleep "$(get_delay process_cleanup 1)"
 
     # tmuxセッション作成
