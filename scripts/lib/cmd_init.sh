@@ -53,12 +53,15 @@ cmd_init() {
     if [[ -z "$target_dir" ]]; then
         target_dir="$(pwd)"
     fi
-    # 相対パスを絶対パスに変換
+    # 相対パスを絶対パスに変換（存在しない場合は作成）
     if [[ ! "$target_dir" = /* ]]; then
-        target_dir="$(cd "$target_dir" 2>/dev/null && pwd)" || {
-            print_error "ディレクトリが存在しません: $target_dir"
-            exit 1
-        }
+        if [[ ! -d "$target_dir" ]]; then
+            mkdir -p "$target_dir" || {
+                print_error "ディレクトリを作成できません: $target_dir"
+                exit 1
+            }
+        fi
+        target_dir="$(cd "$target_dir" && pwd)"
     fi
 
     local ignite_dir="${target_dir}/.ignite"
@@ -117,11 +120,6 @@ GITIGNORE
         fi
     fi
 
-    # 標準ディレクトリ作成
-    print_info "標準ディレクトリを作成中..."
-    mkdir -p "$target_dir/workspace"/{queue,context,logs,state,repos}
-    print_success "workspace/ ディレクトリを作成しました"
-
     # .ignite/ パーミッション設定（credentials 保護）
     chmod 700 "$ignite_dir"
     print_success ".ignite/ パーミッションを 700 に設定しました"
@@ -132,19 +130,15 @@ GITIGNORE
     echo ""
     echo "作成された構造:"
     echo "  ${target_dir}/"
-    echo "  ├── .ignite/"
-    echo "  │   ├── .gitignore"
-    echo "  │   ├── system.yaml"
+    echo "  └── .ignite/"
+    echo "      ├── .gitignore"
+    echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
-        echo "  │   ├── characters.yaml"
-        echo "  │   └── pricing.yaml"
+        echo "      ├── characters.yaml"
+        echo "      └── pricing.yaml"
+    else
+        echo "      └── (minimal mode)"
     fi
-    echo "  └── workspace/"
-    echo "      ├── queue/"
-    echo "      ├── context/"
-    echo "      ├── logs/"
-    echo "      ├── state/"
-    echo "      └── repos/"
     echo ""
     echo -e "${YELLOW}注意:${NC} github-app.yaml（credentials）は .ignite/.gitignore で"
     echo -e "自動的にGit追跡から除外されます（セキュリティ保護）。"
@@ -178,6 +172,11 @@ _cmd_init_migrate() {
         filename=$(basename "$file")
         # .install_paths は移行しない
         [[ "$filename" == ".install_paths" ]] && continue
+        # github-app.yaml は credentials のため移行しない（セキュリティ保護）
+        if [[ "$filename" == "github-app.yaml" ]]; then
+            print_warning "github-app.yaml はcredentialsのためスキップします（環境変数での管理を推奨）"
+            continue
+        fi
         files_to_migrate+=("$filename")
         echo -e "  ${BLUE}→${NC} $filename"
     done

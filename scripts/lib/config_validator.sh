@@ -340,7 +340,7 @@ validate_workspace_config() {
     # credentials がワークスペースに存在する場合は警告
     if [[ -f "$ignite_dir/github-app.yaml" ]]; then
         validation_warn "$ignite_dir/github-app.yaml" "(file)" \
-            "credentials がワークスペースに存在します。グローバル設定（~/.config/ignite/）で管理してください" \
+            "credentials がワークスペースに存在します。.gitignoreで除外済みですが、環境変数での管理も推奨します" \
             "rm $ignite_dir/github-app.yaml"
     fi
 

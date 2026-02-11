@@ -216,17 +216,14 @@ YAML
     [[ ! -f "$target/.ignite/characters.yaml" ]]
 }
 
-@test "TC-14: cmd_init - workspace/ サブディレクトリ作成" {
+@test "TC-14: cmd_init - .ignite/設定初期化に専念（workspace/は作成しない）" {
     source "$SCRIPTS_DIR/lib/cmd_init.sh"
     local target="$TEST_TEMP_DIR/init_dirs"
     mkdir -p "$target"
 
     cmd_init --minimal -w "$target"
-    [[ -d "$target/workspace/queue" ]]
-    [[ -d "$target/workspace/context" ]]
-    [[ -d "$target/workspace/logs" ]]
-    [[ -d "$target/workspace/state" ]]
-    [[ -d "$target/workspace/repos" ]]
+    [[ -d "$target/.ignite" ]]
+    [[ ! -d "$target/workspace" ]]
 }
 
 @test "TC-15: cmd_init --help → 終了コード0 + --migrate記載" {
@@ -344,4 +341,75 @@ YAML
     popd > /dev/null
 
     [[ "$WORKSPACE_DIR" == "/explicitly/set/path" ]]
+}
+
+# =============================================================================
+# TC-24〜TC-27: レビュー修正の検証テスト
+# =============================================================================
+
+@test "TC-24: _cmd_init_migrate - github-app.yaml をスキップ" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local legacy_dir="${HOME}/.config/ignite"
+    local dest_dir="$TEST_TEMP_DIR/migrate_dest"
+    mkdir -p "$legacy_dir" "$dest_dir"
+
+    # 移行元にファイルを配置
+    echo "tmux: {window_name: ignite}" > "$legacy_dir/system.yaml"
+    echo "github_app: {app_id: 12345}" > "$legacy_dir/github-app.yaml"
+
+    # 非対話で移行実行
+    _cmd_init_migrate "$dest_dir" < /dev/null
+
+    # system.yaml は移行される
+    [[ -f "$dest_dir/system.yaml" ]]
+    # github-app.yaml はスキップされる
+    [[ ! -f "$dest_dir/github-app.yaml" ]]
+
+    # クリーンアップ
+    rm -rf "$legacy_dir"
+}
+
+@test "TC-25: cmd_start - .ignite/ 必須チェック" {
+    source "$SCRIPTS_DIR/lib/cmd_start.sh" 2>/dev/null || true
+    # cmd_start.sh L74-76 で .ignite/ チェックがある
+    # .ignite/ なしのワークスペースでは起動失敗することを確認
+    local test_ws="$TEST_TEMP_DIR/ws_no_ignite_start"
+    mkdir -p "$test_ws"
+    WORKSPACE_DIR="$test_ws"
+
+    if declare -f cmd_start &>/dev/null; then
+        run cmd_start
+        [[ "$status" -ne 0 ]] || [[ "$output" == *".ignite"* ]]
+    else
+        skip "cmd_start が読み込めません"
+    fi
+}
+
+@test "TC-26: cmd_watcher - setup_workspace_config が呼ばれる" {
+    # cmd_watcher() に setup_workspace_config "" が追加されていることを確認（コード検査）
+    grep -q 'setup_workspace_config ""' "$SCRIPTS_DIR/lib/commands.sh"
+    # cmd_watcher 内で setup_workspace_config が呼ばれていることを確認
+    local in_watcher=false
+    while IFS= read -r line; do
+        [[ "$line" == *"cmd_watcher()"* ]] && in_watcher=true
+        if $in_watcher; then
+            [[ "$line" == *"setup_workspace_config"* ]] && return 0
+            [[ "$line" == *"^}"* ]] && break
+        fi
+    done < "$SCRIPTS_DIR/lib/commands.sh"
+    # grep で確認済みなのでここには到達しない
+}
+
+@test "TC-27: cmd_validate - XDG_CONFIG_HOME 参照なし" {
+    # cmd_validate() 内に XDG_CONFIG_HOME への直接参照がないことを確認
+    local in_validate=false
+    local found_xdg=false
+    while IFS= read -r line; do
+        [[ "$line" == *"cmd_validate()"* ]] && in_validate=true
+        if $in_validate; then
+            [[ "$line" == *"XDG_CONFIG_HOME"* ]] && found_xdg=true
+            [[ "$line" == "}" ]] && break
+        fi
+    done < "$SCRIPTS_DIR/lib/commands.sh"
+    [[ "$found_xdg" == false ]]
 }

@@ -342,6 +342,11 @@ show_init_guide() {
         echo -e "${CYAN}ヒント:${NC} 既存のグローバル設定が検出されました。"
         echo -e "移行するには: ${YELLOW}ignite init --migrate${NC}"
         echo ""
+        echo -e "${CYAN}アップグレード時の注意:${NC}"
+        echo "  - github-app.yaml はセキュリティのため自動移行されません"
+        echo "  - credentials は環境変数での管理を推奨します"
+        echo "  - 移行後、旧ディレクトリは手動で削除してください"
+        echo ""
     fi
 }
 
