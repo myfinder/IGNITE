@@ -11,22 +11,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# =============================================================================
-# XDG パス解決（インストールモード vs 開発モード）
-# =============================================================================
-
-XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-
-# インストールモード判定: ~/.config/ignite/.install_paths が存在するか
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -f "$XDG_CONFIG_HOME/ignite/.install_paths" ]]; then
-        # インストールモード: XDGパスを使用
-        IGNITE_CONFIG_DIR="$XDG_CONFIG_HOME/ignite"
-    else
-        # 開発モード: PROJECT_ROOTを使用
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
-fi
+# IGNITE_CONFIG_DIR は .ignite/ から設定される（未設定時はPROJECT_ROOT/config）
+IGNITE_CONFIG_DIR="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
 
 # カラー定義
 GREEN='\033[0;32m'

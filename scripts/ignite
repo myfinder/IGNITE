@@ -25,6 +25,7 @@ source "${LIB_DIR}/cmd_status.sh"
 source "${LIB_DIR}/cmd_plan.sh"
 source "${LIB_DIR}/cmd_cost.sh"
 source "${LIB_DIR}/cmd_work_on.sh"
+source "${LIB_DIR}/cmd_init.sh"
 source "${LIB_DIR}/config_validator.sh"
 source "${LIB_DIR}/commands.sh"
 
@@ -42,6 +43,7 @@ main() {
         logs)     shift; cmd_logs "$@" ;;
         clean)    shift; cmd_clean "$@" ;;
         work-on)  shift; cmd_work_on "$@" ;;
+        init)     shift; cmd_init "$@" ;;
         watcher)  shift; cmd_watcher "$@" ;;
         validate) shift; cmd_validate "$@" ;;
         help)     shift; cmd_help "$@" ;;

@@ -322,6 +322,42 @@ validate_github_app_yaml() {
 }
 
 # =============================================================================
+# スキーマ関数: validate_workspace_config
+# =============================================================================
+
+# validate_workspace_config <workspace_dir>
+# ワークスペース .ignite/ の構成を検証
+# - github-app.yaml がワークスペースに存在する場合は警告
+# - 設定ファイルの妥当性チェック
+validate_workspace_config() {
+    local workspace_dir="$1"
+    local ignite_dir="${workspace_dir}/.ignite"
+
+    [[ -d "$ignite_dir" ]] || return 0  # .ignite/ なしは正常
+
+    echo "[INFO] 検証中: ワークスペース設定 ($ignite_dir)" >&2
+
+    # credentials がワークスペースに存在する場合は警告
+    if [[ -f "$ignite_dir/github-app.yaml" ]]; then
+        validation_warn "$ignite_dir/github-app.yaml" "(file)" \
+            "credentials がワークスペースに存在します。.gitignoreで除外済みですが、環境変数での管理も推奨します" \
+            "rm $ignite_dir/github-app.yaml"
+    fi
+
+    # .gitignore の存在チェック
+    if [[ ! -f "$ignite_dir/.gitignore" ]]; then
+        validation_warn "$ignite_dir" ".gitignore" \
+            ".gitignore がありません。ignite init で生成されます"
+    fi
+
+    # ワークスペース内の設定ファイルを個別検証
+    [[ -f "$ignite_dir/system.yaml" ]] && validate_system_yaml "$ignite_dir/system.yaml" || true
+    [[ -f "$ignite_dir/github-watcher.yaml" ]] && validate_watcher_yaml "$ignite_dir/github-watcher.yaml" || true
+
+    return 0
+}
+
+# =============================================================================
 # validate_all_configs <config_dir> <xdg_config_dir>
 # =============================================================================
 

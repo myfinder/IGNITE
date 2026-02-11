@@ -42,10 +42,17 @@ setup_session_name() {
     fi
 }
 
-# ワークスペースの設定（指定がなければデフォルト）
+# ワークスペースの設定（指定がなければ .ignite/ 自動検出 → デフォルト）
 setup_workspace() {
     if [[ -z "$WORKSPACE_DIR" ]]; then
-        WORKSPACE_DIR=$(get_default_workspace)
+        # CWD に .ignite/ があれば自動検出（Git方式）
+        if [[ -d "$(pwd)/.ignite" ]]; then
+            WORKSPACE_DIR="$(pwd)"
+            log_info "ワークスペース検出: $WORKSPACE_DIR"
+        else
+            WORKSPACE_DIR=$(get_default_workspace)
+            log_info "デフォルトワークスペース: $WORKSPACE_DIR"
+        fi
     fi
 }
 
@@ -76,9 +83,10 @@ session_exists() {
     tmux has-session -t "$SESSION_NAME" 2>/dev/null
 }
 
-# 設定ファイルからワーカー数を取得
+# 設定ファイルからワーカー数を取得（resolve_config でワークスペース優先）
 get_worker_count() {
-    local config_file="$IGNITE_CONFIG_DIR/system.yaml"
+    local config_file
+    config_file=$(resolve_config "system.yaml" 2>/dev/null) || config_file="$IGNITE_CONFIG_DIR/system.yaml"
     if [[ -f "$config_file" ]]; then
         local count
         count=$(yaml_get "$config_file" 'worker_count')

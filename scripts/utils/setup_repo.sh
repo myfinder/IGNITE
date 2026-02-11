@@ -101,7 +101,7 @@ get_default_branch() {
 # 設定ファイルからベースブランチを取得（なければデフォルトブランチ）
 get_base_branch() {
     local repo="$1"
-    local config_file="$PROJECT_ROOT/config/github-watcher.yaml"
+    local config_file="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}/github-watcher.yaml"
 
     if [[ -f "$config_file" ]]; then
         # リポジトリ別の設定を取得

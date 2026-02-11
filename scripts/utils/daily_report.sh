@@ -22,19 +22,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # バージョン取得（core.sh から）
 IGNITE_VERSION=$(grep -oP '^VERSION="\K[^"]+' "$SCRIPT_DIR/../lib/core.sh" 2>/dev/null || echo "unknown")
 
-# =============================================================================
-# XDG パス解決（インストールモード vs 開発モード）
-# =============================================================================
-
-XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -f "$XDG_CONFIG_HOME/ignite/.install_paths" ]]; then
-        IGNITE_CONFIG_DIR="$XDG_CONFIG_HOME/ignite"
-    else
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
-fi
+# IGNITE_CONFIG_DIR は .ignite/ から設定される（未設定時はPROJECT_ROOT/config）
+IGNITE_CONFIG_DIR="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
 
 # カラー定義
 GREEN='\033[0;32m'
