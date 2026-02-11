@@ -114,6 +114,13 @@ payload:
       issue_number: 123
       deliverables:
         - "README.md (基本構造)"
+      acceptance_criteria:
+        must:
+          - "Markdown形式が正しい"
+          - "必須セクション（概要、インストール、使用方法、ライセンス）が存在する"
+        should:
+          - "セクション構造が明確で読みやすい"
+          - "誤字脱字がない"
 
     - task_id: "task_002"
       title: "インストール手順作成"
@@ -540,6 +547,31 @@ sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; UPDATE strategist_s
 [義賀リオ] Innovatorの提案: バッジとContributingセクションを検討
 [義賀リオ] 戦略を修正します
 ```
+
+**8a. acceptance_criteria の統合（必須）**
+
+Evaluatorの `quality_plan_response` に含まれる `quality_criteria` を、
+task_list の各タスクの `acceptance_criteria` にマッピングする:
+
+- `quality_criteria[].criteria` → `acceptance_criteria.must`（必須基準）
+- `quality_criteria[].acceptance_threshold` の内容を `must` に含める
+- Evaluator が `evaluation_method` で示した検証方法を
+  IGNITIAN がセルフレビューで実施可能な形式に変換
+
+**マッピング具体例:**
+
+| quality_criteria の内容 | 変換先 | acceptance_criteria の記述 |
+|---|---|---|
+| `criteria: "単体テストカバレッジ80%以上"` | `must` | `"新規コードの単体テストカバレッジが80%以上である"` |
+| `acceptance_threshold: "全APIエンドポイントのレスポンス200ms以内"` | `must` | `"各APIエンドポイントのレスポンスが200ms以内である"` |
+| `evaluation_method: "コード実行テスト"` → IGNITIAN形式に変換 | `should` | `"サンプルコードが手動実行で正常動作する"` |
+
+> **原則**: Evaluator が策定した品質基準を、IGNITIAN が
+> セルフレビューで自己チェックできる粒度に変換して埋め込む。
+> 曖昧な基準（「適切である」等）は具体的な条件に置き換える。
+
+> **空配列の扱い**: `acceptance_criteria: { must: [], should: [] }` は基準未設定と同義。
+> この場合、IGNITIANは従来通りのセルフレビューで動作する。
 
 **9. 最終戦略の送信**
 ```
