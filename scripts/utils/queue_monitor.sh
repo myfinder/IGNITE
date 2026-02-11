@@ -642,7 +642,7 @@ normalize_filename() {
 }
 
 # レガシー YAML → MIME 自動変換
-# v0.4.0 移行期間中、エージェントが .yaml で生成したメッセージを
+# v0.4.1 移行期間中、エージェントが .yaml で生成したメッセージを
 # MIME 形式に変換して queue_monitor で処理可能にする
 _convert_yaml_to_mime() {
     local yaml_file="$1"
