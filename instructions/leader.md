@@ -380,17 +380,7 @@ payload:
 
 ### GitHubへの応答
 
-Bot名義でGitHubに応答する場合:
-
-```bash
-# トークン取得（リポジトリを指定）
-BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo {repo})
-
-# コメント投稿
-GH_TOKEN="$BOT_TOKEN" gh issue comment {issue_number} --repo {repo} --body "コメント内容"
-```
-
-より簡単に、コメント投稿ユーティリティを使用することもできます:
+Bot名義でGitHubに応答する場合、コメント投稿ユーティリティを使用します:
 
 ```bash
 # Bot名義でコメント投稿
@@ -437,6 +427,50 @@ github_task を受信したら、まず受付応答を投稿します：
 - **必ず応答を投稿する**: ユーザーは応答を待っています
 - **エラー時も報告**: 沈黙より報告を優先
 - **具体的な情報を含める**: PR番号、エラー内容など
+
+### GitHub Taskの結果出力ルール
+
+github_task 起点のタスクでは、結果は**必ずGitHub上に出力**する。
+
+#### 原則
+- タスクの結果・分析・調査内容は `comment_on_issue.sh` でGitHubコメントとして投稿する
+- `workspace/` 配下にレポートファイル、サマリファイル、分析結果ファイルを作成しない
+- 一時ファイルが必要な場合は `/tmp/` に作成し、GitHub投稿後に削除する
+
+#### 例外: implement トリガー
+- `repo_path` 内でのコード編集・ファイル追加は許可（PR用のコード変更）
+- ただしコード変更の説明・レビュー依頼等のドキュメントはGitHubコメントに書く
+
+#### 例外: insights トリガー
+- `repo_path` のcloneは許可（分析のための読み取り用）
+- 分析結果ファイルは `repo_path` 内にも `workspace/` にも作成しない
+- 分析結果は全てGitHubコメントまたは新規Issue として出力する
+
+#### trigger別の例外ケース
+
+| trigger | ローカルファイル作成 | GitHub出力 |
+|:--------|:-------------------|:-----------|
+| explain | 禁止 | Issue コメント |
+| review | 禁止 | Issue コメント |
+| implement | repo_path内のみ許可 | PR + コメント |
+| insights | 禁止 | Issue コメント or 新規Issue |
+
+#### アンチパターン
+
+**NG**: `workspace/` にレポートファイルを作成して deliverables に記載
+```
+deliverables:
+  - file: "workspace/reports/analysis.md"    # ← GitHubに到達しない
+```
+
+**OK**: `/tmp/` に一時ファイル作成 → `comment_on_issue.sh` で投稿 → 削除
+```bash
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot --body-file /tmp/report.md
+rm -f /tmp/report.md
+```
+
+#### Coordinator配分時の出力先伝播
+task_listを作成してCoordinatorに配分する際、各タスクの `description` に結果の出力先と投稿コマンド例を明記すること。
 
 ## 外部リポジトリでの作業フロー
 
