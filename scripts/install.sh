@@ -44,7 +44,7 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 # =============================================================================
 
 BIN_DIR="${IGNITE_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
-CONFIG_DIR="${IGNITE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/ignite}"
+CONFIG_DIR="${IGNITE_CONFIG_DIR:-$HOME/.ignite}"
 DATA_DIR="${IGNITE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ignite}"
 
 # インストールモードフラグ
@@ -64,7 +64,7 @@ IGNITE インストーラー v${VERSION}
 
 オプション:
   --bin-dir <path>     実行ファイルのインストール先 (デフォルト: ~/.local/bin)
-  --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.config/ignite)
+  --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.ignite)
   --data-dir <path>    データファイルのインストール先 (デフォルト: ~/.local/share/ignite)
   --upgrade            アップグレードモード (バイナリ・データは上書き、設定は保持)
   --force              既存ファイルをすべて上書き

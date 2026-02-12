@@ -162,23 +162,16 @@ post_comment() {
     local use_bot="$4"
 
     if [[ "$use_bot" == "true" ]]; then
-        # リポジトリを渡してトークン取得（Organization対応）
+        # キャッシュ付きBot Token取得（期限切れなら自動更新）
         local bot_token
         bot_token=$(get_bot_token "$repo")
         if [[ -n "$bot_token" ]]; then
             log_info "Bot名義でコメントを投稿中... (REST API)"
-            GH_TOKEN="$bot_token" gh api "/repos/${repo}/issues/${issue_number}/comments" \
-                -f body="$body" --silent
-            return $?
-        fi
-        # フォールバック: ペイン起動時の GH_TOKEN を確認
-        if [[ -n "${GH_TOKEN:-}" && "${GH_TOKEN}" == ghs_* ]]; then
-            log_warn "キャッシュBot Token取得失敗。環境変数GH_TOKENを使用します。"
-            if gh api "/repos/${repo}/issues/${issue_number}/comments" \
+            if GH_TOKEN="$bot_token" gh api "/repos/${repo}/issues/${issue_number}/comments" \
                 -f body="$body" --silent 2>/dev/null; then
                 return 0
             fi
-            log_warn "環境変数GH_TOKENでの投稿失敗（期限切れの可能性）。通常のトークンで投稿します。"
+            log_warn "Bot Tokenでの投稿失敗。通常のトークンで投稿します。"
         else
             log_warn "Bot Token取得失敗。通常のトークンで投稿します。"
         fi

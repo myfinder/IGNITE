@@ -41,7 +41,7 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 # =============================================================================
 
 BIN_DIR="${IGNITE_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
-CONFIG_DIR="${IGNITE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/ignite}"
+CONFIG_DIR="${IGNITE_CONFIG_DIR:-$HOME/.ignite}"
 DATA_DIR="${IGNITE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ignite}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ignite"
 

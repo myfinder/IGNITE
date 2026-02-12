@@ -10,8 +10,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # パス解決（PROJECT_ROOT ベース）
 # =============================================================================
 
-# 設定テンプレートディレクトリ（ignite init のコピー元）
-IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
+# 設定ディレクトリ解決:
+# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
+# 2. HOME/.ignite があればそちらを優先
+# 3. フォールバック: PROJECT_ROOT/config（テンプレート）
+if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
+    if [[ -d "${HOME}/.ignite" ]]; then
+        IGNITE_CONFIG_DIR="${HOME}/.ignite"
+    else
+        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
+    fi
+fi
 IGNITE_DATA_DIR="$PROJECT_ROOT"
 IGNITE_INSTRUCTIONS_DIR="$PROJECT_ROOT/instructions"
 IGNITE_CHARACTERS_DIR="$PROJECT_ROOT/characters"

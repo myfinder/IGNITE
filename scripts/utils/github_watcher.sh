@@ -15,6 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 
+# Bot Token / GitHub API 共通関数の読み込み
+source "${SCRIPT_DIR}/github_helpers.sh"
+
 # MIMEメッセージ構築ツール
 IGNITE_MIME="${SCRIPT_DIR}/../lib/ignite_mime.py"
 
@@ -404,43 +407,7 @@ is_user_authorized() {
 # イベント取得
 # =============================================================================
 
-# GitHub Appトークンを取得
-# 引数: $1 - リポジトリ名（owner/repo形式、オプション）
-get_bot_token() {
-    local repo="${1:-}"
-    local token_script="${SCRIPT_DIR}/get_github_app_token.sh"
-    local repo_option=""
-    local _token_rc=0
-    local _token_err
-    local _token_result=""
-
-    # リポジトリが指定されている場合は --repo オプションを使用（Organization対応）
-    if [[ -n "$repo" ]]; then
-        repo_option="--repo $repo"
-    fi
-
-    if [[ -f "$token_script" ]]; then
-        _token_err=$(mktemp)
-        # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
-        if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-            _token_result=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" \
-                "$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
-        else
-            _token_result=$("$token_script" $repo_option 2>>"$_token_err") || _token_rc=$?
-        fi
-        if [[ $_token_rc -ne 0 ]]; then
-            log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
-            [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
-            rm -f "$_token_err"
-            echo ""
-            return
-        fi
-        rm -f "$_token_err"
-        echo "$_token_result"
-    else
-        echo ""
-    fi
-}
+# get_bot_token() は github_helpers.sh から提供（キャッシュ + リトライ機構付き）
 
 # Issueイベントを取得
 fetch_issues() {
