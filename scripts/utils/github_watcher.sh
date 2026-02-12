@@ -8,19 +8,9 @@ set -u
 
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-# IGNITE_CONFIG_DIR の解決順序:
-# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
-# 2. WORKSPACE_DIR/.ignite/ が存在すればそれを使用（ワークスペース設定優先）
-# 3. フォールバック: PROJECT_ROOT/config
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}/.ignite" ]]; then
-        IGNITE_CONFIG_DIR="${WORKSPACE_DIR}/.ignite"
-    else
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
-fi
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
@@ -41,19 +31,7 @@ _SHUTDOWN_REQUESTED=false
 _SHUTDOWN_SIGNAL=""
 _EXIT_CODE=0
 
-# カラー定義
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
-log_info() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[INFO]${NC} $1" >&2; }
-log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[OK]${NC} $1" >&2; }
-log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[WARN]${NC} $1" >&2; }
-log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[ERROR]${NC} $1" >&2; }
+# スクリプト固有ログ（core.sh の log_* はカラー・タイムスタンプ付きで提供済み）
 log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1" >&2; }
 
 # =============================================================================

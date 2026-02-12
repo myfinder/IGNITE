@@ -22,35 +22,9 @@ if [[ -z "${SCRIPT_DIR:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-# IGNITE_CONFIG_DIR の解決順序:
-# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
-# 2. WORKSPACE_DIR/.ignite/ が存在すればそれを使用（ワークスペース設定優先）
-# 3. フォールバック: PROJECT_ROOT/config
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}/.ignite" ]]; then
-        IGNITE_CONFIG_DIR="${WORKSPACE_DIR}/.ignite"
-    else
-        _GH_HELPERS_PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-        IGNITE_CONFIG_DIR="$_GH_HELPERS_PROJECT_ROOT/config"
-    fi
-fi
-
-# =============================================================================
-# ログ関数（呼び出し元で未定義の場合のみ定義）
-# =============================================================================
-
-if ! declare -f log_info &>/dev/null; then
-    _GH_GREEN='\033[0;32m'
-    _GH_BLUE='\033[0;34m'
-    _GH_YELLOW='\033[1;33m'
-    _GH_RED='\033[0;31m'
-    _GH_NC='\033[0m'
-
-    log_info() { echo -e "${_GH_BLUE}[INFO]${_GH_NC} $1" >&2; }
-    log_success() { echo -e "${_GH_GREEN}[OK]${_GH_NC} $1" >&2; }
-    log_warn() { echo -e "${_GH_YELLOW}[WARN]${_GH_NC} $1" >&2; }
-    log_error() { echo -e "${_GH_RED}[ERROR]${_GH_NC} $1" >&2; }
-fi
+# core.sh から設定・カラー・ログ関数を取得
+source "${SCRIPT_DIR}/../lib/core.sh"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # =============================================================================
 # Bot Token 取得（キャッシュ + リトライ機構付き）

@@ -73,10 +73,11 @@ print_error() { echo -e "${RED}❌ $1${NC}" >&2; }
 print_header() { echo -e "${BOLD}${CYAN}=== $1 ===${NC}"; }
 
 # タイムスタンプ付きログ関数（stderr出力）
-log_info()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[INFO]${NC} $1" >&2; }
-log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[OK]${NC} $1" >&2; }
-log_warn()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[WARN]${NC} $1" >&2; }
-log_error()   { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[ERROR]${NC} $1" >&2; }
+# 第2引数でプレフィックスを任意指定可能（後方互換: 省略時はデフォルト値）
+log_info()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[${2:-INFO}]${NC} $1" >&2; }
+log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[${2:-OK}]${NC} $1" >&2; }
+log_warn()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[${2:-WARN}]${NC} $1" >&2; }
+log_error()   { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[${2:-ERROR}]${NC} $1" >&2; }
 
 # sed_inplace - GNU/BSD 両対応の sed -i ラッパー（mktemp方式）
 # Usage: sed_inplace "pattern" "file"

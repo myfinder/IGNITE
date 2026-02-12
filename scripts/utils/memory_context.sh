@@ -17,21 +17,9 @@ set -e
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# =============================================================================
-# カラー定義・ログ出力
-# =============================================================================
-
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[MEMORY_CTX]${NC} $1" >&2; }
-log_success() { echo -e "${GREEN}[MEMORY_CTX]${NC} $1" >&2; }
-log_warn() { echo -e "${YELLOW}[MEMORY_CTX]${NC} $1" >&2; }
-log_error() { echo -e "${RED}[MEMORY_CTX]${NC} $1" >&2; }
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # =============================================================================
 # データベースパス解決

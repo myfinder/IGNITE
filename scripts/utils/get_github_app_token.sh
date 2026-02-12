@@ -26,31 +26,16 @@ readonly EX_CONFIG=78
 
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-# IGNITE_CONFIG_DIR の解決順序:
-# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
-# 2. WORKSPACE_DIR/.ignite/ が存在すればそれを使用（ワークスペース設定優先）
-# 3. フォールバック: PROJECT_ROOT/config
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}/.ignite" ]]; then
-        IGNITE_CONFIG_DIR="${WORKSPACE_DIR}/.ignite"
-    else
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
-fi
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 
-# カラー定義
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-# エラー出力（stderrに出力）
-error() { echo -e "${RED}Error: $1${NC}" >&2; }
-warn() { echo -e "${YELLOW}Warning: $1${NC}" >&2; }
+# error/warn エイリアス（後方互換）
+error() { log_error "$1"; }
+warn() { log_warn "$1"; }
 
 # エラー + 修正手順を表示（stderrに出力）
 error_with_action() {

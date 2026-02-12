@@ -17,35 +17,12 @@ set -e
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
-# バージョン取得（core.sh から）
-IGNITE_VERSION=$(grep -oP '^VERSION="\K[^"]+' "$SCRIPT_DIR/../lib/core.sh" 2>/dev/null || echo "unknown")
-
-# IGNITE_CONFIG_DIR の解決順序:
-# 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
-# 2. WORKSPACE_DIR/.ignite/ が存在すればそれを使用（ワークスペース設定優先）
-# 3. フォールバック: PROJECT_ROOT/config
-if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}/.ignite" ]]; then
-        IGNITE_CONFIG_DIR="${WORKSPACE_DIR}/.ignite"
-    else
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
-fi
-
-# カラー定義
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-# ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
-log_info() { echo -e "${BLUE}[REPORT]${NC} $1" >&2; }
-log_success() { echo -e "${GREEN}[REPORT]${NC} $1" >&2; }
-log_warn() { echo -e "${YELLOW}[REPORT]${NC} $1" >&2; }
-log_error() { echo -e "${RED}[REPORT]${NC} $1" >&2; }
+# バージョン（core.sh から取得済み）
+IGNITE_VERSION="${VERSION:-unknown}"
 
 # =============================================================================
 # 定数

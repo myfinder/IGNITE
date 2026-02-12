@@ -23,7 +23,9 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # グレースフル停止用フラグ（trap内ではフラグを立てるだけ、exit()を呼ばない）
 _SHUTDOWN_REQUESTED=false
@@ -32,19 +34,6 @@ _EXIT_CODE=0
 
 # SIGHUP設定リロード用フラグ（trap内では直接設定変更を行わない）
 _RELOAD_REQUESTED=false
-
-# カラー定義
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-# ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
-log_info() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${BLUE}[QUEUE]${NC} $1" >&2; }
-log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[QUEUE]${NC} $1" >&2; }
-log_warn() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[QUEUE]${NC} $1" >&2; }
-log_error() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[QUEUE]${NC} $1" >&2; }
 
 # リトライ/DLQ ハンドラーの読み込み（SCRIPT_DIR/WORKSPACE_DIR保護）
 _QM_SCRIPT_DIR="$SCRIPT_DIR"
@@ -86,7 +75,7 @@ mime_update_status() {
 
 # Bot Token キャッシュのプリウォーム（有効期限前に更新）
 _refresh_bot_token_cache() {
-    local config_dir="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+    local config_dir="$IGNITE_CONFIG_DIR"
     local watcher_config="$config_dir/github-watcher.yaml"
     [[ -f "$watcher_config" ]] || return 0
 
@@ -116,8 +105,7 @@ POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
 TMUX_SESSION="${IGNITE_TMUX_SESSION:-}"
 
 # tmux window名を system.yaml から取得
-_QM_CONFIG_DIR="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
-TMUX_WINDOW_NAME=$(sed -n '/^tmux:/,/^[^ ]/p' "$_QM_CONFIG_DIR/system.yaml" 2>/dev/null \
+TMUX_WINDOW_NAME=$(sed -n '/^tmux:/,/^[^ ]/p' "$IGNITE_CONFIG_DIR/system.yaml" 2>/dev/null \
     | awk -F': ' '/^  window_name:/{print $2; exit}' | tr -d '"' | tr -d "'")
 TMUX_WINDOW_NAME="${TMUX_WINDOW_NAME:-ignite}"
 
@@ -128,7 +116,7 @@ _resolve_task_timeout() {
         echo "$_TASK_TIMEOUT"
         return
     fi
-    local config_dir="${IGNITE_CONFIG_DIR:-$PROJECT_ROOT/config}"
+    local config_dir="$IGNITE_CONFIG_DIR"
     local sys_yaml="${config_dir}/system.yaml"
     if declare -f yaml_get &>/dev/null && [[ -f "$sys_yaml" ]]; then
         _TASK_TIMEOUT=$(yaml_get "$sys_yaml" "task_timeout" "300")

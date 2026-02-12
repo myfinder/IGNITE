@@ -17,26 +17,15 @@ set -e
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "${SCRIPT_DIR}/../lib/core.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # =============================================================================
 # 共通関数の読み込み
 # =============================================================================
 
 source "${SCRIPT_DIR}/github_helpers.sh"
-
-# カラー定義（github_helpers.sh が定義済みなら上書きしない）
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-# ログ出力（github_helpers.sh のフォールバックと統一）
-log_info() { echo -e "${BLUE}[INSIGHT]${NC} $1" >&2; }
-log_success() { echo -e "${GREEN}[INSIGHT]${NC} $1" >&2; }
-log_warn() { echo -e "${YELLOW}[INSIGHT]${NC} $1" >&2; }
-log_error() { echo -e "${RED}[INSIGHT]${NC} $1" >&2; }
 
 # =============================================================================
 # 定数
