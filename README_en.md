@@ -708,6 +708,37 @@ ignite stop -y
 ignite start
 ```
 
+### ⚙️ GitHub Issue/PR Auto-Monitoring (GitHub Watcher)
+
+Automatically monitors GitHub Issues, PRs, and comments, and ingests them as tasks into the IGNITE system.
+
+**Quick Start:**
+
+```bash
+# Create configuration file
+cp config/github-watcher.yaml.example .ignite/github-watcher.yaml
+
+# Configure monitored repositories
+vi .ignite/github-watcher.yaml
+
+# Start with Watcher enabled
+ignite start --with-watcher
+```
+
+**Key Features:**
+
+- Polling-based monitoring of GitHub Issues/PRs/comments
+- Automatic task triggering via `@bot` mention detection
+- User-based access control via `access_control`
+- Wildcard (`*`) support for bulk repository specification
+- Workspace-specific configuration (`.ignite/github-watcher.yaml`)
+
+> **⚠️ When monitoring public repositories:** Enable `access_control` and explicitly set allowed users. Without this, anyone can trigger the Bot.
+
+> **💡 Tip:** Depending on the number of monitored repositories and polling interval, you may hit GitHub API rate limits. Check remaining quota with `gh api /rate_limit`.
+
+For detailed configuration, see [docs/github-watcher_en.md](docs/github-watcher_en.md).
+
 ### tmux Session Operations
 
 **Basic Operations:**

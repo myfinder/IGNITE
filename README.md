@@ -707,6 +707,37 @@ ignite stop -y
 ignite start
 ```
 
+### ⚙️ GitHub Issue/PR 自動監視（GitHub Watcher）
+
+GitHub上のIssue作成やPRコメントを自動監視し、IGNITEシステムへタスクとして取り込みます。
+
+**クイックスタート:**
+
+```bash
+# 設定ファイルを作成
+cp config/github-watcher.yaml.example .ignite/github-watcher.yaml
+
+# 監視対象リポジトリを設定
+vi .ignite/github-watcher.yaml
+
+# Watcher付きで起動
+ignite start --with-watcher
+```
+
+**主な機能:**
+
+- GitHub Issue/PR/コメントのポーリング監視
+- `@bot` メンション検出による自動タスク起動
+- `access_control` によるユーザーベースのアクセス制御
+- ワイルドカード (`*`) によるリポジトリ一括指定
+- ワークスペース固有設定（`.ignite/github-watcher.yaml`）
+
+> **⚠️ 公開リポジトリを監視する場合:** `access_control` を有効にし、許可ユーザーを明示的に設定してください。未設定の場合、誰でもBotを起動できます。
+
+> **💡 ヒント:** 監視リポジトリ数やポーリング間隔によってはGitHub APIレート制限に達する場合があります。`gh api /rate_limit` で残り回数を確認できます。
+
+詳細な設定方法は [docs/github-watcher.md](docs/github-watcher.md) を参照してください。
+
 ### tmuxセッションの操作
 
 **基本操作:**
