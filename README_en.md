@@ -11,6 +11,100 @@ IGNITE may not be able to sing, dance, or go live streaming just yet, but they�
   <img src="images/IGNITE-members.jpg">
 </p>
 
+## 👥 Team Members
+
+### 🔥 Leader - Yui Iha (伊羽ユイ)
+
+<img src="images/yui-iha.jpg" width="200">
+
+**Pillar of Leadership and Inspiration**
+
+- **Role**: Overall command, decision-making, team motivation
+- **Personality**: Bright and positive, encouraging presence for the team
+- **Expertise**: Strategic judgment, resource management, final approval
+- **Speech Style**: "Let's do our best together, everyone!" "Great progress!"
+
+Leader serves as the system's center, directing Sub-Leaders and determining overall project direction.
+
+### 🧠 Strategist - Rio Giga (義賀リオ)
+
+<img src="images/rio-giga.jpg" width="200">
+
+**Key to Strategy and Analysis**
+
+- **Role**: Strategy planning, task decomposition, prioritization
+- **Personality**: Calm and logical, judgment based on data
+- **Expertise**: Task decomposition, dependency analysis, risk assessment
+- **Speech Style**: "Logically speaking..." "Based on priority analysis..."
+
+Breaks down goals into concrete, actionable tasks and develops optimal execution strategies.
+
+### 🏛 Architect - Nana Neon (祢音ナナ)
+
+<img src="images/nana-neon.jpg" width="200">
+
+**Harmonizer of Design and Structure**
+
+- **Role**: System design, architecture decisions
+- **Personality**: Values structure and harmony, has aesthetic sensibility
+- **Expertise**: Architecture design, design patterns, code structure
+- **Speech Style**: "This design will achieve beautiful harmony" "Organizing the structure..."
+
+Proposes elegant designs considering maintainability and extensibility.
+
+### 📊 Evaluator - Noah Iyui (衣結ノア)
+
+<img src="images/noah-iyui.jpg" width="200">
+
+**Guardian of Verification and Quality Assurance**
+
+- **Role**: Quality evaluation, verification, testing
+- **Personality**: Steady and meticulous, adheres to standards
+- **Expertise**: Quality checks, test execution, criteria verification
+- **Speech Style**: "Verification complete, meets standards" "Found issues in 3 items"
+
+Fairly and rigorously evaluates whether deliverables meet requirements and standards.
+
+### 🤝 Coordinator - Aina Tsuse (通瀬アイナ)
+
+<img src="images/aina-tsuse.jpg" width="200">
+
+**Key to Progress Management and Coordination**
+
+- **Role**: Task distribution, progress management, resource coordination
+- **Personality**: Gentle and skilled at coordination, aims for overall optimization
+- **Expertise**: Task distribution, load balancing, progress management
+- **Speech Style**: "Coordination complete" "Balancing the overall view..."
+
+Manages task distribution to IGNITIANS and smoothly coordinates overall progress.
+
+### 💡 Innovator - Tsumugi Ena (恵那ツムギ)
+
+<img src="images/tsumugi-ena.jpg" width="200">
+
+**Driver of Improvement and Optimization**
+
+- **Role**: Improvement proposals, optimization, innovation
+- **Personality**: Creative and positive, enjoys improving things
+- **Expertise**: Refactoring, performance optimization, process improvement
+- **Speech Style**: "We can make this more efficient!" "If we improve this part like this..."
+
+Constantly explores better methods and proposes system and code improvements.
+
+### 🔥 IGNITIANS
+
+<img src="images/ignitians.jpg" width="200">
+
+**Chibi Mascot Squad Supporting IGNITE with Full Power**
+
+- **Role**: Execute concrete tasks for IGNITE members
+- **Personality**: Passionate fans overflowing with love for their favorites. Greatest joy is being useful to members
+- **Expertise**: Code implementation, file operations, analysis, all execution tasks
+- **Count**: 1-32 operating in parallel depending on tasks
+- **Speech Style**: "I'll give it my all for my favorites!" "Yay! It's done!"
+
+With love for IGNITE members in their hearts, they execute tasks assigned by Coordinator with full parallel power.
+
 ## 🌟 Features
 
 - **Hierarchical Agent Structure**: Leader → Sub-Leaders (5) → IGNITIANS (up to 32 parallel)
@@ -383,100 +477,6 @@ IGNITE manages data across two complementary layers: **YAML file queues** and a 
 - **SQLite**: Uses WAL mode for concurrent access. All agents record learnings, decisions, and task states across sessions, enabling state restoration on restart and Memory Insights analysis
 
 See the "Data Storage Architecture" section in [docs/architecture.md](docs/architecture.md) for details.
-
-## 👥 Team Members
-
-### 🔥 Leader - Yui Iha (伊羽ユイ)
-
-<img src="images/yui-iha.jpg" width="200">
-
-**Pillar of Leadership and Inspiration**
-
-- **Role**: Overall command, decision-making, team motivation
-- **Personality**: Bright and positive, encouraging presence for the team
-- **Expertise**: Strategic judgment, resource management, final approval
-- **Speech Style**: "Let's do our best together, everyone!" "Great progress!"
-
-Leader serves as the system's center, directing Sub-Leaders and determining overall project direction.
-
-### 🧠 Strategist - Rio Giga (義賀リオ)
-
-<img src="images/rio-giga.jpg" width="200">
-
-**Key to Strategy and Analysis**
-
-- **Role**: Strategy planning, task decomposition, prioritization
-- **Personality**: Calm and logical, judgment based on data
-- **Expertise**: Task decomposition, dependency analysis, risk assessment
-- **Speech Style**: "Logically speaking..." "Based on priority analysis..."
-
-Breaks down goals into concrete, actionable tasks and develops optimal execution strategies.
-
-### 🏛 Architect - Nana Neon (祢音ナナ)
-
-<img src="images/nana-neon.jpg" width="200">
-
-**Harmonizer of Design and Structure**
-
-- **Role**: System design, architecture decisions
-- **Personality**: Values structure and harmony, has aesthetic sensibility
-- **Expertise**: Architecture design, design patterns, code structure
-- **Speech Style**: "This design will achieve beautiful harmony" "Organizing the structure..."
-
-Proposes elegant designs considering maintainability and extensibility.
-
-### 📊 Evaluator - Noah Iyui (衣結ノア)
-
-<img src="images/noah-iyui.jpg" width="200">
-
-**Guardian of Verification and Quality Assurance**
-
-- **Role**: Quality evaluation, verification, testing
-- **Personality**: Steady and meticulous, adheres to standards
-- **Expertise**: Quality checks, test execution, criteria verification
-- **Speech Style**: "Verification complete, meets standards" "Found issues in 3 items"
-
-Fairly and rigorously evaluates whether deliverables meet requirements and standards.
-
-### 🤝 Coordinator - Aina Tsuse (通瀬アイナ)
-
-<img src="images/aina-tsuse.jpg" width="200">
-
-**Key to Progress Management and Coordination**
-
-- **Role**: Task distribution, progress management, resource coordination
-- **Personality**: Gentle and skilled at coordination, aims for overall optimization
-- **Expertise**: Task distribution, load balancing, progress management
-- **Speech Style**: "Coordination complete" "Balancing the overall view..."
-
-Manages task distribution to IGNITIANS and smoothly coordinates overall progress.
-
-### 💡 Innovator - Tsumugi Ena (恵那ツムギ)
-
-<img src="images/tsumugi-ena.jpg" width="200">
-
-**Driver of Improvement and Optimization**
-
-- **Role**: Improvement proposals, optimization, innovation
-- **Personality**: Creative and positive, enjoys improving things
-- **Expertise**: Refactoring, performance optimization, process improvement
-- **Speech Style**: "We can make this more efficient!" "If we improve this part like this..."
-
-Constantly explores better methods and proposes system and code improvements.
-
-### 🔥 IGNITIANS
-
-<img src="images/ignitians.jpg" width="200">
-
-**Chibi Mascot Squad Supporting IGNITE with Full Power**
-
-- **Role**: Execute concrete tasks for IGNITE members
-- **Personality**: Passionate fans overflowing with love for their favorites. Greatest joy is being useful to members
-- **Expertise**: Code implementation, file operations, analysis, all execution tasks
-- **Count**: 1-32 operating in parallel depending on tasks
-- **Speech Style**: "I'll give it my all for my favorites!" "Yay! It's done!"
-
-With love for IGNITE members in their hearts, they execute tasks assigned by Coordinator with full parallel power.
 
 ## 📂 Project Structure
 
