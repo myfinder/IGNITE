@@ -57,6 +57,35 @@ For GitHub App setup, see [github-app-setup_en.md](./github-app-setup_en.md).
 cp config/github-watcher.yaml.example config/github-watcher.yaml
 ```
 
+#### Workspace-Specific Configuration
+
+When using different monitoring settings across multiple workspaces, you can place configuration files within each workspace directory.
+
+```bash
+# Automatically created during workspace initialization
+ignite init -w /path/to/workspace
+
+# Or copy manually
+cp config/github-watcher.yaml.example /path/to/workspace/.ignite/github-watcher.yaml
+```
+
+**Configuration Resolution Priority:**
+
+| Priority | Source | Path |
+|---|---|---|
+| 1 (Highest) | Environment variable | `IGNITE_WATCHER_CONFIG` |
+| 2 | Workspace-specific | `<workspace>/.ignite/github-watcher.yaml` |
+| 3 | User default | `~/.ignite/github-watcher.yaml` |
+| 4 (Lowest) | Project default | `config/github-watcher.yaml` |
+
+**Starting with a specific workspace:**
+
+```bash
+ignite start -w /path/to/workspace --with-watcher
+```
+
+> **⚠️ Note:** Monitoring the same repository from multiple workspaces may cause duplicate event processing. It is recommended to limit repository monitoring to a single workspace.
+
 ### 2. Configure Monitored Repositories
 
 ```yaml

@@ -57,6 +57,35 @@ GitHub Appの設定については [github-app-setup.md](./github-app-setup.md) 
 cp config/github-watcher.yaml.example config/github-watcher.yaml
 ```
 
+#### ワークスペース固有設定
+
+複数のワークスペースで異なる監視設定を使用する場合、ワークスペースディレクトリ内に設定ファイルを配置できます。
+
+```bash
+# ワークスペース初期化時に自動作成される
+ignite init -w /path/to/workspace
+
+# または手動でコピー
+cp config/github-watcher.yaml.example /path/to/workspace/.ignite/github-watcher.yaml
+```
+
+**設定解決の優先順位:**
+
+| 優先度 | 設定ソース | パス |
+|---|---|---|
+| 1（最高） | 環境変数 | `IGNITE_WATCHER_CONFIG` |
+| 2 | ワークスペース固有 | `<workspace>/.ignite/github-watcher.yaml` |
+| 3 | ユーザーデフォルト | `~/.ignite/github-watcher.yaml` |
+| 4（最低） | プロジェクトデフォルト | `config/github-watcher.yaml` |
+
+**ワークスペース指定での起動:**
+
+```bash
+ignite start -w /path/to/workspace --with-watcher
+```
+
+> **⚠️ 注意:** 複数のワークスペースで同一リポジトリを監視すると、同じイベントが重複処理されるリスクがあります。リポジトリの監視は1つのワークスペースに限定することを推奨します。
+
 ### 2. 監視対象リポジトリの設定
 
 ```yaml
