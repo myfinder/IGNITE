@@ -19,6 +19,9 @@ source "${SCRIPT_DIR}/../lib/core.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
+# Bot Token / GitHub API / Git操作ラッパーの読み込み
+source "${SCRIPT_DIR}/github_helpers.sh"
+
 # =============================================================================
 # ヘルプ
 # =============================================================================
@@ -95,7 +98,7 @@ rebase_pr() {
 
     # ベースブランチを更新
     log_info "ベースブランチを更新中..."
-    git fetch origin "$base_branch"
+    safe_git_fetch origin "$base_branch"
 
     # リベース実行
     log_info "リベースを実行中..."
@@ -225,7 +228,7 @@ push() {
     current_branch=$(git branch --show-current)
     log_info "ブランチ $current_branch をプッシュ中..."
 
-    git push
+    safe_git_push
 
     log_success "プッシュ完了"
 }
@@ -240,7 +243,7 @@ force_push() {
     current_branch=$(git branch --show-current)
     log_info "ブランチ $current_branch を force push 中..."
 
-    git push --force-with-lease
+    safe_git_push --force-with-lease
 
     log_success "Force push 完了"
 }

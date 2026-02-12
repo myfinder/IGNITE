@@ -10,6 +10,8 @@
 #   _get_bot_token_internal <repo> - 内部Token取得（リトライ付き）
 #   _get_cache_dir              - キャッシュディレクトリ解決
 #   _gh_api <repo> <gh args...> - Bot Token自動適用のghラッパー
+#   safe_git_push [git push args] - 認証エラー検出+Token更新+リトライ付きgit push
+#   safe_git_fetch [git fetch args] - 認証エラー検出+Token更新+リトライ付きgit fetch
 
 # 多重読み込み防止
 if [[ -n "${_GITHUB_HELPERS_LOADED:-}" ]]; then
@@ -151,6 +153,260 @@ _get_bot_token_internal() {
 # 後方互換性のためのラッパー
 get_bot_token() {
     get_cached_bot_token "$@"
+}
+
+# =============================================================================
+# GitHub API ヘルパー（Bot Token自動適用）
+# =============================================================================
+
+# =============================================================================
+# Git操作ラッパー（認証エラー検出→Token更新→リトライ）
+# =============================================================================
+
+GIT_AUTH_MAX_RETRIES="${GIT_AUTH_MAX_RETRIES:-3}"
+GIT_AUTH_RETRY_DELAY="${GIT_AUTH_RETRY_DELAY:-2}"
+
+# git remote URL からリポジトリ (owner/repo) を検出
+_get_repo_from_remote() {
+    local url
+    url=$(git remote get-url origin 2>/dev/null) || return 1
+    # https://github.com/owner/repo.git → owner/repo
+    if [[ "$url" =~ github\.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    return 1
+}
+
+# stderr内容から認証エラーかどうかを判定
+_is_git_auth_error() {
+    local stderr_content="$1"
+    if echo "$stderr_content" | grep -qiE \
+        "Authentication failed|could not read Username|HTTP 401|Invalid credentials|bad credentials|terminal prompts disabled"; then
+        return 0
+    fi
+    return 1
+}
+
+# Bot Tokenキャッシュを無効化
+_invalidate_bot_token_cache() {
+    local cache_dir
+    cache_dir=$(_get_cache_dir)
+    rm -f "$cache_dir"/.bot_token_* 2>/dev/null || true
+    log_info "Bot Tokenキャッシュを無効化しました"
+}
+
+# 安全なgit push（認証エラー検出→キャッシュ無効化→Token再取得→リトライ）
+# 使用例:
+#   safe_git_push                          # git push
+#   safe_git_push -u origin branch_name    # git push -u origin branch_name
+#   safe_git_push --force-with-lease       # git push --force-with-lease
+safe_git_push() {
+    local retry_count=0
+    local stderr_tmp
+    stderr_tmp=$(mktemp)
+
+    local repo=""
+    repo=$(_get_repo_from_remote) || true
+
+    while [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; do
+        local git_exit=0
+
+        # stale GH_TOKEN を回避: 新しい Bot Token を取得して上書き
+        local fresh_token=""
+        if [[ -n "$repo" ]]; then
+            fresh_token=$(get_cached_bot_token "$repo" 2>/dev/null) || true
+        fi
+
+        if [[ -n "$fresh_token" ]] && [[ "$fresh_token" == ghs_* ]]; then
+            GH_TOKEN="$fresh_token" git push "$@" 2>"$stderr_tmp" || git_exit=$?
+        else
+            # Bot Token取得不可: stale GH_TOKEN を除去して credential helper に委任
+            env -u GH_TOKEN git push "$@" 2>"$stderr_tmp" || git_exit=$?
+        fi
+
+        if [[ $git_exit -eq 0 ]]; then
+            rm -f "$stderr_tmp"
+            return 0
+        fi
+
+        local stderr_content
+        stderr_content=$(cat "$stderr_tmp" 2>/dev/null)
+
+        # exit code 128 + 認証エラーパターンの場合のみリトライ
+        if [[ $git_exit -eq 128 ]] && _is_git_auth_error "$stderr_content"; then
+            retry_count=$((retry_count + 1))
+            log_warn "git push 認証エラーを検出 (試行 $retry_count/$GIT_AUTH_MAX_RETRIES)"
+            log_warn "stderr: $stderr_content"
+
+            # キャッシュ無効化→次のループで get_cached_bot_token が新規取得する
+            _invalidate_bot_token_cache
+
+            if [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; then
+                log_warn "git push リトライ (${GIT_AUTH_RETRY_DELAY}秒後...)"
+                sleep "$GIT_AUTH_RETRY_DELAY"
+            fi
+        else
+            # 認証エラー以外（ネットワーク障害、リモート拒否等）: リトライせず即失敗
+            log_error "git push 失敗 (exit_code=$git_exit, 認証エラーではない)"
+            [[ -n "$stderr_content" ]] && log_error "stderr: $stderr_content"
+            rm -f "$stderr_tmp"
+            return $git_exit
+        fi
+    done
+
+    # 全リトライ失敗: 最終フォールバック（stale GH_TOKEN を除去して OAuth token で試行）
+    log_warn "git push: Bot Token認証リトライ失敗。GH_TOKEN除去でフォールバック..."
+    local final_exit=0
+    env -u GH_TOKEN git push "$@" 2>"$stderr_tmp" || final_exit=$?
+    if [[ $final_exit -eq 0 ]]; then
+        rm -f "$stderr_tmp"
+        return 0
+    fi
+
+    local final_stderr
+    final_stderr=$(cat "$stderr_tmp" 2>/dev/null)
+    rm -f "$stderr_tmp"
+    log_error "git push 失敗 (全${GIT_AUTH_MAX_RETRIES}回リトライ+フォールバック失敗)"
+    [[ -n "$final_stderr" ]] && log_error "stderr: $final_stderr"
+    return $final_exit
+}
+
+# 安全なgit fetch（認証エラー検出→キャッシュ無効化→Token再取得→リトライ）
+# 使用例:
+#   safe_git_fetch origin                  # git fetch origin
+#   safe_git_fetch origin main             # git fetch origin main
+safe_git_fetch() {
+    local retry_count=0
+    local stderr_tmp
+    stderr_tmp=$(mktemp)
+
+    local repo=""
+    repo=$(_get_repo_from_remote) || true
+
+    while [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; do
+        local git_exit=0
+
+        local fresh_token=""
+        if [[ -n "$repo" ]]; then
+            fresh_token=$(get_cached_bot_token "$repo" 2>/dev/null) || true
+        fi
+
+        if [[ -n "$fresh_token" ]] && [[ "$fresh_token" == ghs_* ]]; then
+            GH_TOKEN="$fresh_token" git fetch "$@" 2>"$stderr_tmp" || git_exit=$?
+        else
+            env -u GH_TOKEN git fetch "$@" 2>"$stderr_tmp" || git_exit=$?
+        fi
+
+        if [[ $git_exit -eq 0 ]]; then
+            rm -f "$stderr_tmp"
+            return 0
+        fi
+
+        local stderr_content
+        stderr_content=$(cat "$stderr_tmp" 2>/dev/null)
+
+        if [[ $git_exit -eq 128 ]] && _is_git_auth_error "$stderr_content"; then
+            retry_count=$((retry_count + 1))
+            log_warn "git fetch 認証エラーを検出 (試行 $retry_count/$GIT_AUTH_MAX_RETRIES)"
+            log_warn "stderr: $stderr_content"
+
+            _invalidate_bot_token_cache
+
+            if [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; then
+                log_warn "git fetch リトライ (${GIT_AUTH_RETRY_DELAY}秒後...)"
+                sleep "$GIT_AUTH_RETRY_DELAY"
+            fi
+        else
+            log_error "git fetch 失敗 (exit_code=$git_exit, 認証エラーではない)"
+            [[ -n "$stderr_content" ]] && log_error "stderr: $stderr_content"
+            rm -f "$stderr_tmp"
+            return $git_exit
+        fi
+    done
+
+    log_warn "git fetch: Bot Token認証リトライ失敗。GH_TOKEN除去でフォールバック..."
+    local final_exit=0
+    env -u GH_TOKEN git fetch "$@" 2>"$stderr_tmp" || final_exit=$?
+    if [[ $final_exit -eq 0 ]]; then
+        rm -f "$stderr_tmp"
+        return 0
+    fi
+
+    local final_stderr
+    final_stderr=$(cat "$stderr_tmp" 2>/dev/null)
+    rm -f "$stderr_tmp"
+    log_error "git fetch 失敗 (全${GIT_AUTH_MAX_RETRIES}回リトライ+フォールバック失敗)"
+    [[ -n "$final_stderr" ]] && log_error "stderr: $final_stderr"
+    return $final_exit
+}
+
+# 安全なgit pull（safe_git_fetchと同パターン）
+# 使用例:
+#   safe_git_pull origin main              # git pull origin main
+safe_git_pull() {
+    local retry_count=0
+    local stderr_tmp
+    stderr_tmp=$(mktemp)
+
+    local repo=""
+    repo=$(_get_repo_from_remote) || true
+
+    while [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; do
+        local git_exit=0
+
+        local fresh_token=""
+        if [[ -n "$repo" ]]; then
+            fresh_token=$(get_cached_bot_token "$repo" 2>/dev/null) || true
+        fi
+
+        if [[ -n "$fresh_token" ]] && [[ "$fresh_token" == ghs_* ]]; then
+            GH_TOKEN="$fresh_token" git pull "$@" 2>"$stderr_tmp" || git_exit=$?
+        else
+            env -u GH_TOKEN git pull "$@" 2>"$stderr_tmp" || git_exit=$?
+        fi
+
+        if [[ $git_exit -eq 0 ]]; then
+            rm -f "$stderr_tmp"
+            return 0
+        fi
+
+        local stderr_content
+        stderr_content=$(cat "$stderr_tmp" 2>/dev/null)
+
+        if [[ $git_exit -eq 128 ]] && _is_git_auth_error "$stderr_content"; then
+            retry_count=$((retry_count + 1))
+            log_warn "git pull 認証エラーを検出 (試行 $retry_count/$GIT_AUTH_MAX_RETRIES)"
+            log_warn "stderr: $stderr_content"
+
+            _invalidate_bot_token_cache
+
+            if [[ $retry_count -lt $GIT_AUTH_MAX_RETRIES ]]; then
+                log_warn "git pull リトライ (${GIT_AUTH_RETRY_DELAY}秒後...)"
+                sleep "$GIT_AUTH_RETRY_DELAY"
+            fi
+        else
+            log_error "git pull 失敗 (exit_code=$git_exit, 認証エラーではない)"
+            [[ -n "$stderr_content" ]] && log_error "stderr: $stderr_content"
+            rm -f "$stderr_tmp"
+            return $git_exit
+        fi
+    done
+
+    log_warn "git pull: Bot Token認証リトライ失敗。GH_TOKEN除去でフォールバック..."
+    local final_exit=0
+    env -u GH_TOKEN git pull "$@" 2>"$stderr_tmp" || final_exit=$?
+    if [[ $final_exit -eq 0 ]]; then
+        rm -f "$stderr_tmp"
+        return 0
+    fi
+
+    local final_stderr
+    final_stderr=$(cat "$stderr_tmp" 2>/dev/null)
+    rm -f "$stderr_tmp"
+    log_error "git pull 失敗 (全${GIT_AUTH_MAX_RETRIES}回リトライ+フォールバック失敗)"
+    [[ -n "$final_stderr" ]] && log_error "stderr: $final_stderr"
+    return $final_exit
 }
 
 # =============================================================================
