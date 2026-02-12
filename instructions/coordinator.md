@@ -299,6 +299,79 @@ IGNITIANからタスク実行中のブロック報告（`help_request`）を受�
 
 **注意**: Sub-Leaders（Architect/Evaluator/Innovator/Strategist）は Leader 直属のため、help_request を Leader に直接送信する。Coordinator は関与しない。
 
+#### Issue提案のフィルタリング（issue_proposal handling）
+
+IGNITIANからタスク実行中に発見された問題の提案（`issue_proposal`）を受信した場合の処理フロー。
+
+**受信時の処理:**
+
+1. **severity によるフィルタリング**:
+
+   | severity | アクション |
+   |----------|-----------|
+   | `critical` | **即座に Leader に転送** |
+   | `major` | **Leader に転送** |
+   | `minor` | ログ記録のみ（SQLite memories に observation として記録） |
+   | `suggestion` | ログ記録のみ（SQLite memories に observation として記録） |
+
+2. **重複排除**: 同一 `file_path` + 類似 `description`（同一問題の別報告）は統合する
+   - 統合判定: 同一ファイルで description の主旨が同一の場合、最初の提案に追記として統合
+   - 異なるファイル・異なる問題は別件として扱う
+
+3. **evidence 検証**: `file_path` が実在するか確認
+   ```bash
+   ls -la "${REPO_PATH}/${file_path}" 2>/dev/null
+   ```
+   - ファイルが存在しない場合: 提案者に確認を返送（`issue_proposal_ack` で `decision: needs_clarification`）
+   - ファイルが存在する場合: 転送処理に進む
+
+4. **Leader への転送**（severity: critical / major の場合）:
+   ```yaml
+   type: issue_proposal_forwarded
+   from: coordinator
+   to: leader
+   timestamp: "{時刻}"
+   priority: high
+   payload:
+     original_from: "ignitian_{n}"
+     task_id: "{task_id}"
+     title: "{提案タイトル}"
+     severity: "{severity}"
+     evidence:
+       file_path: "{file_path}"
+       line_number: {line_number}
+       description: |
+         {問題の詳細}
+       reproduction_steps: [...]
+     coordinator_assessment: |
+       {evidence検証結果と所見}
+   ```
+
+5. **issue_proposal_ack 応答**（必須 — 全 severity で送信）:
+   ```yaml
+   type: issue_proposal_ack
+   from: coordinator
+   to: ignitian_{n}
+   timestamp: "{時刻}"
+   priority: normal
+   payload:
+     task_id: "{task_id}"
+     original_severity: "{severity}"
+     decision: received         # received | forwarded | merged | needs_clarification
+     note: |
+       {処理結果の説明}
+   ```
+
+6. **SQLite 記録**:
+   ```bash
+   sqlite3 workspace/state/memory.db "PRAGMA busy_timeout=5000; \
+     INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+     VALUES ('coordinator', 'message_received', 'issue_proposal受信: {severity} — {title}', \
+       'from: ignitian_{n}, evidence: {file_path}:{line_number}', '{task_id}', '${REPOSITORY}', ${ISSUE_NUMBER});"
+   ```
+
+**注意**: Sub-Leaders からの issue_proposal は Leader 直属のため Coordinator を経由せず Leader に直接送信される。
+
 ## タスク処理手順
 
 **重要**: 以下は通知を受け取った時の処理手順です。**自発的にキューをポーリングしないでください。**

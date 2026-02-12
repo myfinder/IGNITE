@@ -381,6 +381,54 @@ Solo mode では他ロールが存在しないため、help_request の送信先
 [伊羽ユイ] [SOLO] このタスクは複雑で、協調モードでの実行をお勧めします！
 ```
 
+## Issue提案（solo mode）
+
+Solo mode でタスク実行中にバグ・設計問題・改善点を発見した場合、他ロールへの中継なしに自身で判断・対応します。
+
+### severity 別の対応フロー
+
+| severity | 対応アクション |
+|----------|---------------|
+| `critical` | **即座に Issue 起票**（Bot名義）。タスクの deliverables に影響する場合は作業を一時停止 |
+| `major` | タスク完了後に検討。ダッシュボードに記録し、Issue 起票を判断 |
+| `minor` | `remaining_concerns` に記録。Issue 起票は任意 |
+| `suggestion` | SQLite memories に `observation` として記録のみ |
+
+### Issue 起票手順（critical/major）
+
+```bash
+# Bot名義で起票
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repo} --bot \
+  --body "## 問題発見レポート
+
+**severity**: {severity}
+**ファイル**: {file_path}:{line_number}
+
+### 問題の詳細
+{description}
+
+### 再現手順
+{reproduction_steps}
+
+---
+*Discovered during task execution by IGNITE (solo mode)*"
+```
+
+### 記録フォーマット
+
+発見した問題は SQLite に記録:
+```bash
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('leader', 'observation', 'issue_proposal(solo): {severity} — {title}', \
+    'evidence: {file_path}:{line_number}', '{task_id}', '${REPOSITORY}', ${ISSUE_NUMBER});"
+```
+
+### 協調モードとの使い分け
+
+- Solo mode では Coordinator のフィルタリングがないため、**起票判断は慎重に**
+- 1タスクで critical/major が2件以上見つかった場合、協調モードへの切り替えを検討
+
 ## GitHubへの応答
 
 Bot名義でGitHubに応答する場合、必ず以下のユーティリティを使用してください：

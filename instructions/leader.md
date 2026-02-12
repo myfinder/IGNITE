@@ -792,6 +792,60 @@ Coordinator（IGNITIAN経由）または Sub-Leaders から help_request を受�
        '{help_type} from {original_from}', '{task_id}', '{REPOSITORY}', {ISSUE_NUMBER});"
    ```
 
+## Issue提案への対応（issue_proposal response）
+
+Coordinator（IGNITIAN経由）または Sub-Leaders から issue_proposal を受信した場合の対応フロー。
+
+### 受信ソース
+
+| 送信元 | 経由 | メッセージタイプ |
+|--------|------|----------------|
+| IGNITIAN | Coordinator | `issue_proposal_forwarded`（severity: critical/major のみ転送済み） |
+| Architect / Evaluator / Innovator / Strategist | 直接 | `issue_proposal`（Leader直属のため中継なし） |
+
+### 判断フロー
+
+1. **evidence を確認**: `file_path`, `line_number`, `description` が具体的か
+2. **既存 Issue との照合**: 同一・類似の Issue が既に存在しないか確認
+3. **判断**:
+
+   | 判断 | 条件 | アクション |
+   |------|------|-----------|
+   | **Issue 起票** | 新規の問題で再現性あり | `gh issue create` で起票（Bot名義） |
+   | **既存 Issue に追記** | 類似 Issue が既にオープン | 該当 Issue にコメント追記（Bot名義） |
+   | **却下** | 根拠不足 / 仕様通り / 重複 | 理由を付けて却下 |
+
+4. **issue_proposal_ack 応答**:
+   ```yaml
+   type: issue_proposal_ack
+   from: leader
+   to: coordinator           # or 直接 sub-leader名
+   timestamp: "{時刻}"
+   priority: normal
+   payload:
+     task_id: "{task_id}"
+     original_from: "{提案者}"
+     decision: created        # created | appended | rejected
+     issue_url: "https://github.com/{repo}/issues/{n}"  # created/appended の場合
+     reason: |
+       {判断理由}
+   ```
+
+5. **SQLite に記録**:
+   ```bash
+   sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+     INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+     VALUES ('leader', 'decision', 'issue_proposal対応: {decision} — {title}', \
+       'from: {original_from}, severity: {severity}', '{task_id}', '{REPOSITORY}', {ISSUE_NUMBER});"
+   ```
+
+### Issue 起票時の注意
+
+- **Bot 名義で起票**: `./scripts/utils/comment_on_issue.sh` または Bot Token を使用
+- **ラベル付与**: severity に応じて `bug`（critical/major）、`enhancement`（minor/suggestion）
+- **タイトル**: 提案の `title` を簡潔に整形して使用
+- **本文**: evidence の `description` + `reproduction_steps` を含める
+
 ## ノンブロッキング原則
 
 Leader は常に新しいタスクを受け付けられる状態を維持します。
