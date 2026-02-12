@@ -144,10 +144,10 @@ url: \"${issue_url}\""
 
     # Leaderに通知
     sleep 0.5
-    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" \
+    tmux send-keys -l -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" \
         "$WORKSPACE_DIR/queue/leader/processed/ に新しいタスクがあります。${message_file} を確認してください。Issue #${issue_number}「${issue_title}」の実装を開始してください。"
     sleep 0.3
-    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" C-m
+    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" Enter
 
     echo ""
     print_success "Issue #${issue_number} の実装タスクを投入しました"

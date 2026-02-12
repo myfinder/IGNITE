@@ -190,11 +190,11 @@ send_to_agent() {
         # 形式: session:window.pane (window は省略すると現在のウィンドウ)
         local target="${TMUX_SESSION}:${TMUX_WINDOW_NAME}.${pane_index}"
 
-        # メッセージを送信してからEnter（C-m）を送信
-        # 少し間を置いてから送信することで確実に入力される
-        if tmux send-keys -t "$target" "$message" 2>/dev/null; then
+        # メッセージを送信してからEnterを送信
+        # -l (literal mode) でシェルメタキャラクタのエスケープを防止
+        if tmux send-keys -l -t "$target" "$message" 2>/dev/null; then
             sleep 0.3
-            tmux send-keys -t "$target" C-m 2>/dev/null
+            tmux send-keys -t "$target" Enter 2>/dev/null
             log_success "エージェント $agent (pane $pane_index) にメッセージを送信しました"
             return 0
         else
@@ -215,7 +215,8 @@ _get_report_cache_dir() {
     if [[ -n "${WORKSPACE_DIR:-}" ]]; then
         echo "$WORKSPACE_DIR/state"
     else
-        echo "/tmp/ignite-token-cache"
+        log_error "WORKSPACE_DIR が未設定です。レポートキャッシュディレクトリを決定できません。"
+        return 1
     fi
 }
 
@@ -511,41 +512,28 @@ process_message() {
     log_info "新規メッセージ検知: $filename (type: $msg_type)"
 
     # メッセージタイプに応じた処理指示を生成
-    local instruction=""
+    # セキュリティ: 抽出値（trigger, event_type等）を指示文に埋め込まない（参照型パターン）
+    # エージェントはMIMEファイルを読んで詳細を取得する
+    local instruction="新しいメッセージが来ました。$file を読んで処理してください。"
     case "$msg_type" in
         github_task)
-            local trigger repo issue_num
-            trigger=$(mime_body_get "$file" "trigger")
+            local repo issue_num
             repo=$(mime_get "$file" "repository")
             issue_num=$(mime_get "$file" "issue")
-            instruction="新しいGitHubタスクが来ました。$file を読んで処理してください。リポジトリ: $repo, Issue/PR: #$issue_num, トリガー: $trigger"
             # 日次レポートに作業開始を記録（バックグラウンド）
             if [[ -n "$repo" ]]; then
+                local trigger
+                trigger=$(mime_body_get "$file" "trigger")
                 _trigger_daily_report "$repo" "$issue_num" "$trigger" &
             fi
             ;;
-        github_event)
-            local event_type
-            event_type=$(mime_body_get "$file" "event_type")
-            instruction="新しいGitHubイベントが来ました。$file を読んで必要に応じて対応してください。イベントタイプ: $event_type"
-            ;;
         progress_update)
-            instruction="進捗報告が来ました。$file を読んで確認してください。"
             # 日次レポートに進捗を記録（バックグラウンド）
             _report_progress "$file" &
             ;;
         evaluation_result)
-            local eval_verdict
-            eval_verdict=$(mime_body_get "$file" "verdict")
-            instruction="評価結果が来ました。$file を読んで確認してください。判定: $eval_verdict"
             # 日次レポートに評価結果を記録（バックグラウンド）
             _report_evaluation "$file" &
-            ;;
-        task)
-            instruction="新しいタスクが来ました。$file を読んで処理してください。"
-            ;;
-        *)
-            instruction="新しいメッセージが来ました。$file を読んで処理してください。"
             ;;
     esac
 

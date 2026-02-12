@@ -38,6 +38,37 @@ _EXIT_CODE=0
 log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1" >&2; }
 
 # =============================================================================
+# 外部データサニタイズ（信頼境界）
+# =============================================================================
+
+# GitHub APIからの外部入力をサニタイズする
+# - 制御文字（\x00-\x1f、\x7fを除くタブ・改行）を除去
+# - シェルメタキャラクタを無害化
+# - 長さ制限を適用
+_sanitize_external_input() {
+    local input="$1"
+    local max_length="${2:-256}"
+
+    # 制御文字を除去（タブ・改行は許可しない: YAML埋め込み時の安全性）
+    local sanitized
+    sanitized=$(printf '%s' "$input" | tr -d '\000-\011\013-\037\177')
+
+    # シェルメタキャラクタを無害化（全角に置換）
+    sanitized="${sanitized//;/；}"
+    sanitized="${sanitized//|/｜}"
+    sanitized="${sanitized//&/＆}"
+    sanitized="${sanitized//\$/＄}"
+    sanitized="${sanitized//\`/｀}"
+    sanitized="${sanitized//</＜}"
+    sanitized="${sanitized//>/＞}"
+    sanitized="${sanitized//(/（}"
+    sanitized="${sanitized//)/）}"
+
+    # 長さ制限
+    echo "${sanitized:0:$max_length}"
+}
+
+# =============================================================================
 # 設定読み込み
 # =============================================================================
 
@@ -596,9 +627,9 @@ create_event_message() {
         issue_created|issue_updated)
             local issue_number issue_title issue_body author author_type url
             issue_number=$(echo "$event_data" | jq -r '.number')
-            issue_title=$(echo "$event_data" | jq -r '.title')
-            issue_body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
-            author=$(echo "$event_data" | jq -r '.author')
+            issue_title=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.title')" 256)
+            issue_body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
+            author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
             issue_val="$issue_number"
@@ -616,8 +647,8 @@ url: \"${url}\""
             local issue_number comment_id body author author_type url
             issue_number=$(echo "$event_data" | jq -r '.issue_number')
             comment_id=$(echo "$event_data" | jq -r '.id')
-            body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
-            author=$(echo "$event_data" | jq -r '.author')
+            body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
+            author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
             issue_val="$issue_number"
@@ -634,9 +665,9 @@ url: \"${url}\""
         pr_created|pr_updated)
             local pr_number pr_title pr_body author author_type url head_ref base_ref
             pr_number=$(echo "$event_data" | jq -r '.number')
-            pr_title=$(echo "$event_data" | jq -r '.title')
-            pr_body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
-            author=$(echo "$event_data" | jq -r '.author')
+            pr_title=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.title')" 256)
+            pr_body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
+            author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
             head_ref=$(echo "$event_data" | jq -r '.head_ref')
@@ -658,8 +689,8 @@ url: \"${url}\""
             local pr_number comment_id body author author_type url
             pr_number=$(echo "$event_data" | jq -r '.pr_number')
             comment_id=$(echo "$event_data" | jq -r '.id')
-            body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
-            author=$(echo "$event_data" | jq -r '.author')
+            body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
+            author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
             author_type=$(echo "$event_data" | jq -r '.author_type')
             url=$(echo "$event_data" | jq -r '.url')
             issue_val="$pr_number"
@@ -677,8 +708,8 @@ url: \"${url}\""
             local pr_number review_id body author author_type review_state url
             pr_number=$(echo "$event_data" | jq -r '.pr_number')
             review_id=$(echo "$event_data" | jq -r '.id')
-            body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
-            author=$(echo "$event_data" | jq -r '.author')
+            body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
+            author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
             author_type=$(echo "$event_data" | jq -r '.author_type')
             review_state=$(echo "$event_data" | jq -r '.state')
             url=$(echo "$event_data" | jq -r '.url')
@@ -722,8 +753,8 @@ create_task_message() {
 
     local issue_number author body url
     issue_number=$(echo "$event_data" | jq -r '.issue_number // .pr_number // .number // 0')
-    author=$(echo "$event_data" | jq -r '.author')
-    body=$(echo "$event_data" | jq -r '.body // ""' | head -c 2000)
+    author=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.author')" 128)
+    body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 2000)" 10000)
     url=$(echo "$event_data" | jq -r '.url')
 
     # Issue/PR情報を取得（コメント/レビューからの場合）
@@ -732,16 +763,16 @@ create_task_message() {
     if [[ "$event_type" == "issue_comment" ]] && [[ "$issue_number" != "0" ]]; then
         local issue_info
         issue_info=$(gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "{}")
-        issue_title=$(echo "$issue_info" | jq -r '.title // ""')
-        issue_body=$(echo "$issue_info" | jq -r '.body // ""' | head -c 1000)
+        issue_title=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.title // ""')" 256)
+        issue_body=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     elif [[ "$event_type" =~ ^pr_(comment|review)$ ]] && [[ "$issue_number" != "0" ]]; then
         local pr_info
         pr_info=$(gh api "/repos/${repo}/pulls/${issue_number}" 2>/dev/null || echo "{}")
-        issue_title=$(echo "$pr_info" | jq -r '.title // ""')
-        issue_body=$(echo "$pr_info" | jq -r '.body // ""' | head -c 1000)
+        issue_title=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.title // ""')" 256)
+        issue_body=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     else
-        issue_title=$(echo "$event_data" | jq -r '.title // ""')
-        issue_body=$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)
+        issue_title=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.title // ""')" 256)
+        issue_body=$(_sanitize_external_input "$(echo "$event_data" | jq -r '.body // ""' | head -c 1000)" 10000)
     fi
 
     local body_yaml

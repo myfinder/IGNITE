@@ -42,7 +42,8 @@ _get_cache_dir() {
     elif [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
         echo "$IGNITE_WORKSPACE_DIR/state"
     else
-        echo "/tmp/ignite-token-cache"
+        log_error "_get_cache_dir: WORKSPACE_DIR も IGNITE_WORKSPACE_DIR も未設定です"
+        return 1
     fi
 }
 
@@ -80,8 +81,7 @@ get_cached_bot_token() {
     token=$(_get_bot_token_internal "$repo") || true
 
     if [[ -n "$token" ]] && [[ "$token" == ghs_* ]]; then
-        echo "$token" > "$cache_file"
-        chmod 600 "$cache_file"
+        ( umask 077; echo "$token" > "$cache_file" )
         log_info "Bot Tokenを新規取得しキャッシュ (TTL: ${BOT_TOKEN_CACHE_TTL}秒)"
         echo "$token"
         return 0
