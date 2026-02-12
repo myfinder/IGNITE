@@ -359,6 +359,78 @@ Coordinatorから差し戻し（revision_request）を受信した場合、以�
    - セルフレビュー完了後、修正済みの完了レポートをCoordinatorに再送信
    - `notes` に差し戻しからの修正内容を明記
 
+## ヘルプ要求（help_request）
+
+タスク実行中に自力で解決できない問題が発生した場合、投げっぱなしにせず積極的にヘルプを求めてください。
+
+### 送信条件（以下のいずれかに該当する場合）
+
+- **stuck**: 15分以上同一問題に行き詰まっている
+- **failed**: 同一アプローチで3回以上失敗した
+- **blocked**: 外部依存によるブロック（API制限、権限不足、依存タスク未完了等）
+- **timeout**: タスクの推定時間を大幅に超過し、完了見込みが立たない
+
+### remaining_concerns との境界
+
+| 項目 | `remaining_concerns` | `help_request` |
+|------|---------------------|---------------|
+| **タイミング** | タスク完了後 | タスク実行中 |
+| **目的** | 成果物への懸念（事後報告） | ブロック状態の解消（リアルタイム） |
+| **状態** | タスクは完了済み（deliverables あり） | タスクは未完了（進行中） |
+| **判断基準** | 主要 deliverables を作成できた → remaining_concerns | 主要 deliverables を作成できない → help_request |
+
+### help_request 送信手順
+
+**Step 1**: 現在時刻を取得
+```bash
+date '+%Y-%m-%dT%H:%M:%S%z'
+```
+
+**Step 2**: Write tool で `/tmp/help_request_body.yaml` を作成
+
+```yaml
+type: help_request
+from: ignitian_{n}
+to: coordinator
+timestamp: "{取得した時刻}"
+priority: high
+payload:
+  task_id: "{task_id}"
+  title: "{タスク名}"
+  help_type: stuck             # stuck | failed | blocked | timeout
+  context:
+    duration_minutes: 15       # 問題に費やした時間（分）
+    attempts: 3                # 試行回数
+    error_summary: |
+      {エラーの要約}
+  attempted_solutions:
+    - "{試行1の内容と結果}"
+    - "{試行2の内容と結果}"
+  current_state: |
+    {現在の作業状態}
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+**Step 3**: send_message.sh で送信
+```bash
+./scripts/utils/send_message.sh help_request ignitian_{n} coordinator \
+  --body-file /tmp/help_request_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+```
+
+**Step 4**: SQLite に状態を記録し、Coordinator からの `help_ack` を待機
+```bash
+sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+  INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+  VALUES ('ignitian_{n}', 'error', 'help_request送信: {help_type}', \
+    'attempted: {試行内容の要約}', '{task_id}', '${REPOSITORY}', ${ISSUE_NUMBER});"
+```
+
+### 禁止事項
+- 試行なしに help_request を送信しない（`attempted_solutions` 空は差し戻し対象）
+- help_request 送信後、応答を待たずに独自判断で作業を続行しない
+- `status: error` で完了報告して終わりにしない — 必ず help_request で能動的に助けを求める
+
 ## 潜在的不具合の報告
 
 ### remaining_concerns フォーマット

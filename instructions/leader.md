@@ -742,6 +742,56 @@ remaining_concerns:
    - 簡単なタスクでも例外なく委譲する
    - 理由: 次のタスク受付をブロックしないため
 
+## ヘルプ要求への対応（help_request response）
+
+Coordinator（IGNITIAN経由）または Sub-Leaders から help_request を受信した場合の対応フロー。
+
+### 受信ソース
+
+| 送信元 | 経由 | メッセージタイプ |
+|--------|------|----------------|
+| IGNITIAN | Coordinator | `help_request_forwarded`（Coordinatorがフィルタリング済み） |
+| Architect / Evaluator / Innovator / Strategist | 直接 | `help_request`（Leader直属のため中継なし） |
+
+### help_type × severity 優先度マトリクス
+
+| help_type | severity | 対応優先度 | 推奨アクション |
+|-----------|----------|-----------|---------------|
+| `blocked` | high | **最優先** | 環境修正 / 権限付与 / ユーザーエスカレーション |
+| `timeout` | high | **最優先** | スコープ縮小 / タスク分割 / 再割り当て |
+| `failed` | medium | 高 | 追加指示 / アプローチ変更 / Architect相談 |
+| `stuck` | low | 通常 | ヒント提示 / 設計方針の明確化 |
+
+### 対応手順
+
+1. **help_ack 応答を即時送信**（受信から5分以内）:
+   ```yaml
+   type: help_ack
+   from: leader
+   to: coordinator           # or 直接 sub-leader名
+   timestamp: "{時刻}"
+   priority: high
+   payload:
+     task_id: "{task_id}"
+     original_help_type: "{help_type}"
+     action: investigating   # investigating | reassigning | escalating | resolved
+     guidance: |
+       {対処方針}
+   ```
+
+2. **判断フロー**:
+   - **タスク再割当**: 別の IGNITIAN に再割り当て（Coordinator に `task_assignment` で指示）
+   - **追加指示**: 具体的な解決策を `help_ack(action: resolved)` で返信
+   - **ユーザーエスカレーション**: `category: permission` or `external` → ダッシュボードに記録しユーザーに報告
+
+3. **SQLite に記録**:
+   ```bash
+   sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
+     INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
+     VALUES ('leader', 'decision', 'help_request対応: {action}', \
+       '{help_type} from {original_from}', '{task_id}', '{REPOSITORY}', {ISSUE_NUMBER});"
+   ```
+
 ## ノンブロッキング原則
 
 Leader は常に新しいタスクを受け付けられる状態を維持します。
