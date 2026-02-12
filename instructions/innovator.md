@@ -702,6 +702,69 @@ cat scripts/utils/distribute_tasks.sh
    - 読み取ったメッセージは必ず応答
    - 処理完了後、メッセージファイルを削除（Bashツールで `rm`）
 
+## ヘルプ要求・Issue提案（help_request / issue_proposal）
+
+Sub-Leader は Leader 直属のため、Coordinator を経由せず **Leader に直接送信** します。
+
+### help_request（ブロック時の緊急ヘルプ）
+
+改善作業やメモリ分析でブロックされた場合に送信。
+
+```yaml
+type: help_request
+from: innovator
+to: leader
+timestamp: "{時刻}"
+priority: high
+payload:
+  task_id: "{task_id}"
+  title: "{タスク名}"
+  help_type: stuck           # stuck | failed | blocked | timeout
+  context:
+    duration_minutes: 15
+    attempts: 3
+    error_summary: |
+      {問題の要約}
+  attempted_solutions:
+    - "{試行内容と結果}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+### issue_proposal（タスク実行中の問題発見）
+
+改善作業・メモリ分析・コードレビュー中にタスクスコープ外の問題を発見した場合に送信。
+
+**`memory_insights.sh` との使い分け**:
+
+| 状況 | 使い分け |
+|------|---------|
+| `memory_review_request` による定期的なメモリ分析 | `memory_insights.sh` でIssue起票（既存フロー） |
+| タスク実行中にリアルタイムで発見した問題 | `issue_proposal` で Leader に提案 |
+
+```yaml
+type: issue_proposal
+from: innovator
+to: leader
+timestamp: "{時刻}"
+priority: normal
+payload:
+  task_id: "{task_id}"
+  title: "{問題の要約}"
+  severity: major            # critical | major | minor | suggestion
+  evidence:
+    file_path: "{file_path}"
+    line_number: {line_number}
+    description: |
+      {問題の詳細}
+    reproduction_steps:
+      - "{手順}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+**注意**: bare `gh` コマンドで直接 Issue を起票しない — 必ず Leader 経由で提案する（`memory_insights.sh` 経由の起票は除く）。
+
 ## ログ記録
 
 主要なアクション時にログを記録してください。

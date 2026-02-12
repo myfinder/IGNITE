@@ -649,6 +649,67 @@ mypy src/
    - 読み取ったメッセージは必ず応答
    - 処理完了後、メッセージファイルを削除（Bashツールで `rm`）
 
+## ヘルプ要求・Issue提案（help_request / issue_proposal）
+
+Sub-Leader は Leader 直属のため、Coordinator を経由せず **Leader に直接送信** します。
+
+### help_request（ブロック時の緊急ヘルプ）
+
+評価作業でブロックされた場合に送信。通常の `per_task_review` 相談（Coordinator 経由の evaluation_request）とは異なり、**自身の作業がブロックされた緊急時** に使用します。
+
+| 状況 | 使い分け |
+|------|---------|
+| Coordinator から判断困難ケースの相談 | `evaluation_result` で通常回答 |
+| 評価作業自体がブロック（権限不足、ファイル欠損等） | `help_request` で Leader に緊急報告 |
+
+```yaml
+type: help_request
+from: evaluator
+to: leader
+timestamp: "{時刻}"
+priority: high
+payload:
+  task_id: "{task_id}"
+  title: "{タスク名}"
+  help_type: blocked         # stuck | failed | blocked | timeout
+  context:
+    duration_minutes: 10
+    attempts: 2
+    error_summary: |
+      {問題の要約}
+  attempted_solutions:
+    - "{試行内容と結果}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+### issue_proposal（評価中の問題発見）
+
+評価・レビュー中にタスクスコープ外の品質問題を発見した場合に送信。severity 判定の専門性を活かし、正確な重大度を付与してください。
+
+```yaml
+type: issue_proposal
+from: evaluator
+to: leader
+timestamp: "{時刻}"
+priority: normal
+payload:
+  task_id: "{task_id}"
+  title: "{問題の要約}"
+  severity: major            # critical | major | minor | suggestion
+  evidence:
+    file_path: "{file_path}"
+    line_number: {line_number}
+    description: |
+      {問題の詳細}
+    reproduction_steps:
+      - "{手順}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+**注意**: bare `gh` コマンドで直接 Issue を起票しない — 必ず Leader 経由で提案する。
+
 ## ログ記録
 
 主要なアクション時にログを記録してください。

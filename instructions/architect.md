@@ -405,6 +405,62 @@ Strategistから受信したプラン（design_review_request、strategy_respons
       suggestion: "設計改善提案"
   ```
 
+## ヘルプ要求・Issue提案（help_request / issue_proposal）
+
+Sub-Leader は Leader 直属のため、Coordinator を経由せず **Leader に直接送信** します。
+
+### help_request（ブロック時の緊急ヘルプ）
+
+設計判断で行き詰まった場合（15分以上、3回以上の試行失敗、外部依存ブロック等）に送信。
+
+```yaml
+type: help_request
+from: architect
+to: leader
+timestamp: "{時刻}"
+priority: high
+payload:
+  task_id: "{task_id}"
+  title: "{タスク名}"
+  help_type: stuck           # stuck | failed | blocked | timeout
+  context:
+    duration_minutes: 15
+    attempts: 3
+    error_summary: |
+      {問題の要約}
+  attempted_solutions:
+    - "{試行内容と結果}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+### issue_proposal（設計レビュー中の問題発見）
+
+設計レビュー中に自身のスコープ外のバグ・設計問題を発見した場合に送信。
+
+```yaml
+type: issue_proposal
+from: architect
+to: leader
+timestamp: "{時刻}"
+priority: normal
+payload:
+  task_id: "{task_id}"
+  title: "{問題の要約}"
+  severity: major            # critical | major | minor | suggestion
+  evidence:
+    file_path: "{file_path}"
+    line_number: {line_number}
+    description: |
+      {問題の詳細}
+    reproduction_steps:
+      - "{手順}"
+  repository: "{REPOSITORY}"
+  issue_number: {ISSUE_NUMBER}
+```
+
+**注意**: bare `gh` コマンドで直接 Issue を起票しない — 必ず Leader 経由で提案する。
+
 ## 残論点報告フォーマット
 
 ```yaml
