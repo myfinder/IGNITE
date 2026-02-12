@@ -249,12 +249,14 @@ EOF
     print_info "Leader ($LEADER_NAME) を起動中..."
     tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" -p @agent_name "$LEADER_NAME (Leader)"
 
-    # Bot Token を取得して GH_TOKEN を設定
-    local _bot_token _gh_export=""
-    _bot_token=$(_resolve_bot_token 2>/dev/null) || true
-    if [[ -n "$_bot_token" ]]; then
-        _gh_export="export GH_TOKEN='${_bot_token}' && "
-    fi
+    # Bot Token: GH_TOKEN env var にはexportしない（stale化防止）
+    # 理由: GitHub App Token有効期限1時間後にstale化→
+    #   credential helper (gh auth git-credential) が失効GH_TOKENを優先参照→認証エラー
+    # 代替: git操作はsafe_git_push/fetch/pull(github_helpers.sh)が動的にBot Token取得、
+    #   API操作は_gh_api()/get_cached_bot_token()が都度取得
+    # Bot Tokenキャッシュのプリウォーム（ファイルキャッシュのみ、env varにはセットしない）
+    _resolve_bot_token >/dev/null 2>&1 || true
+    local _gh_export=""
 
     tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" \
         "${_gh_export}export WORKSPACE_DIR='$WORKSPACE_DIR' && cd '$WORKSPACE_DIR' && CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $DEFAULT_MODEL --dangerously-skip-permissions --teammate-mode in-process" Enter

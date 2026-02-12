@@ -15,6 +15,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
+
+# Bot Token / GitHub API / Git操作ラッパーの読み込み
+source "${SCRIPT_DIR}/github_helpers.sh"
+
 REPOS_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}/repos"
 
 # =============================================================================
@@ -180,9 +184,9 @@ setup_repo() {
     if [[ -d "$repo_path/.git" ]]; then
         log_info "リポジトリが既に存在します。更新中..."
         cd "$repo_path"
-        git fetch origin
+        safe_git_fetch origin
         git checkout "$branch" 2>/dev/null || git checkout -b "$branch" "origin/$branch"
-        git pull origin "$branch" || log_warn "pull に失敗しました（ローカル変更がある可能性）"
+        safe_git_pull origin "$branch" || log_warn "pull に失敗しました（ローカル変更がある可能性）"
     else
         # per-IGNITIAN clone: primary clone が存在すればローカルから高速clone
         local repo_name
@@ -245,18 +249,18 @@ create_issue_branch() {
     local branch_name="ignite/issue-${issue_number}"
 
     cd "$repo_path"
-    git fetch origin
+    safe_git_fetch origin
 
     # ベースブランチを更新
     git checkout "$base_branch" 2>/dev/null || git checkout -b "$base_branch" "origin/$base_branch"
-    git pull origin "$base_branch" || log_warn "pull に失敗しました"
+    safe_git_pull origin "$base_branch" || log_warn "pull に失敗しました"
 
     # ブランチが既に存在するか確認
     if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
         log_warn "ブランチが既に存在します: $branch_name"
         git checkout "$branch_name"
         # リモートの変更を取り込む
-        git pull origin "$branch_name" 2>/dev/null || true
+        safe_git_pull origin "$branch_name" 2>/dev/null || true
     else
         log_info "ブランチを作成中: $branch_name"
         git checkout -b "$branch_name"

@@ -103,7 +103,7 @@ create_branch() {
 
     # ベースブランチを更新
     log_info "ベースブランチを更新中: $base_branch"
-    git fetch origin "$base_branch" 2>/dev/null || true
+    safe_git_fetch origin "$base_branch" 2>/dev/null || true
 
     # 既存のブランチがあるか確認
     if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
@@ -170,7 +170,7 @@ push_branch() {
     local branch_name="$1"
 
     log_info "ブランチをプッシュ中: $branch_name"
-    git push -u origin "$branch_name"
+    safe_git_push -u origin "$branch_name"
 }
 
 # =============================================================================
