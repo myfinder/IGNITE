@@ -155,11 +155,61 @@ EOF
 # コメント投稿
 # =============================================================================
 
+_is_duplicate_comment() {
+    local repo="$1"
+    local issue_number="$2"
+    local body="$3"
+    local use_bot="$4"
+
+    local trimmed_body
+    trimmed_body=$(printf '%s' "$body" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # 既存コメントをJSON配列で一括取得
+    local comments_json=""
+    if [[ "$use_bot" == "true" ]]; then
+        local bot_token
+        bot_token=$(get_bot_token "$repo" 2>/dev/null) || true
+        if [[ -n "$bot_token" ]]; then
+            comments_json=$(GH_TOKEN="$bot_token" gh api \
+                "/repos/${repo}/issues/${issue_number}/comments" \
+                --paginate 2>/dev/null) || true
+        fi
+    fi
+    if [[ -z "$comments_json" ]]; then
+        comments_json=$(env -u GH_TOKEN gh api \
+            "/repos/${repo}/issues/${issue_number}/comments" \
+            --paginate 2>/dev/null) || true
+    fi
+
+    if [[ -z "$comments_json" ]]; then
+        log_warn "コメント一覧取得失敗。重複チェックをスキップして投稿を続行します。"
+        return 1
+    fi
+
+    # jqで各コメントbodyをtrimして比較
+    # --slurp: gh api --paginateが複数ページ返す場合の連結JSON配列を単一配列に統合
+    local match
+    match=$(printf '%s' "$comments_json" | jq --slurp --arg new_body "$trimmed_body" '
+        [.[][] | .body | gsub("^\\s+|\\s+$"; "")] | any(. == $new_body)
+    ' 2>/dev/null) || true
+
+    if [[ "$match" == "true" ]]; then
+        return 0
+    fi
+    return 1
+}
+
 post_comment() {
     local repo="$1"
     local issue_number="$2"
     local body="$3"
     local use_bot="$4"
+
+    # べき等性チェック: 重複コメントが存在する場合はスキップ
+    if _is_duplicate_comment "$repo" "$issue_number" "$body" "$use_bot"; then
+        log_info "[SKIP] 重複コメント検出（Issue #${issue_number}）"
+        return 0
+    fi
 
     if [[ "$use_bot" == "true" ]]; then
         # キャッシュ付きBot Token取得（期限切れなら自動更新）
