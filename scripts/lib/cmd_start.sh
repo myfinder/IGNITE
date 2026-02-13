@@ -15,12 +15,14 @@ cmd_start() {
     local no_workers=false
     local with_watcher=""      # 空=設定に従う, true=起動, false=起動しない
     local skip_validation=false
+    local dry_run=false
 
     # オプション解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -n|--no-attach) no_attach=true; shift ;;
             -f|--force) force=true; shift ;;
+            --dry-run) dry_run=true; shift ;;
             -s|--session)
                 SESSION_NAME="$2"
                 if [[ ! "$SESSION_NAME" =~ ^ignite- ]]; then
@@ -235,6 +237,46 @@ EOF
         rm -f "$WORKSPACE_DIR/queue_monitor.pid"
     fi
     sleep "$(get_delay process_cleanup 1)"
+
+    # --dry-run モード: Phase 1-5 完了後、tmux/CLI/Watcher/Monitor起動をスキップして終了
+    if [[ "$dry_run" == true ]]; then
+        # Phase 8: システム設定ファイル生成（dry-runでも実行）
+        print_info "システム設定を保存中..."
+        cat > "$WORKSPACE_DIR/system_config.yaml" <<EOF
+# IGNITE システム設定（自動生成 - dry-run）
+# このファイルはシステム起動時に自動的に更新されます
+
+system:
+  started_at: "$(date -Iseconds)"
+  agent_mode: "${agent_mode}"
+  session_name: "${SESSION_NAME}"
+  workspace_dir: "${WORKSPACE_DIR}"
+  dry_run: true
+
+ignitians:
+  count: 0
+  ids: []
+EOF
+
+        echo ""
+        print_success "[DRY-RUN] 初期化検証完了"
+        echo ""
+        echo "検証済み項目:"
+        echo "  Phase 1: パラメータ解析 ... OK"
+        echo "  Phase 2: セッション設定 ... OK"
+        echo "  Phase 3: バリデーション ... OK"
+        echo "  Phase 4: ディレクトリ/DB初期化 ... OK"
+        echo "  Phase 5: PIDクリーンアップ ... OK"
+        echo "  Phase 8: システム設定生成 ... OK"
+        echo ""
+        echo "スキップ項目:"
+        echo "  Phase 6: tmuxセッション作成"
+        echo "  Phase 7: Claude CLI起動"
+        echo "  Phase 9: Watcher/Monitor起動"
+        echo ""
+        # NOTE: Phase 2 self-hosted runner完全統合テストは別Issue（#134完了後）で対応予定
+        exit 0
+    fi
 
     # tmuxセッション作成
     print_info "tmuxセッションを作成中..."
