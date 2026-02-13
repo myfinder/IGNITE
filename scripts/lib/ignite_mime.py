@@ -236,9 +236,9 @@ def cmd_build(args: argparse.Namespace) -> None:
     )
 
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(msg)
-        os.chmod(args.output, 0o600)
     else:
         sys.stdout.write(msg)
 

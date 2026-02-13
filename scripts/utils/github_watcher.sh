@@ -49,9 +49,9 @@ _sanitize_external_input() {
     local input="$1"
     local max_length="${2:-256}"
 
-    # 制御文字を除去（タブ・改行は許可しない: YAML埋め込み時の安全性）
+    # 制御文字を全除去（タブ・改行含む: YAML埋め込み時のインジェクション防止）
     local sanitized
-    sanitized=$(printf '%s' "$input" | tr -d '\000-\011\013-\037\177')
+    sanitized=$(printf '%s' "$input" | tr -d '\000-\037\177')
 
     # シェルメタキャラクタを無害化（全角に置換）
     sanitized="${sanitized//;/；}"

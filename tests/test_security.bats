@@ -75,6 +75,20 @@ _load_sanitize_function() {
     [[ ${#result} -le 100 ]]
 }
 
+@test "sanitize: 改行・タブが除去される（YAMLインジェクション防止）" {
+    _load_sanitize_function
+
+    local input
+    input=$(printf 'first_line\nsecond: injected\tthird')
+    local result
+    result=$(_sanitize_external_input "$input")
+
+    # 改行・タブが除去されて1行になること
+    [[ "$result" != *$'\n'* ]]
+    [[ "$result" != *$'\t'* ]]
+    [[ "$result" == "first_linesecond: injectedthird" ]]
+}
+
 @test "sanitize: HTMLインジェクション文字が全角に変換される" {
     _load_sanitize_function
 
@@ -172,9 +186,13 @@ _load_sanitize_function() {
     local result
     result=$(_sanitize_external_input "$malicious_title" 256)
 
-    # 危険な文字が全て全角に変換されていること
-    [[ "$result" != *'"'* ]] || [[ "$result" != *'$('* ]]
+    # コマンド実行ベクターが全て無害化されていること
+    [[ "$result" != *'$('* ]]
     [[ "$result" != *'`'* ]]
+    [[ "$result" != *';'* ]]
+    # 全角に変換されていることを確認
+    [[ "$result" == *'＄'* ]]
+    [[ "$result" == *'；'* ]]
     # 元のテキスト部分は残っていること
     [[ "$result" == *'Fix bug'* ]]
 }
@@ -195,8 +213,11 @@ secret: &anchor
 
     # 長さ制限内で切られていること
     [[ ${#result} -le 10000 ]]
-    # シェル危険文字が除去されていること
-    [[ "$result" != *'&'* ]] || [[ "$result" == *'＆'* ]]
+    # シェル危険文字が全角に変換されていること
+    [[ "$result" != *'&'* ]]
+    [[ "$result" == *'＆'* ]]
+    # 改行が除去されていること（YAMLインジェクション防止）
+    [[ "$result" != *$'\n'* ]]
 }
 
 @test "attack: 複合攻撃パターン（バッククォート+パイプ+リダイレクト）がブロックされる" {
