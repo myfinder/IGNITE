@@ -10,6 +10,7 @@
 cmd_start() {
     local no_attach=false
     local force=false
+    local daemon_mode=false
     local agent_mode="full"    # full, leader, sub
     local worker_count=""
     local no_workers=false
@@ -56,6 +57,7 @@ cmd_start() {
             --no-workers) no_workers=true; shift ;;
             --with-watcher) with_watcher=true; shift ;;
             --no-watcher) with_watcher=false; shift ;;
+            --daemon) daemon_mode=true; no_attach=true; force=true; shift ;;
             --skip-validation) skip_validation=true; shift ;;
             -h|--help) cmd_help start; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help start; exit 1 ;;
@@ -543,6 +545,16 @@ EOF
     echo "$queue_pid" > "$WORKSPACE_DIR/queue_monitor.pid"
     print_success "キューモニター起動完了 (PID: $queue_pid)"
     print_info "ログ: $queue_log"
+
+    # daemonモード: PIDファイルを書き出して終了
+    # systemd Type=forking との整合: このプロセスが終了後もtmuxセッションは残留する
+    if [[ "$daemon_mode" == true ]]; then
+        local pid_file="$WORKSPACE_DIR/ignite-daemon.pid"
+        echo $$ > "$pid_file"
+        print_success "daemonモードで起動しました (PID: $$, session: $SESSION_NAME)"
+        print_info "PIDファイル: $pid_file"
+        exit 0
+    fi
 
     # 自動アタッチ（対話環境のみ）
     if [[ "$no_attach" == false ]] && [[ -t 0 ]]; then

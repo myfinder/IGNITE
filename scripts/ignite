@@ -46,6 +46,8 @@ main() {
         init)     shift; cmd_init "$@" ;;
         watcher)  shift; cmd_watcher "$@" ;;
         validate) shift; cmd_validate "$@" ;;
+        daemon)   shift; source "${LIB_DIR}/cmd_daemon.sh"; cmd_daemon "$@" ;;
+        service)  shift; source "${LIB_DIR}/cmd_service.sh"; cmd_service "$@" ;;
         help)     shift; cmd_help "$@" ;;
         -h|--help) cmd_help ;;
         -v|--version) echo "IGNITE v$VERSION" ;;
