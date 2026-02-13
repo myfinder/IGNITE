@@ -37,6 +37,7 @@ cmd_service() {
         status)     _service_status "$@" ;;
         logs)       _service_logs "$@" ;;
         setup-env)  _service_setup_env "$@" ;;
+        help|-h|--help) cmd_help service ;;
         *)
             cmd_help service
             if [[ -n "$action" ]]; then
