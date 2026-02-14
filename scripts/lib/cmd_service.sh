@@ -368,7 +368,14 @@ ENVEOF
         echo ""
         read -p "Anthropic API Key を入力してください（スキップ: Enter）: " -r api_key
         if [[ -n "$api_key" ]]; then
-            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${api_key}|" "$env_file"
+            # sed の特殊文字問題を回避するため pure bash で置換
+            local tmpfile="${env_file}.tmp"
+            while IFS= read -r line; do
+                case "$line" in
+                    ANTHROPIC_API_KEY=*) printf 'ANTHROPIC_API_KEY=%s\n' "$api_key" ;;
+                    *) printf '%s\n' "$line" ;;
+                esac
+            done < "$env_file" > "$tmpfile" && mv "$tmpfile" "$env_file"
             print_success "API Key を設定しました"
         else
             print_warning "API Key はスキップしました（後で $env_file を編集してください）"

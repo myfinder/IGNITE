@@ -30,6 +30,7 @@ cmd_help() {
             echo "  --with-watcher        GitHub Watcherも一緒に起動"
             echo "  --no-watcher          GitHub Watcherを起動しない（設定で有効でも）"
             echo "  --skip-validation     起動時のバリデーションをスキップ"
+            echo "  --daemon              daemonモードで起動（-n -f自動設定、PIDファイル書出し後に終了）"
             echo "  --dry-run             Phase 1-5,8のみ実行し、tmux/CLI起動をスキップ"
             echo "  -h, --help            このヘルプを表示"
             echo ""
