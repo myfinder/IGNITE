@@ -329,10 +329,10 @@ EOF
     fi
 
     # プロバイダー固有のプロジェクト設定を生成（インストラクションファイルを渡す）
-    cli_setup_project_config "$WORKSPACE_DIR" "$character_file" "$instruction_file"
+    cli_setup_project_config "$WORKSPACE_DIR" "leader" "$character_file" "$instruction_file"
 
     local _launch_cmd
-    _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "" "$_gh_export")
+    _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "" "$_gh_export" "leader")
     tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME" "$_launch_cmd" Enter
 
     # 起動待機（確認プロンプト表示を待つ）

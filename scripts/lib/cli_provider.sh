@@ -40,11 +40,12 @@ cli_load_config() {
 # =============================================================================
 # cli_build_launch_command - tmux send-keys に渡す起動コマンド文字列を生成
 # =============================================================================
-# Usage: cli_build_launch_command <workspace_dir> [extra_env] [gh_export]
+# Usage: cli_build_launch_command <workspace_dir> [extra_env] [gh_export] [role]
 cli_build_launch_command() {
     local workspace_dir="$1"
     local extra_env="${2:-}"
     local gh_export="${3:-}"
+    local role="${4:-}"
 
     # .env が存在すれば tmux ペイン内で source（親プロセスの env は tmux に継承されない）
     local env_source=""
@@ -59,7 +60,9 @@ cli_build_launch_command() {
             cmd+="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model '${CLI_MODEL}' --dangerously-skip-permissions --teammate-mode in-process"
             ;;
         opencode)
-            cmd+="OPENCODE_CONFIG='.ignite/opencode.json' opencode"
+            # ロール別の opencode.json を参照（未指定時は leader）
+            local config_name="opencode_${role:-leader}.json"
+            cmd+="OPENCODE_CONFIG='.ignite/${config_name}' opencode"
             ;;
     esac
 
@@ -179,11 +182,13 @@ cli_is_cost_tracking_supported() {
 # =============================================================================
 # cli_setup_project_config - プロバイダー固有のプロジェクト設定を生成
 # =============================================================================
-# Usage: cli_setup_project_config <workspace_dir> [instruction_files...]
+# Usage: cli_setup_project_config <workspace_dir> <role> [instruction_files...]
+# role: エージェントロール名（opencode_{role}.json のファイル名に使用）
 # instruction_files: opencode の instructions に追加するファイルパス（可変長）
 cli_setup_project_config() {
     local workspace_dir="$1"
-    shift
+    local role="$2"
+    shift 2
     local instruction_files=("$@")
 
     case "$CLI_PROVIDER" in
@@ -191,10 +196,10 @@ cli_setup_project_config() {
             # Claude Code は既存の設定をそのまま使用
             ;;
         opencode)
-            local config_file="${workspace_dir}/.ignite/opencode.json"
+            local config_file="${workspace_dir}/.ignite/opencode_${role}.json"
             # .ignite/ がない場合はワークスペースルートにフォールバック
             if [[ ! -d "${workspace_dir}/.ignite" ]]; then
-                config_file="${workspace_dir}/opencode.json"
+                config_file="${workspace_dir}/opencode_${role}.json"
             fi
             # 起動ごとに再生成（model や instructions が変わりうるため）
 

@@ -96,6 +96,7 @@ repos/
 tmp/
 dashboard.md
 runtime.yaml
+opencode_*.json
 
 # secrets (never commit)
 .env
