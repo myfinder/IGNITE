@@ -368,12 +368,20 @@ PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
 HOME=${HOME}
 TERM=xterm-256color
 
-ANTHROPIC_API_KEY=your-api-key-here
 ${_cli_env_vars}
 
 XDG_CONFIG_HOME=${HOME}/.config
 XDG_DATA_HOME=${HOME}/.local/share
 ENVEOF
+
+    # ワークスペース .env があればマージ
+    local _ws_env="${IGNITE_RUNTIME_DIR:+$IGNITE_RUNTIME_DIR/.env}"
+    if [[ -n "$_ws_env" ]] && [[ -f "$_ws_env" ]]; then
+        echo "" >> "$env_file"
+        echo "# --- from workspace .env ---" >> "$env_file"
+        grep -v '^\s*#' "$_ws_env" | grep -v '^\s*$' >> "$env_file"
+        print_info "ワークスペース .env をマージしました"
+    fi
 
     print_header "IGNITE 環境変数セットアップ"
     echo ""

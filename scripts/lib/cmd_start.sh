@@ -222,6 +222,19 @@ IGNITEバージョン: v$VERSION
 [$(date '+%H:%M:%S')] システム起動を開始しました
 EOF
 
+    # .env ファイルの読み込み（存在する場合）
+    local _env_file="$IGNITE_RUNTIME_DIR/.env"
+    if [[ -f "$_env_file" ]]; then
+        print_info ".env を読み込み中..."
+        set -a
+        source "$_env_file"
+        set +a
+    else
+        if [[ -f "$IGNITE_RUNTIME_DIR/.env.example" ]]; then
+            print_warning ".env が見つかりません。API キーが必要な場合: cp .ignite/.env.example .ignite/.env"
+        fi
+    fi
+
     print_success "workspace初期化完了"
     echo ""
 

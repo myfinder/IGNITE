@@ -184,7 +184,7 @@ YAML
 
     cmd_init --minimal -w "$target"
     [[ -d "$target/.ignite" ]]
-    [[ -f "$target/.gitignore" ]]
+    [[ -f "$target/.ignite/.gitignore" ]]
 }
 
 @test "TC-11: cmd_init - .ignite/ 既存で --force なし → 終了コード1" {
@@ -200,11 +200,11 @@ YAML
     source "$SCRIPTS_DIR/lib/cmd_init.sh"
     local target="$TEST_TEMP_DIR/init_force"
     mkdir -p "$target/.ignite"
-    echo "old" > "$target/.gitignore"
+    echo "old" > "$target/.ignite/.gitignore"
 
     cmd_init --force --minimal -w "$target"
-    [[ -f "$target/.gitignore" ]]
-    ! grep -q "^old$" "$target/.gitignore"
+    [[ -f "$target/.ignite/.gitignore" ]]
+    ! grep -q "^old$" "$target/.ignite/.gitignore"
 }
 
 @test "TC-13: cmd_init - --minimal で system.yaml のみコピー" {
@@ -256,7 +256,7 @@ YAML
     mkdir -p "$target"
 
     cmd_init --minimal -w "$target"
-    ! grep -q "github-app.yaml" "$target/.gitignore"
+    ! grep -q "github-app.yaml" "$target/.ignite/.gitignore"
 }
 
 @test "TC-18: .gitignore に *.pem が含まれる" {
@@ -265,7 +265,7 @@ YAML
     mkdir -p "$target"
 
     cmd_init --minimal -w "$target"
-    grep -q '\*.pem' "$target/.gitignore"
+    grep -q '\*.pem' "$target/.ignite/.gitignore"
 }
 
 @test "TC-19: validate_workspace_config - github-app.yaml 存在時に警告" {
@@ -399,6 +399,35 @@ YAML
         fi
     done < "$SCRIPTS_DIR/lib/commands.sh"
     # grep で確認済みなのでここには到達しない
+}
+
+@test "TC-28: ignite init で .env.example が生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_env"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    [[ -f "$target/.ignite/.env.example" ]]
+    [[ "$(cat "$target/.ignite/.env.example")" == *"OPENAI_API_KEY"* ]]
+    [[ "$(cat "$target/.ignite/.env.example")" == *"ANTHROPIC_API_KEY"* ]]
+}
+
+@test "TC-29: .gitignore に .ignite/.env が含まれる" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_env_gi"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    grep -q '\.env' "$target/.ignite/.gitignore"
+}
+
+@test "TC-30: --minimal でも .env.example が生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_minimal_env"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    [[ -f "$target/.ignite/.env.example" ]]
 }
 
 @test "TC-27: cmd_validate - XDG_CONFIG_HOME 参照なし" {

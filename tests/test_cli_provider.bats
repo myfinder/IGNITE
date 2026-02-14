@@ -239,7 +239,7 @@ EOF
     [ -f "$ws_dir/opencode.json" ]
 }
 
-@test "cli_setup_project_config: 既存 .ignite/opencode.json は上書きしない" {
+@test "cli_setup_project_config: 既存 opencode.json は最新設定で再生成される" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -248,9 +248,9 @@ EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_existing"
     mkdir -p "$ws_dir/.ignite"
-    echo '{"custom": true}' > "$ws_dir/.ignite/opencode.json"
+    echo '{"custom": true, "model": "old/model"}' > "$ws_dir/.ignite/opencode.json"
     cli_setup_project_config "$ws_dir"
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"custom"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"model": "openai/o3"'* ]]
 }
 
 # =============================================================================
@@ -264,7 +264,7 @@ EOF
     [[ "$vars" == *"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"* ]]
 }
 
-@test "cli_get_env_vars: opencode + openai モデルは OPENAI_API_KEY を含む" {
+@test "cli_get_env_vars: opencode は OPENCODE_CONFIG のみ（API Key は .env から読み込み）" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -274,7 +274,8 @@ EOF
     local vars
     vars=$(cli_get_env_vars)
     [[ "$vars" == *"OPENCODE_CONFIG=.ignite/opencode.json"* ]]
-    [[ "$vars" == *"OPENAI_API_KEY"* ]]
+    [[ "$vars" != *"OPENAI_API_KEY"* ]]
+    [[ "$vars" != *"ANTHROPIC_API_KEY"* ]]
 }
 
 # =============================================================================

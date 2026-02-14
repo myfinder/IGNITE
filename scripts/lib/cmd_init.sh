@@ -83,24 +83,25 @@ cmd_init() {
     print_info ".ignite/ ディレクトリを作成中..."
     mkdir -p "$ignite_dir"
 
-    # .gitignore 生成（ワークスペースルートに配置 — ランタイムデータ除外）
-    cat > "$target_dir/.gitignore" <<'GITIGNORE'
+    # .ignite/.gitignore 生成（ランタイムデータ除外）
+    cat > "$ignite_dir/.gitignore" <<'GITIGNORE'
 # IGNITE runtime data (auto-generated, do not commit)
-.ignite/queue/
-.ignite/logs/
-.ignite/state/
-.ignite/context/
-.ignite/costs/
-.ignite/archive/
-.ignite/repos/
-.ignite/tmp/
-.ignite/dashboard.md
-.ignite/runtime.yaml
+queue/
+logs/
+state/
+context/
+costs/
+archive/
+repos/
+tmp/
+dashboard.md
+runtime.yaml
 
-# private keys (placement location may vary)
+# secrets (never commit)
+.env
 *.pem
 GITIGNORE
-    print_success ".gitignore を生成しました（ランタイムデータ・秘密鍵を除外）"
+    print_success ".ignite/.gitignore を生成しました（ランタイムデータ・秘密鍵・.env を除外）"
 
     # --migrate: ~/.config/ignite/ から .ignite/ へ移行
     if [[ "$migrate" == true ]]; then
@@ -122,6 +123,23 @@ GITIGNORE
         fi
     fi
 
+    # .env.example の生成（--minimal でも生成 — API キーは最小構成でも必要）
+    cat > "$ignite_dir/.env.example" <<'ENVEOF'
+# IGNITE 環境変数（.env にコピーして値を設定してください）
+# cp .env.example .env && vi .env
+#
+# このファイル (.env.example) はコミット可能です。
+# .env は .gitignore で自動的に除外されます。
+
+# --- API Keys (OpenCode 使用時に必要) ---
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+
+# --- GitHub Token (GitHub App 未使用時のフォールバック) ---
+# GH_TOKEN=ghp_...
+ENVEOF
+    print_success ".env.example を生成しました"
+
     # instructions/characters のコピー
     _copy_instructions "$ignite_dir"
 
@@ -135,8 +153,8 @@ GITIGNORE
     echo ""
     echo "作成された構造:"
     echo "  ${target_dir}/"
-    echo "  ├── .gitignore"
     echo "  └── .ignite/"
+    echo "      ├── .gitignore"
     echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
         echo "      ├── characters.yaml"
@@ -144,10 +162,11 @@ GITIGNORE
         echo "      ├── github-watcher.yaml.example"
         echo "      ├── github-app.yaml.example"
     fi
+    echo "      ├── .env.example"
     echo "      ├── instructions/"
     echo "      └── characters/"
     echo ""
-    echo -e "${YELLOW}注意:${NC} ランタイムデータ（queue/, logs/, state/ 等）は .gitignore で"
+    echo -e "${YELLOW}注意:${NC} ランタイムデータ（queue/, logs/, state/ 等）は .ignite/.gitignore で"
     echo -e "自動的にGit追跡から除外されます。"
     echo ""
     echo "次のステップ:"
