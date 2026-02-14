@@ -101,8 +101,8 @@ teardown() {
     task_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
     [[ "$task_count" -ge 1 ]]
 
-    # trigger が "implement" であること
-    grep -q 'trigger: "implement"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
+    # trigger が "auto" であること（タスク分類は Leader に委譲）
+    grep -q 'trigger: "auto"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
 }
 
 @test "process_issues: メンションなしIssueでgithub_eventが生成される" {
@@ -123,7 +123,7 @@ teardown() {
     [[ "$task_count" -eq 0 ]]
 }
 
-@test "process_issues: reviewキーワードでtrigger_type=reviewになる" {
+@test "process_issues: レビューキーワードでもtrigger_type=autoになる（分類はLeader委譲）" {
     fetch_issues() {
         echo '{"id":12347,"number":1001,"title":"レビュー依頼","body":"@ignite-gh-app このPRをレビューしてください","author":"myfinder","author_type":"User","state":"open","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","url":"https://github.com/test/repo/issues/1001"}'
     }
@@ -131,7 +131,7 @@ teardown() {
 
     process_issues "test/repo"
 
-    grep -q 'trigger: "review"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
+    grep -q 'trigger: "auto"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
 }
 
 @test "process_issues: body空(null)のIssueでgithub_eventが生成される" {

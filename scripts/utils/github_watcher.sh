@@ -877,15 +877,8 @@ process_issues() {
         if [[ "$body" =~ $MENTION_PATTERN ]]; then
             log_event "トリガー検知: $MENTION_PATTERN (by $author)"
 
-            # トリガータイプを判別
-            local trigger_type="implement"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (レビュー|review) ]]; then
-                trigger_type="review"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "issue_created" "$repo" "$issue" "$trigger_type")
@@ -947,15 +940,8 @@ process_issue_comments() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="implement"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (レビュー|review) ]]; then
-                trigger_type="review"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "issue_comment" "$repo" "$comment" "$trigger_type")
@@ -1024,15 +1010,8 @@ process_prs() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="review"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "pr_created" "$repo" "$pr" "$trigger_type")
@@ -1101,15 +1080,8 @@ process_pr_comments() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="review"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "pr_comment" "$repo" "$comment" "$trigger_type")
@@ -1188,15 +1160,8 @@ process_pr_reviews() {
                 continue
             fi
 
-            # トリガータイプを判別（本体 + コード行コメントから）
-            local trigger_type="review"
-            if [[ "$all_text" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$all_text" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$all_text" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             # コード行コメントがある場合、reviewデータにマージ
             if [[ -n "$review_comments" ]]; then

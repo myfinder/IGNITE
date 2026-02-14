@@ -350,7 +350,7 @@ from: github_watcher
 to: leader
 priority: high
 payload:
-  trigger: "implement"  # implement, review, explain, insights
+  trigger: "auto"
   repository: owner/repo
   issue_number: 123
   issue_title: "機能リクエスト"
@@ -361,14 +361,24 @@ payload:
 ```
 
 **処理フロー:**
-1. Issueの内容を理解
-2. triggerタイプに応じて処理を決定:
-   - `implement`: Strategistに実装戦略を依頼 → IGNITIANsで実装 → PR作成
-   - `review`: Evaluatorにレビューを依頼
-   - `explain`: 説明を生成してGitHubにコメント
-   - `insights`: Innovatorにメモリ分析を依頼 → 改善Issue起票
-3. 実装完了後、`./scripts/utils/create_pr.sh` でPR作成
-4. 結果をBot名義でIssueにコメント
+1. `trigger_comment`（ユーザーのコメント原文）を読み、意図を判断する
+2. Issue/PR の `issue_title` と `issue_body` も参照してコンテキストを理解する
+3. 意図に応じて処理を決定（複合リクエストの場合は複数アクションを逐次実行）:
+   - **実装・修正**: Strategist に実装戦略を依頼 → IGNITIANs で実装 → PR 作成
+     - 例: 「実装して」「fix this」「修正して」「バグを直して」「このIssueを解決」「コンフリクト解消して」
+   - **レビュー・確認**: Evaluator にレビューを依頼
+     - 例: 「レビューして」「コードレビュー」「確認して」「チェックして」
+   - **説明**: 説明を生成して GitHub にコメント
+     - 例: 「説明して」「教えて」「解説して」
+   - **分析・インサイト**: Innovator にメモリ分析を依頼
+     - 例: 「インサイト」「分析して」「メモリ分析」
+   - **GitHub 操作**: 指示に従い GitHub API で直接操作
+     - 例: 「このIssueを閉じて」「ラベルを付けて」「アサインして」
+   - **複合リクエスト**: 意図を分解し、適切な順序で逐次実行
+     - 例: 「レビューして問題があれば修正して」→ レビュー → 問題発見時は修正 → PR 作成
+     - 例: 「コードレビューをして、指摘事項があれば修正してレポートしてください」→ レビュー → 修正 → レポートコメント
+4. 実装完了後、`./scripts/utils/create_pr.sh` で PR 作成
+5. 結果を Bot 名義で Issue/PR にコメント
 
 **実装タスクの例:**
 ```
