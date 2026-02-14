@@ -69,7 +69,6 @@ Content-Transfer-Encoding: 8bit
 - `improvement_suggestion` - 改善提案
 - `improvement_completed` - 改善完了
 - `progress_update` - 進捗報告
-- `system_init` - システム初期化
 - `github_event` - GitHubイベント通知
 - `github_task` - GitHubタスク（トリガー検出）
 - `escalation` - エスカレーション通知

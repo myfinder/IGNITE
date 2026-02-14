@@ -105,7 +105,6 @@ payload:
      - `github_event`: GitHub Watcherからのイベント通知（Issue/PR/コメント）
      - `github_task`: GitHub Watcherからのタスクリクエスト（メンショントリガー）
      - `insight_result`: Innovatorからのメモリ分析結果
-     - `system_init`: システム起動時の初期化メッセージ。初期化完了を確認し、メッセージファイルを削除する（ダッシュボード初期化はLeader起動時に実施済みのため二重初期化は行わない）
    - 処理完了したメッセージファイルは削除（Bashツールで `rm`）
 
 ### evaluation_result の処理

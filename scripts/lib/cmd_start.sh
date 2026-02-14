@@ -371,17 +371,6 @@ EOF
     print_warning "Leaderの初期化を待機中... (10秒)"
     sleep "$(get_delay leader_init 10)"
 
-    # 初期メッセージの送信
-    print_info "Leaderに初期化メッセージを送信中..."
-    local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
-    local init_message_file
-    init_message_file="$IGNITE_RUNTIME_DIR/queue/leader/system_init_$(date +%s%6N).mime"
-    local init_body='message: "システムが起動しました。初期化を完了してください。"
-action: initialize_dashboard'
-    python3 "$IGNITE_MIME" build \
-        --from system --to leader --type system_init \
-        --priority high --body "$init_body" -o "$init_message_file"
-
     echo ""
     print_success "IGNITE Leader が起動しました"
 
