@@ -109,16 +109,10 @@ load_config() {
 
     STATE_FILE=$(yaml_get "$config_file" 'state_file')
     STATE_FILE=${STATE_FILE:-$DEFAULT_STATE_FILE}
-    # IGNITE_WORKSPACE_DIR が設定されていればそれを基準にする（インストールモード対応）
-    if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
-        # state_file が "workspace/..." で始まる場合は "workspace/" を除去
-        STATE_FILE="${STATE_FILE#workspace/}"
-        STATE_FILE="${IGNITE_WORKSPACE_DIR}/${STATE_FILE}"
-    else
-        # "workspace/state/..." → IGNITE_RUNTIME_DIR/state/...
-        STATE_FILE="${STATE_FILE#workspace/}"
-        STATE_FILE="${IGNITE_RUNTIME_DIR:-$PROJECT_ROOT/workspace}/${STATE_FILE}"
-    fi
+    # state_file が "workspace/..." で始まる場合は "workspace/" を除去
+    STATE_FILE="${STATE_FILE#workspace/}"
+    # IGNITE_RUNTIME_DIR (.ignite/) 配下に配置
+    STATE_FILE="${IGNITE_RUNTIME_DIR:-${WORKSPACE_DIR:+${WORKSPACE_DIR}/.ignite}}/${STATE_FILE}"
 
     IGNORE_BOT=$(yaml_get "$config_file" 'ignore_bot')
     IGNORE_BOT=${IGNORE_BOT:-true}

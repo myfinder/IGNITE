@@ -17,6 +17,12 @@ cli_load_config() {
     CLI_PROVIDER=$(get_config cli provider "opencode")
     CLI_MODEL=$(get_config cli model "$DEFAULT_MODEL")
 
+    # モデル名バリデーション（英数字, ハイフン, ドット, スラッシュ, アンダースコア, コロンのみ許可）
+    if [[ ! "$CLI_MODEL" =~ ^[a-zA-Z0-9/:._-]+$ ]]; then
+        print_error "不正な model 名: $CLI_MODEL（使用可能: 英数字, /, :, ., _, -）"
+        return 1
+    fi
+
     case "$CLI_PROVIDER" in
         claude)
             CLI_COMMAND="claude"
@@ -50,7 +56,7 @@ cli_build_launch_command() {
 
     case "$CLI_PROVIDER" in
         claude)
-            cmd+="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model $CLI_MODEL --dangerously-skip-permissions --teammate-mode in-process"
+            cmd+="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --model '${CLI_MODEL}' --dangerously-skip-permissions --teammate-mode in-process"
             ;;
         opencode)
             cmd+="OPENCODE_CONFIG='.ignite/opencode.json' opencode"
@@ -195,18 +201,23 @@ cli_setup_project_config() {
             # instructions JSON 配列を構築
             local instructions_json="[]"
             if [[ ${#instruction_files[@]} -gt 0 ]]; then
-                instructions_json="["
+                local _items=""
                 local first=true
                 for f in "${instruction_files[@]}"; do
                     [[ -z "$f" ]] && continue
+                    # パス内の \ と " をエスケープ
+                    local escaped_f="${f//\\/\\\\}"
+                    escaped_f="${escaped_f//\"/\\\"}"
                     if [[ "$first" == true ]]; then
                         first=false
                     else
-                        instructions_json+=","
+                        _items+=","
                     fi
-                    instructions_json+="\"$f\""
+                    _items+="\"$escaped_f\""
                 done
-                instructions_json+="]"
+                if [[ "$first" == false ]]; then
+                    instructions_json="[${_items}]"
+                fi
             fi
 
             # Ollama プロバイダー設定を構築（model が ollama/ で始まる場合）
@@ -214,6 +225,11 @@ cli_setup_project_config() {
             if [[ "$CLI_MODEL" == ollama/* ]]; then
                 local ollama_url="${OLLAMA_API_URL:-http://localhost:11434/v1}"
                 local ollama_model="${CLI_MODEL#ollama/}"
+                # JSON インジェクション防止: " と \ をエスケープ
+                ollama_url="${ollama_url//\\/\\\\}"
+                ollama_url="${ollama_url//\"/\\\"}"
+                ollama_model="${ollama_model//\\/\\\\}"
+                ollama_model="${ollama_model//\"/\\\"}"
                 provider_json=',
   "provider": {
     "ollama": {
