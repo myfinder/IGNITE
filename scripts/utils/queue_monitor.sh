@@ -241,7 +241,7 @@ _trigger_daily_report() {
 
     # Issue を確保（なければ作成）
     local report_issue
-    report_issue=$(WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" ensure --repo "$repo" 2>/dev/null) || {
+    report_issue=$(WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" ensure --repo "$repo" 2>/dev/null) || {
         log_warn "日次レポート Issue の確保に失敗しました ($repo)"
         return 0
     }
@@ -258,7 +258,7 @@ _trigger_daily_report() {
 - **Trigger:** ${trigger}
 - **Time:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
-    WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+    WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
         --repo "$repo" \
         --issue "$report_issue" \
         --body "$comment_body" 2>/dev/null || {
@@ -315,7 +315,7 @@ _report_progress() {
         report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
         [[ -n "$report_issue" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$comment_body" 2>/dev/null || true
@@ -378,7 +378,7 @@ _report_evaluation() {
         report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
         [[ -n "$report_issue" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$comment_body" 2>/dev/null || true
@@ -493,7 +493,7 @@ _sync_dashboard_to_reports() {
         body=$(_generate_repo_report "$repo" "$today" "$timestamp")
         [[ -n "$body" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" update \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" update \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$body" 2>/dev/null || true

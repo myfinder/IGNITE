@@ -576,6 +576,7 @@ EOF
     echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
     export WORKSPACE_DIR="$WORKSPACE_DIR"
     export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+    export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
     "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
     local queue_pid=$!
     echo "$queue_pid" > "$IGNITE_RUNTIME_DIR/queue_monitor.pid"
