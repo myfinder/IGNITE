@@ -556,6 +556,8 @@ EOF
             echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$watcher_log"
             export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
             export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
+            export WORKSPACE_DIR="$WORKSPACE_DIR"
+            export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
             export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
             export IGNITE_TMUX_SESSION="$SESSION_NAME"
             "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
