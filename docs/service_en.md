@@ -13,14 +13,14 @@ IGNITE Service provides systemd-based service management using template units. I
 - **Auto-start**: Automatic recovery on OS restart with `enable` + `loginctl enable-linger`
 - **Journal Logging**: Centralized log management via `journalctl`
 - **Environment Management**: Securely manage credentials in `~/.config/ignite/env`
-- **--daemon Flag**: Integration with systemd `Type=forking`
+- **--daemon Flag**: Integration with systemd `Type=oneshot` + `RemainAfterExit=yes`
 
 ### Architecture
 
 ```mermaid
 flowchart TB
     subgraph systemd["systemd (user)"]
-        Unit["ignite@&lt;session&gt;.service<br/>Type=forking"]
+        Unit["ignite@&lt;session&gt;.service<br/>Type=oneshot + RemainAfterExit"]
         Watcher["ignite-watcher@&lt;session&gt;.service"]
     end
 
@@ -88,8 +88,6 @@ loginctl enable-linger $(whoami)
 # 5. Start the service
 ignite service start my-project
 ```
-
-> **📝 Note:** `ignite service install` will be available after PR2 (systemd template unit addition) is merged. For now, please use `ignite start --daemon` for daemon mode.
 
 ## Subcommand Reference
 
@@ -360,7 +358,7 @@ ignite service help
 
 ## `--daemon` Flag
 
-`ignite start --daemon` is a flag designed for integration with systemd `Type=forking`.
+`ignite start --daemon` is a flag designed for integration with systemd `Type=oneshot` + `RemainAfterExit=yes`.
 
 ### Normal Mode vs Daemon Mode
 
@@ -370,10 +368,10 @@ ignite service help
 | tmux session | Created | Created |
 | Post-startup behavior | Shows attach prompt | Writes PID file → `exit 0` |
 | Process lifetime | Maintained until tmux detach | Exits immediately (tmux persists) |
-| systemd integration | Not possible | Works with `Type=forking` |
+| systemd integration | Not possible | Works with `Type=oneshot` + `RemainAfterExit=yes` |
 | PID file | None | `<workspace>/ignite-daemon.pid` |
 
-### systemd Type=forking Integration
+### systemd Type=oneshot + RemainAfterExit Integration
 
 When `--daemon` is specified, the `ignite start` process behaves as follows:
 
@@ -381,7 +379,7 @@ When `--daemon` is specified, the `ignite start` process behaves as follows:
 2. Writes its own PID to `<workspace>/ignite-daemon.pid`
 3. Exits with `exit 0`
 
-systemd interprets this `exit 0` as "fork complete" and transitions the service to `active (running)` state. The tmux session continues running in the background.
+With `Type=oneshot` + `RemainAfterExit=yes`, systemd transitions the service to `active (exited)` state upon `exit 0`. The tmux session continues running in the background.
 
 ### Implicitly Enabled Options
 
@@ -487,8 +485,6 @@ cp templates/systemd/ignite@.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 ```
 
-> **📝 Note:** `ignite service install` will be available after PR2 (systemd template unit addition) is merged. Before PR2 is merged, use `ignite start --daemon`.
-
 ---
 
 ### D-Bus Connection Failure
@@ -565,6 +561,6 @@ ignite stop -s <session-name>
 
 ### Phased Migration
 
-1. **Phase 1 (Current)**: Use `ignite start --daemon` for daemon mode
-2. **Phase 2 (After PR2 merge)**: Install unit files with `ignite service install`
+1. **Phase 1**: Use `ignite start --daemon` for daemon mode
+2. **Phase 2 (Current)**: Install unit files with `ignite service install`
 3. **Phase 3**: Set up auto-start with `ignite service enable`, remove cron `@reboot`

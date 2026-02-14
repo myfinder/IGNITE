@@ -13,14 +13,14 @@ IGNITE Serviceは、systemdのテンプレートユニットを使用してIGNIT
 - **自動起動**: `enable` + `loginctl enable-linger` でOS再起動後も自動復旧
 - **ジャーナルログ**: `journalctl` でログの一元管理
 - **環境変数管理**: `~/.config/ignite/env` で機密情報を安全に管理
-- **--daemonフラグ**: systemd `Type=forking` との連携
+- **--daemonフラグ**: systemd `Type=oneshot` + `RemainAfterExit=yes` との連携
 
 ### アーキテクチャ
 
 ```mermaid
 flowchart TB
     subgraph systemd["systemd (user)"]
-        Unit["ignite@&lt;session&gt;.service<br/>Type=forking"]
+        Unit["ignite@&lt;session&gt;.service<br/>Type=oneshot + RemainAfterExit"]
         Watcher["ignite-watcher@&lt;session&gt;.service"]
     end
 
@@ -88,8 +88,6 @@ loginctl enable-linger $(whoami)
 # 5. サービスを開始
 ignite service start my-project
 ```
-
-> **📝 注意:** `ignite service install` はPR2（systemdテンプレートユニット追加）マージ後に使用可能です。現時点では `ignite start --daemon` でのdaemonモード使用を推奨します。
 
 ## サブコマンドリファレンス
 
@@ -360,7 +358,7 @@ ignite service help
 
 ## `--daemon` フラグ
 
-`ignite start --daemon` は、systemd `Type=forking` との連携を目的としたフラグです。
+`ignite start --daemon` は、systemd `Type=oneshot` + `RemainAfterExit=yes` との連携を目的としたフラグです。
 
 ### 通常モード vs daemonモード
 
@@ -370,10 +368,10 @@ ignite service help
 | tmuxセッション | 作成 | 作成 |
 | 起動後の動作 | アタッチプロンプト表示 | PIDファイル書出し → `exit 0` |
 | プロセス終了 | tmux detach まで維持 | 即座に終了（tmuxは残存） |
-| systemd連携 | 不可 | `Type=forking` で連携可能 |
+| systemd連携 | 不可 | `Type=oneshot` + `RemainAfterExit=yes` で連携可能 |
 | PIDファイル | なし | `<workspace>/ignite-daemon.pid` |
 
-### systemd Type=forking との連携
+### systemd Type=oneshot + RemainAfterExit との連携
 
 `--daemon` フラグを指定すると、`ignite start` プロセスは以下の動作をします:
 
@@ -381,7 +379,7 @@ ignite service help
 2. PIDファイル `<workspace>/ignite-daemon.pid` に自身のPIDを書出し
 3. `exit 0` でプロセスを終了
 
-systemdはこの `exit 0` を「フォーク完了」として解釈し、サービスを `active (running)` 状態に遷移させます。tmuxセッションはバックグラウンドで稼働し続けます。
+systemdは `Type=oneshot` + `RemainAfterExit=yes` により、`exit 0` をもってサービスを `active (exited)` 状態に遷移させます。tmuxセッションはバックグラウンドで稼働し続けます。
 
 ### 暗黙的に有効化されるオプション
 
@@ -487,8 +485,6 @@ cp templates/systemd/ignite@.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 ```
 
-> **📝 注意:** `ignite service install` はPR2（systemdテンプレートユニット追加）マージ後に使用可能です。PR2マージ前は `ignite start --daemon` を使用してください。
-
 ---
 
 ### D-Bus 接続失敗
@@ -565,6 +561,6 @@ ignite stop -s <session-name>
 
 ### 段階的移行
 
-1. **Phase 1（現在）**: `ignite start --daemon` でdaemonモード使用
-2. **Phase 2（PR2マージ後）**: `ignite service install` でユニットファイル導入
+1. **Phase 1**: `ignite start --daemon` でdaemonモード使用
+2. **Phase 2（現在）**: `ignite service install` でユニットファイル導入
 3. **Phase 3**: `ignite service enable` で自動起動設定、cron `@reboot` 削除

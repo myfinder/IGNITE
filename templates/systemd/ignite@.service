@@ -1,0 +1,21 @@
+[Unit]
+Description=IGNITE %i
+Documentation=https://github.com/myfinder/IGNITE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+EnvironmentFile=-%h/.ignite/env
+EnvironmentFile=-%h/.ignite/env.%i
+
+ExecStart=%h/.local/share/ignite/scripts/ignite start --daemon -s %i
+ExecStop=%h/.local/share/ignite/scripts/ignite stop -s %i -y
+
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

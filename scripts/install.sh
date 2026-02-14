@@ -329,6 +329,22 @@ install_data() {
         fi
     fi
 
+    # templates ディレクトリ
+    local source_templates="$SCRIPT_DIR/share/templates/systemd"
+    if [[ ! -d "$source_templates" ]]; then
+        source_templates="$SCRIPT_DIR/../templates/systemd"
+    fi
+
+    if [[ -d "$source_templates" ]]; then
+        mkdir -p "$DATA_DIR/templates/systemd"
+        cp "$source_templates"/*.service "$DATA_DIR/templates/systemd/"
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "templates/systemd を $DATA_DIR/templates/systemd にアップグレードしました"
+        else
+            print_success "templates/systemd を $DATA_DIR/templates/systemd にインストールしました"
+        fi
+    fi
+
     # sqlite3 存在チェック
     if ! command -v sqlite3 &>/dev/null; then
         print_warning "sqlite3 が見つかりません。メモリ機能は無効になります。"
