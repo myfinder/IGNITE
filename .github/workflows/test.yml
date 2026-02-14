@@ -23,6 +23,13 @@ jobs:
       - name: Verify sqlite3 availability
         run: sqlite3 --version
 
+      - name: Setup systemd user environment
+        run: |
+          # XDG_RUNTIME_DIR が設定されていることを確認
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" >> "$GITHUB_ENV"
+          # loginctl enable-linger（enable テストの linger チェック対応）
+          loginctl enable-linger "$(whoami)" || true
+
       - name: Run Bats tests
         run: bats tests/
 
