@@ -349,7 +349,7 @@ EOF
 
     # CLIの起動完了を待機
     print_warning "${CLI_COMMAND}の起動を待機中... (8秒)"
-    sleep "$(get_delay claude_startup 8)"
+    sleep "$(get_delay cli_startup 8)"
 
     # Leaderにシステムプロンプトを読み込ませる（絶対パスを使用）
     print_info "Leaderシステムプロンプトをロード中..."

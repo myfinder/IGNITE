@@ -82,7 +82,7 @@ start_agent() {
             sleep "$(get_delay permission_accept 0.5)"
             tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Enter
         fi
-        sleep "$(get_delay claude_startup 8)"
+        sleep "$(get_delay cli_startup 8)"
 
         # 起動確認（ヘルスチェック）
         local _health
@@ -140,7 +140,7 @@ start_ignitian() {
             sleep "$(get_delay permission_accept 0.5)"
             tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Enter
         fi
-        sleep "$(get_delay claude_startup 8)"
+        sleep "$(get_delay cli_startup 8)"
 
         # 起動確認（ヘルスチェック）
         local _health

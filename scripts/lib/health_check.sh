@@ -48,7 +48,7 @@ check_layer1() {
 
     # プロセス種別判定（CLI Provider に応じた動的マッチ）
     local _cli_processes
-    _cli_processes=$(cli_get_process_names 2>/dev/null || echo "claude node")
+    _cli_processes=$(cli_get_process_names 2>/dev/null || echo "opencode")
     case "$pane_cmd" in
         bash|zsh|sh)
             echo "alive"

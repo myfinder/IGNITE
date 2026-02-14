@@ -33,10 +33,10 @@ teardown() {
 # cli_load_config
 # =============================================================================
 
-@test "cli_load_config: cli: セクションなしでデフォルト claude" {
+@test "cli_load_config: cli: セクションなしでデフォルト opencode" {
     cli_load_config
-    [ "$CLI_PROVIDER" = "claude" ]
-    [ "$CLI_COMMAND" = "claude" ]
+    [ "$CLI_PROVIDER" = "opencode" ]
+    [ "$CLI_COMMAND" = "opencode" ]
 }
 
 @test "cli_load_config: provider=opencode を正しく読み込み" {
@@ -69,7 +69,24 @@ EOF
 # cli_build_launch_command
 # =============================================================================
 
+@test "cli_build_launch_command: opencode（デフォルト）の起動コマンドが正しい" {
+    cli_load_config
+    local cmd
+    cmd=$(cli_build_launch_command "/tmp/ws")
+    [[ "$cmd" == *"OPENCODE_CONFIG='.ignite/opencode.json' opencode"* ]]
+    [[ "$cmd" == *"WORKSPACE_DIR='/tmp/ws'"* ]]
+    [[ "$cmd" == *"cd '/tmp/ws'"* ]]
+    [[ "$cmd" != *"--dangerously-skip-permissions"* ]]
+}
+
 @test "cli_build_launch_command: claude の起動コマンドが正しい" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     local cmd
     cmd=$(cli_build_launch_command "/tmp/ws")
@@ -114,7 +131,21 @@ EOF
 # cli_get_process_names
 # =============================================================================
 
+@test "cli_get_process_names: opencode（デフォルト）は 'opencode' を返す" {
+    cli_load_config
+    local names
+    names=$(cli_get_process_names)
+    [[ "$names" == "opencode" ]]
+}
+
 @test "cli_get_process_names: claude は 'claude node' を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     local names
     names=$(cli_get_process_names)
@@ -137,7 +168,20 @@ EOF
 # cli_needs_permission_accept
 # =============================================================================
 
+@test "cli_needs_permission_accept: opencode（デフォルト）は 1 (不要)" {
+    cli_load_config
+    run cli_needs_permission_accept
+    [ "$status" -eq 1 ]
+}
+
 @test "cli_needs_permission_accept: claude は 0 (必要)" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     cli_needs_permission_accept
 }
@@ -157,7 +201,20 @@ EOF
 # cli_needs_prompt_injection
 # =============================================================================
 
+@test "cli_needs_prompt_injection: opencode（デフォルト）は 1 (不要)" {
+    cli_load_config
+    run cli_needs_prompt_injection
+    [ "$status" -eq 1 ]
+}
+
 @test "cli_needs_prompt_injection: claude は 0 (必要)" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     cli_needs_prompt_injection
 }
@@ -177,7 +234,20 @@ EOF
 # cli_is_cost_tracking_supported
 # =============================================================================
 
+@test "cli_is_cost_tracking_supported: opencode（デフォルト）は非対応" {
+    cli_load_config
+    run cli_is_cost_tracking_supported
+    [ "$status" -eq 1 ]
+}
+
 @test "cli_is_cost_tracking_supported: claude は対応" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     cli_is_cost_tracking_supported
 }
@@ -197,7 +267,23 @@ EOF
 # cli_setup_project_config
 # =============================================================================
 
+@test "cli_setup_project_config: opencode（デフォルト）で .ignite/opencode.json を生成" {
+    cli_load_config
+    local ws_dir="$TEST_TEMP_DIR/ws_default"
+    mkdir -p "$ws_dir/.ignite"
+    cli_setup_project_config "$ws_dir" "/tmp/char.md" "/tmp/instr.md"
+    [ -f "$ws_dir/.ignite/opencode.json" ]
+    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"model": "openai/gpt-5.2-codex"'* ]]
+}
+
 @test "cli_setup_project_config: claude では何も生成しない" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_claude"
     mkdir -p "$ws_dir/.ignite"
@@ -257,7 +343,21 @@ EOF
 # cli_get_env_vars
 # =============================================================================
 
+@test "cli_get_env_vars: opencode（デフォルト）は OPENCODE_CONFIG を含む" {
+    cli_load_config
+    local vars
+    vars=$(cli_get_env_vars)
+    [[ "$vars" == *"OPENCODE_CONFIG=.ignite/opencode.json"* ]]
+}
+
 @test "cli_get_env_vars: claude は AGENT_TEAMS を含む" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     local vars
     vars=$(cli_get_env_vars)
@@ -282,7 +382,21 @@ EOF
 # cli_get_required_commands
 # =============================================================================
 
+@test "cli_get_required_commands: opencode（デフォルト）は 'tmux opencode gh'" {
+    cli_load_config
+    local cmds
+    cmds=$(cli_get_required_commands)
+    [[ "$cmds" == "tmux opencode gh" ]]
+}
+
 @test "cli_get_required_commands: claude は 'tmux claude gh'" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-opus-4-6
+tmux:
+  window_name: ignite
+EOF
     cli_load_config
     local cmds
     cmds=$(cli_get_required_commands)

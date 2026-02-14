@@ -1,5 +1,5 @@
 # CLI プロバイダー設定
-# provider: claude（デフォルト）または opencode
+# provider: opencode（デフォルト）または claude
 # model: 使用するモデル名（プロバイダーにより形式が異なる）
 #
 # Claude Code の場合:
@@ -7,14 +7,14 @@
 #     provider: claude
 #     model: claude-opus-4-6
 #
-# OpenCode の場合:
+# OpenCode の場合（デフォルト）:
 #   cli:
 #     provider: opencode
 #     model: anthropic/claude-sonnet-4-5-20250929
-#
-# cli:
-#   provider: claude
-#   model: claude-opus-4-6
+
+cli:
+  provider: opencode
+  model: openai/gpt-5.2-codex
 
 tmux:
   window_name: ignite
@@ -23,7 +23,7 @@ tmux:
 delays:
   # --- ユーザー調整推奨（環境依存） ---
   leader_startup: 3        # Leader/Agent起動待機（秒）
-  claude_startup: 8        # Claude Code起動完了待機（秒）
+  cli_startup: 8           # CLI起動完了待機（秒）
   leader_init: 10          # Leader初期化待機（秒）
   agent_stabilize: 2       # エージェント安定化待機（秒）
   agent_retry_wait: 2      # エージェントリトライ待機（秒）

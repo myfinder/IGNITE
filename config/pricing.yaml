@@ -52,5 +52,5 @@ models:
     cache_creation_per_1m_tokens: 1.25
 
 defaults:
-  model: "claude-opus-4-6"
+  model: "openai/gpt-5.2-codex"
   exchange_rate_jpy: 150.0

@@ -96,7 +96,7 @@ check_dependencies() {
     local missing=()
 
     # system.yaml から CLI プロバイダーを簡易パース
-    local cli_provider="claude"
+    local cli_provider="opencode"
     local system_yaml="$CONFIG_DIR/system.yaml"
     if [[ -f "$system_yaml" ]]; then
         local _prov
@@ -109,7 +109,7 @@ check_dependencies() {
     local required_cmds="tmux gh"
     case "$cli_provider" in
         opencode) required_cmds="tmux opencode gh" ;;
-        *)        required_cmds="tmux claude gh" ;;
+        *)        required_cmds="tmux opencode gh" ;;
     esac
 
     for cmd in $required_cmds; do

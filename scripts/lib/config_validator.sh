@@ -241,7 +241,7 @@ validate_system_yaml() {
 
     # delays セクション (9)
     local delay_keys=(
-        leader_startup claude_startup leader_init
+        leader_startup cli_startup leader_init
         agent_stabilize agent_retry_wait process_cleanup
         session_create permission_accept prompt_send
     )

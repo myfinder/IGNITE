@@ -14,7 +14,7 @@ CLI_COMMAND=""
 cli_load_config() {
     local config_file="$IGNITE_CONFIG_DIR/system.yaml"
 
-    CLI_PROVIDER=$(get_config cli provider "claude")
+    CLI_PROVIDER=$(get_config cli provider "opencode")
     CLI_MODEL=$(get_config cli model "$DEFAULT_MODEL")
 
     case "$CLI_PROVIDER" in

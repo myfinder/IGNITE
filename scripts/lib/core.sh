@@ -55,7 +55,7 @@ fi
 unset _CHARACTERS_FILE
 
 # デフォルト設定
-DEFAULT_MODEL="claude-opus-4-6"
+DEFAULT_MODEL="openai/gpt-5.2-codex"
 DEFAULT_WORKER_COUNT=3
 
 # Claude セッションデータのパス（PROJECT_ROOT から動的に生成）

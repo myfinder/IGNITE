@@ -21,7 +21,7 @@ load_pricing() {
     # デフォルトモデルの料金を取得（pricing.yaml の defaults.model から動的取得）
     local default_model
     default_model=$(grep -A1 "^defaults:" "$pricing_file" | grep "model:" | awk '{print $2}' | tr -d '"')
-    default_model=${default_model:-claude-opus-4-6}
+    default_model=${default_model:-openai/gpt-5.2-codex}
     PRICE_INPUT=$(grep -A5 "${default_model}:" "$pricing_file" | grep "input_per_1m_tokens:" | head -1 | awk '{print $2}')
     PRICE_OUTPUT=$(grep -A5 "${default_model}:" "$pricing_file" | grep "output_per_1m_tokens:" | head -1 | awk '{print $2}')
     PRICE_CACHE_READ=$(grep -A5 "${default_model}:" "$pricing_file" | grep "cache_read_per_1m_tokens:" | head -1 | awk '{print $2}')
