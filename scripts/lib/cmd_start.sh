@@ -227,6 +227,7 @@ EOF
     if [[ -f "$_env_file" ]]; then
         print_info ".env を読み込み中..."
         set -a
+        # shellcheck source=/dev/null
         source "$_env_file"
         set +a
     else

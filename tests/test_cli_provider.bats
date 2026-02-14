@@ -73,7 +73,7 @@ EOF
     cli_load_config
     local cmd
     cmd=$(cli_build_launch_command "/tmp/ws")
-    [[ "$cmd" == *"OPENCODE_CONFIG='.ignite/opencode.json' opencode"* ]]
+    [[ "$cmd" == *"OPENCODE_CONFIG='.ignite/opencode_leader.json' opencode"* ]]
     [[ "$cmd" == *"WORKSPACE_DIR='/tmp/ws'"* ]]
     [[ "$cmd" == *"cd '/tmp/ws'"* ]]
     [[ "$cmd" != *"--dangerously-skip-permissions"* ]]
@@ -107,7 +107,7 @@ EOF
     cli_load_config
     local cmd
     cmd=$(cli_build_launch_command "/tmp/ws")
-    [[ "$cmd" == *"OPENCODE_CONFIG='.ignite/opencode.json' opencode"* ]]
+    [[ "$cmd" == *"OPENCODE_CONFIG='.ignite/opencode_leader.json' opencode"* ]]
     [[ "$cmd" == *"WORKSPACE_DIR='/tmp/ws'"* ]]
     # opencode はフラグではなく opencode.json の permission で制御
     [[ "$cmd" != *"--dangerously-skip-permissions"* ]]
@@ -267,13 +267,13 @@ EOF
 # cli_setup_project_config
 # =============================================================================
 
-@test "cli_setup_project_config: opencode（デフォルト）で .ignite/opencode.json を生成" {
+@test "cli_setup_project_config: opencode（デフォルト）で .ignite/opencode_leader.json を生成" {
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_default"
     mkdir -p "$ws_dir/.ignite"
-    cli_setup_project_config "$ws_dir" "/tmp/char.md" "/tmp/instr.md"
-    [ -f "$ws_dir/.ignite/opencode.json" ]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"model": "openai/gpt-5.2-codex"'* ]]
+    cli_setup_project_config "$ws_dir" "leader" "/tmp/char.md" "/tmp/instr.md"
+    [ -f "$ws_dir/.ignite/opencode_leader.json" ]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/gpt-5.2-codex"'* ]]
 }
 
 @test "cli_setup_project_config: claude では何も生成しない" {
@@ -292,7 +292,7 @@ EOF
     [ ! -f "$ws_dir/opencode.json" ]
 }
 
-@test "cli_setup_project_config: opencode で .ignite/opencode.json を生成" {
+@test "cli_setup_project_config: opencode で .ignite/opencode_leader.json を生成" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -301,18 +301,18 @@ EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_opencode"
     mkdir -p "$ws_dir/.ignite"
-    cli_setup_project_config "$ws_dir" "/tmp/char.md" "/tmp/instr.md"
-    [ -f "$ws_dir/.ignite/opencode.json" ]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"model": "openai/o3"'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'$schema'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"permission"'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"*": "allow"'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"instructions"'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'/tmp/char.md'* ]]
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'/tmp/instr.md'* ]]
+    cli_setup_project_config "$ws_dir" "leader" "/tmp/char.md" "/tmp/instr.md"
+    [ -f "$ws_dir/.ignite/opencode_leader.json" ]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/o3"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'$schema'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"permission"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"*": "allow"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"instructions"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'/tmp/char.md'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'/tmp/instr.md'* ]]
 }
 
-@test "cli_setup_project_config: .ignite/ がなければルートに生成" {
+@test "cli_setup_project_config: .ignite/ がなければルートに opencode_leader.json を生成" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -321,11 +321,11 @@ EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_no_ignite"
     mkdir -p "$ws_dir"
-    cli_setup_project_config "$ws_dir"
-    [ -f "$ws_dir/opencode.json" ]
+    cli_setup_project_config "$ws_dir" "leader"
+    [ -f "$ws_dir/opencode_leader.json" ]
 }
 
-@test "cli_setup_project_config: 既存 opencode.json は最新設定で再生成される" {
+@test "cli_setup_project_config: 既存 opencode_leader.json は最新設定で再生成される" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -334,9 +334,9 @@ EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_existing"
     mkdir -p "$ws_dir/.ignite"
-    echo '{"custom": true, "model": "old/model"}' > "$ws_dir/.ignite/opencode.json"
-    cli_setup_project_config "$ws_dir"
-    [[ "$(cat "$ws_dir/.ignite/opencode.json")" == *'"model": "openai/o3"'* ]]
+    echo '{"custom": true, "model": "old/model"}' > "$ws_dir/.ignite/opencode_leader.json"
+    cli_setup_project_config "$ws_dir" "leader"
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/o3"'* ]]
 }
 
 # =============================================================================

@@ -188,8 +188,15 @@ cli_is_cost_tracking_supported() {
 cli_setup_project_config() {
     local workspace_dir="$1"
     local role="$2"
-    shift 2
-    local instruction_files=("$@")
+    shift 2 || true
+    local instruction_files=()
+
+    if [[ -z "$role" || "$role" == /* || "$role" == *.md ]]; then
+        instruction_files=("$role" "$@")
+        role="leader"
+    else
+        instruction_files=("$@")
+    fi
 
     case "$CLI_PROVIDER" in
         claude)
