@@ -127,7 +127,7 @@ cmd_work_on() {
     local message_file="$IGNITE_RUNTIME_DIR/queue/leader/github_task_${message_id}.mime"
 
     local body_yaml
-    body_yaml="trigger: implement
+    body_yaml="trigger: auto
 repository: ${repo}
 issue_number: ${issue_number}
 issue_title: \"${issue_title//\"/\\\"}\"

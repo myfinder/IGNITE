@@ -158,26 +158,15 @@ ignite start --with-watcher
 
 `config/github-watcher.yaml` で以下の設定をカスタマイズできます。
 
-### トリガーキーワード
+### トリガー設定
 
 ```yaml
 triggers:
   mention_pattern: "@ignite-gh-app"
-  keywords:
-    implement:
-      - "実装して"
-      - "implement"
-      - "fix this"
-      - "PRを作成"
-    review:
-      - "レビューして"
-      - "review"
-    explain:
-      - "説明して"
-      - "explain"
-    insights:
-      - "インサイト"
-      - "insights"
+
+  # タスク分類は Leader（LLM）に委譲
+  # Watcher はメンション検出 + メッセージ転送に専念し、
+  # trigger_comment の内容から意図を判断する処理は Leader が行う
 ```
 
 ### 応答テンプレート

@@ -1048,7 +1048,7 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
 # GitHub タスク受付の記録
 sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
   INSERT INTO memories (agent, type, content, context, task_id, repository, issue_number) \
-  VALUES ('leader', 'message_received', 'Issue #123 実装リクエスト受付', 'github_task trigger: implement', 'task_005', '${REPOSITORY}', ${ISSUE_NUMBER});"
+  VALUES ('leader', 'message_received', 'Issue #123 実装リクエスト受付', 'github_task trigger: auto', 'task_005', '${REPOSITORY}', ${ISSUE_NUMBER});"
 ```
 
 ### アイドル時の状態保存

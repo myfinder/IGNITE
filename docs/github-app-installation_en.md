@@ -158,25 +158,15 @@ Label: ignite-auto
 
 The following settings can be customized in `config/github-watcher.yaml`.
 
-### Trigger Keywords
+### Trigger Configuration
 
 ```yaml
 triggers:
   mention_pattern: "@ignite-gh-app"
-  keywords:
-    implement:
-      - "implement"
-      - "fix this"
-      - "create PR"
-    review:
-      - "review"
-      - "check this"
-    explain:
-      - "explain"
-      - "describe"
-    insights:
-      - "insights"
-      - "insight"
+
+  # Task classification is delegated to Leader (LLM)
+  # Watcher focuses on mention detection + message forwarding.
+  # Leader determines the intent from trigger_comment content.
 ```
 
 ### Response Templates

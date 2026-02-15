@@ -112,25 +112,16 @@ watcher:
 
 ### 3. Trigger Configuration
 
-Start automatic tasks via mentions or keywords:
+Start automatic tasks via mentions (task classification is delegated to Leader LLM):
 
 ```yaml
 triggers:
   # Mention pattern
   mention_pattern: "@ignite-gh-app"
 
-  # Actions by keyword
-  keywords:
-    implement:
-      - "implement"
-      - "fix this"
-      - "create PR"
-    review:
-      - "review"
-      - "check this"
-    explain:
-      - "explain"
-      - "describe"
+  # Task classification is delegated to Leader (LLM)
+  # Watcher focuses on mention detection + message forwarding.
+  # Leader determines the intent from trigger_comment content.
 
   # Auto-trigger labels
   auto_labels:
@@ -273,7 +264,7 @@ to: leader
 timestamp: "2026-02-03T12:10:00+09:00"
 priority: high
 payload:
-  trigger: "implement"
+  trigger: "auto"
   repository: owner/repo
   issue_number: 123
   issue_title: "Fix login bug"
@@ -304,19 +295,24 @@ Mentioning in GitHub Issue/PR comments like below will automatically start IGNIT
 @ignite-gh-app create a PR
 ```
 
-### Trigger Types
+### Task Classification
 
-| Trigger | Description | Keyword Examples |
-|---------|-------------|------------------|
-| `implement` | Implement Issue/feature | implement, fix this |
-| `review` | Code review | review, check this |
-| `explain` | Explanation | explain, describe |
+Watcher forwards all mentions to Leader with `trigger: "auto"`. Leader determines the intent from `trigger_comment` content and selects the appropriate action:
+
+| Action | Description | Comment Examples |
+|--------|-------------|------------------|
+| Implement/Fix | Implement Issue/feature, bug fix | implement, fix this |
+| Review | Code review | review, check this |
+| Explain | Explanation | explain, describe |
+| Analysis/Insights | Memory analysis | insights, analyze |
+| GitHub Operations | Issue/PR operations | close this, add label |
+| Compound Request | Sequential execution of multiple actions | review and fix if needed |
 
 ## Issue → PR Auto-creation Flow
 
 1. **Trigger detection**: User comments `@ignite-gh-app implement this`
-2. **Task message generation**: GitHub Watcher creates `github_task` message
-3. **IGNITE processing**: Task execution through Leader → Strategist → IGNITIANs flow
+2. **Task message generation**: GitHub Watcher creates `github_task` message (`trigger: "auto"`)
+3. **IGNITE processing**: Leader determines intent → Strategist → IGNITIANs flow
 4. **PR creation**: After implementation, create PR as Bot using `create_pr.sh`
 5. **Notification**: Comment PR link on Issue
 
