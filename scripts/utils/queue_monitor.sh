@@ -25,6 +25,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
 source "${SCRIPT_DIR}/../lib/cli_provider.sh"
+source "${SCRIPT_DIR}/../lib/health_check.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
@@ -134,6 +135,106 @@ _resolve_task_timeout() {
         _TASK_TIMEOUT="${RETRY_TIMEOUT:-300}"
     fi
     echo "$_TASK_TIMEOUT"
+}
+
+# task_health.json の永続化
+_write_task_health_snapshot() {
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    local output_file="$state_dir/task_health.json"
+    mkdir -p "$state_dir"
+
+    local timestamp
+    timestamp=$(date -Iseconds)
+
+    local agents_json="[]"
+    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        agents_json=$(get_agents_health_json "$TMUX_SESSION:$TMUX_WINDOW_NAME" 2>/dev/null || echo "[]")
+    fi
+
+    local queue_lines=""
+    for queue_dir in "$IGNITE_RUNTIME_DIR/queue"/*; do
+        [[ -d "$queue_dir" ]] || continue
+        local queue_name
+        queue_name=$(basename "$queue_dir")
+        [[ "$queue_name" == "dead_letter" ]] && continue
+
+        local pending_count
+        pending_count=$(find "$queue_dir" -maxdepth 1 -name "*.mime" -type f 2>/dev/null | wc -l)
+
+        local processed_dir="$queue_dir/processed"
+        local processing_count=0
+        local retrying_count=0
+        local delivered_count=0
+        if [[ -d "$processed_dir" ]]; then
+            for file in "$processed_dir"/*.mime; do
+                [[ -f "$file" ]] || continue
+                local status
+                status=$(mime_get "$file" "status")
+                case "$status" in
+                    processing|"")
+                        processing_count=$((processing_count + 1))
+                        ;;
+                    retrying)
+                        retrying_count=$((retrying_count + 1))
+                        ;;
+                    delivered|completed)
+                        delivered_count=$((delivered_count + 1))
+                        ;;
+                esac
+            done
+        fi
+
+        queue_lines+="${queue_name}|${pending_count}|${processing_count}|${retrying_count}|${delivered_count}"
+        queue_lines+=$'\n'
+    done
+
+    TASK_HEALTH_TIMESTAMP="$timestamp" \
+    TASK_HEALTH_SESSION="$TMUX_SESSION" \
+    TASK_HEALTH_WORKSPACE="$WORKSPACE_DIR" \
+    TASK_HEALTH_AGENTS_JSON="$agents_json" \
+    TASK_HEALTH_QUEUE_LINES="$queue_lines" \
+    python3 - <<'PY' > "$output_file"
+import json
+import os
+
+timestamp = os.environ.get("TASK_HEALTH_TIMESTAMP", "")
+session = os.environ.get("TASK_HEALTH_SESSION", "")
+workspace = os.environ.get("TASK_HEALTH_WORKSPACE", "")
+agents_json = os.environ.get("TASK_HEALTH_AGENTS_JSON", "[]")
+queue_lines = os.environ.get("TASK_HEALTH_QUEUE_LINES", "")
+
+try:
+    agents = json.loads(agents_json)
+except json.JSONDecodeError:
+    agents = []
+
+queues = []
+for raw in queue_lines.splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+    parts = line.split("|", 4)
+    if len(parts) != 5:
+        continue
+    name, pending, processing, retrying, delivered = parts
+    queues.append({
+        "name": name,
+        "pending": int(pending),
+        "processing": int(processing),
+        "retrying": int(retrying),
+        "delivered": int(delivered),
+    })
+
+payload = {
+    "generated_at": timestamp,
+    "session": session,
+    "workspace_dir": workspace,
+    "agents": agents,
+    "queues": queues,
+}
+
+print(json.dumps(payload, ensure_ascii=False, indent=2))
+PY
 }
 
 # =============================================================================
@@ -921,6 +1022,8 @@ monitor_queues() {
             dirname=$(basename "$ignitian_dir")
             scan_for_timeouts "$ignitian_dir" "$dirname"
         done
+
+        _write_task_health_snapshot || true
 
         # 定期的にダッシュボードから日次レポートに同期（~5分ごと）
         poll_count=$((poll_count + 1))

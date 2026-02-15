@@ -43,7 +43,9 @@ cmd_status() {
     echo ""
 
     # tmuxセッション確認
+    local has_session=false
     if session_exists; then
+        has_session=true
         print_success "tmuxセッション: 実行中"
 
         # ペイン数確認
@@ -66,7 +68,6 @@ cmd_status() {
         done < <(get_all_agents_health "$SESSION_NAME:$TMUX_WINDOW_NAME")
     else
         print_error "tmuxセッション: 停止"
-        exit 1
     fi
 
     echo ""
@@ -91,7 +92,7 @@ cmd_status() {
             queue_name=$(basename "$queue_dir")
             [[ "$queue_name" == "dead_letter" ]] && continue
             local message_count
-            message_count=$(find "$queue_dir" -maxdepth 1 -name "*.yaml" -type f 2>/dev/null | wc -l)
+            message_count=$(find "$queue_dir" -maxdepth 1 -name "*.mime" -type f 2>/dev/null | wc -l)
 
             if [[ "$message_count" -gt 0 ]]; then
                 echo -e "${YELLOW}  $queue_name: $message_count メッセージ（未処理）${NC}"
@@ -100,6 +101,28 @@ cmd_status() {
             fi
         fi
     done
+
+    # 保存済みのエージェント状態（task_health.json）
+    if [[ "$has_session" != true ]]; then
+        local health_file="$IGNITE_RUNTIME_DIR/state/task_health.json"
+        if [[ -f "$health_file" ]]; then
+            echo ""
+            print_header "エージェント状態 (保存済み)"
+            echo ""
+            local _health_line
+            while IFS= read -r _health_line; do
+                [[ -z "$_health_line" ]] && continue
+                local _pane_idx _agent_name _status
+                IFS=':' read -r _pane_idx _agent_name _status <<< "$_health_line"
+                local _formatted
+                _formatted=$(format_health_status "$_status")
+                echo -e "  ${_formatted} pane ${_pane_idx}: ${_agent_name}"
+            done < <(jq -r '.agents[]? | "\(.pane):\(.name):\(.status)"' "$health_file" 2>/dev/null)
+            local _updated
+            _updated=$(jq -r '.generated_at // empty' "$health_file" 2>/dev/null)
+            [[ -n "$_updated" ]] && echo -e "${BLUE}  最終更新: ${_updated}${NC}"
+        fi
+    fi
 
     echo ""
 
