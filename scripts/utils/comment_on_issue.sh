@@ -165,14 +165,24 @@ _is_duplicate_comment() {
     trimmed_body=$(printf '%s' "$body" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     # 既存コメントをJSON配列で一括取得
-    local comments_json=""
-    local auth_token
-    auth_token=$(get_auth_token "$repo") || true
-    if [[ -z "$auth_token" ]]; then
-        _print_auth_error "$repo"
+    if ! _require_jq_or_warn; then
+        log_warn "jq が未インストールのため重複チェックをスキップします"
         return 1
     fi
-    comments_json=$(github_api_paginate "$repo" "/repos/${repo}/issues/${issue_number}/comments" 2>/dev/null) || true
+
+    local comments_json=""
+    if [[ "$use_bot" == "true" ]]; then
+        local bot_token
+        bot_token=$(get_bot_token "$repo" 2>/dev/null) || true
+        if [[ -n "$bot_token" ]]; then
+            comments_json=$(GITHUB_AUTH_TOKEN_OVERRIDE="$bot_token" github_api_paginate \
+                "$repo" "/repos/${repo}/issues/${issue_number}/comments?per_page=100" 2>/dev/null) || true
+        fi
+    fi
+    if [[ -z "$comments_json" ]]; then
+        comments_json=$(github_api_paginate \
+            "$repo" "/repos/${repo}/issues/${issue_number}/comments?per_page=100" 2>/dev/null) || true
+    fi
 
     if [[ -z "$comments_json" ]]; then
         log_warn "コメント一覧取得失敗。重複チェックをスキップして投稿を続行します。"
@@ -203,21 +213,35 @@ post_comment() {
         return 0
     fi
 
-    local auth_token
-    auth_token=$(get_auth_token "$repo") || true
-    if [[ -z "$auth_token" ]]; then
-        _print_auth_error "$repo"
-        return 1
+    local payload
+    if command -v jq >/dev/null 2>&1; then
+        payload=$(jq -n --arg body "$body" '{body:$body}')
+    else
+        payload=$(python3 - <<PY
+import json,sys
+print(json.dumps({"body": sys.argv[1]}))
+PY
+"$body")
     fi
 
-    if [[ "$use_bot" == "true" ]] && [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
-        log_warn "GitHub App Token取得失敗のため、PATで投稿します。"
+    if [[ "$use_bot" == "true" ]]; then
+        # キャッシュ付きBot Token取得（期限切れなら自動更新）
+        local bot_token
+        bot_token=$(get_bot_token "$repo")
+        if [[ -n "$bot_token" ]]; then
+            log_info "Bot名義でコメントを投稿中... (REST API)"
+            if GITHUB_AUTH_TOKEN_OVERRIDE="$bot_token" github_api_post \
+                "$repo" "/repos/${repo}/issues/${issue_number}/comments" "$payload" 2>/dev/null; then
+                return 0
+            fi
+            log_warn "Bot Tokenでの投稿失敗。通常のトークンで投稿します。"
+        else
+            log_warn "Bot Token取得失敗。通常のトークンで投稿します。"
+        fi
     fi
 
     log_info "コメントを投稿中..."
-    local json_body
-    json_body=$(jq -n --arg body "$body" '{"body": $body}')
-    github_api_post "$repo" "/repos/${repo}/issues/${issue_number}/comments" "$json_body" > /dev/null
+    github_api_post "$repo" "/repos/${repo}/issues/${issue_number}/comments" "$payload" >/dev/null
 }
 
 # =============================================================================
@@ -290,7 +314,7 @@ main() {
         exit 1
     fi
 
-    # リポジトリ推測（git remote から検出）
+    # リポジトリ推測
     if [[ -z "$repo" ]]; then
         repo=$(_get_repo_from_remote 2>/dev/null || echo "")
         if [[ -z "$repo" ]]; then

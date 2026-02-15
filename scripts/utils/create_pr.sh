@@ -188,37 +188,56 @@ create_pull_request() {
 
     log_info "PRを作成中..."
 
-    local draft_flag=""
-    if [[ "$is_draft" == "true" ]]; then
-        draft_flag="--draft"
+    # トークン設定（キャッシュ付きBot Token取得、期限切れなら自動更新）
+    local bot_token=""
+    if [[ "$use_bot" == "true" ]]; then
+        bot_token=$(get_cached_bot_token "$repo") || true
+        if [[ -z "$bot_token" ]]; then
+            log_warn "Bot Token取得失敗。通常のトークンで作成します。"
+        fi
     fi
 
-    # 認証トークン設定（GitHub App > PAT）
-    local auth_token=""
-    auth_token=$(get_auth_token "$repo") || true
-    if [[ -z "$auth_token" ]]; then
-        _print_auth_error "$repo"
+    # PR作成
+    local payload
+    if command -v jq >/dev/null 2>&1; then
+        if [[ "$is_draft" == "true" ]]; then
+            payload=$(jq -n --arg title "$title" --arg body "$body" --arg base "$base_branch" --arg head "$head_branch" '{title:$title,body:$body,base:$base,head:$head,draft:true}')
+        else
+            payload=$(jq -n --arg title "$title" --arg body "$body" --arg base "$base_branch" --arg head "$head_branch" '{title:$title,body:$body,base:$base,head:$head}')
+        fi
+    else
+        payload=$(python3 - <<PY
+import json,sys
+title,body,base,head,draft=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5]
+data={"title":title,"body":body,"base":base,"head":head}
+if draft == "true":
+    data["draft"]=True
+print(json.dumps(data))
+PY
+"$title" "$body" "$base_branch" "$head_branch" "$is_draft")
+    fi
+
+    local pr_json=""
+    if [[ -n "$bot_token" ]]; then
+        if ! pr_json=$(GITHUB_AUTH_TOKEN_OVERRIDE="$bot_token" github_api_post "$repo" "/repos/${repo}/pulls" "$payload" 2>/dev/null); then
+            log_warn "Bot TokenでのPR作成失敗（期限切れの可能性）。通常のトークンでリトライします。"
+            pr_json=$(github_api_post "$repo" "/repos/${repo}/pulls" "$payload" 2>/dev/null)
+        fi
+    else
+        pr_json=$(github_api_post "$repo" "/repos/${repo}/pulls" "$payload" 2>/dev/null)
+    fi
+
+    if [[ -z "$pr_json" ]]; then
+        log_error "PR作成に失敗しました"
         return 1
     fi
-    if [[ "$use_bot" == "true" ]] && [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
-        log_warn "GitHub App Token取得失敗のため、PATでPRを作成します。"
-    fi
-
-    # PR作成（curl + GitHub API）
-    local json_data
-    json_data=$(jq -n \
-        --arg title "$title" \
-        --arg body "$body" \
-        --arg head "$head_branch" \
-        --arg base "$base_branch" \
-        --argjson draft "$( [[ "$is_draft" == "true" ]] && echo true || echo false )" \
-        '{"title": $title, "body": $body, "head": $head, "base": $base, "draft": $draft}')
-
-    local pr_response
-    pr_response=$(github_api_post "$repo" "/repos/${repo}/pulls" "$json_data")
 
     local pr_url
-    pr_url=$(printf '%s' "$pr_response" | _json_get '.html_url')
+    pr_url=$(printf '%s' "$pr_json" | _json_get '.html_url')
+    if [[ -z "$pr_url" ]]; then
+        log_error "PR URLの取得に失敗しました"
+        return 1
+    fi
     echo "$pr_url"
 }
 
@@ -306,7 +325,7 @@ main() {
     else
         ISSUE_NUMBER="$issue_input"
         if [[ -z "$repo" ]]; then
-            # リポジトリを推測（git remote から検出）
+            # リポジトリを推測
             repo=$(_get_repo_from_remote 2>/dev/null || echo "")
             if [[ -z "$repo" ]]; then
                 log_error "リポジトリを指定してください: --repo owner/repo"
@@ -330,9 +349,9 @@ main() {
     fi
 
     local issue_title
-    issue_title=$(echo "$issue_info" | jq -r '.title')
+    issue_title=$(printf '%s' "$issue_info" | _json_get '.title')
     local issue_body
-    issue_body=$(echo "$issue_info" | jq -r '.body // ""')
+    issue_body=$(printf '%s' "$issue_info" | _json_get '.body')
 
     log_info "Issue: $issue_title"
 

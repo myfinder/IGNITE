@@ -107,10 +107,10 @@ check_dependencies() {
     fi
 
     # プロバイダーに応じた必須コマンドリスト
-    local required_cmds="tmux"
+    local required_cmds="tmux curl openssl jq"
     case "$cli_provider" in
-        opencode) required_cmds="tmux opencode" ;;
-        *)        required_cmds="tmux opencode" ;;
+        opencode) required_cmds="tmux opencode curl openssl jq" ;;
+        *)        required_cmds="tmux opencode curl openssl jq" ;;
     esac
 
     for cmd in $required_cmds; do
@@ -136,7 +136,15 @@ check_dependencies() {
                 opencode)
                     echo "  - opencode: https://opencode.ai/"
                     ;;
-                *) ;;
+                curl)
+                    echo "  - curl: https://curl.se/"
+                    ;;
+                openssl)
+                    echo "  - openssl: https://www.openssl.org/"
+                    ;;
+                jq)
+                    echo "  - jq: https://stedolan.github.io/jq/"
+                    ;;
             esac
         done
         return 1

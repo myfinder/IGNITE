@@ -88,17 +88,13 @@ EOF
 # リポジトリのデフォルトブランチを取得
 get_default_branch() {
     local repo="$1"
-    local response
-    response=$(github_api_get "$repo" "/repos/${repo}" 2>/dev/null) || true
-    if [[ -n "$response" ]]; then
-        local branch
-        branch=$(printf '%s' "$response" | _json_get '.default_branch')
-        if [[ -n "$branch" && "$branch" != "null" ]]; then
-            echo "$branch"
-            return 0
-        fi
+    local repo_json=""
+    repo_json=$(github_api_get "$repo" "/repos/${repo}" 2>/dev/null) || true
+    local branch=""
+    if [[ -n "$repo_json" ]]; then
+        branch=$(printf '%s' "$repo_json" | _json_get '.default_branch')
     fi
-    echo "main"
+    echo "${branch:-main}"
 }
 
 # 設定ファイルからベースブランチを取得（なければデフォルトブランチ）
@@ -209,23 +205,10 @@ setup_repo() {
             git -C "$repo_path" remote set-url origin "https://github.com/${repo}.git"
         else
             log_info "リポジトリをclone中: $repo"
-            local auth_token=""
-            auth_token=$(get_auth_token "$repo") || true
-            if [[ -z "$auth_token" ]]; then
-                _print_auth_error "$repo"
-                return 1
+            if ! safe_git_clone "$repo" "$repo_path" "$branch"; then
+                log_warn "認証付きcloneに失敗。通常のgit cloneを試行します"
+                git clone "$(_build_repo_https_url "$repo")" "$repo_path" --branch "$branch"
             fi
-            if [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
-                log_warn "GitHub App Token取得失敗のため、PATでcloneします。"
-            fi
-            local clone_url
-            clone_url="$(get_github_base_url)/${repo}.git"
-            local basic
-            basic=$(_build_basic_auth "$auth_token")
-            local host
-            host=$(get_github_hostname)
-            git -c "http.https://${host}/.extraHeader=Authorization: Basic ${basic}" \
-                clone --branch "$branch" "$clone_url" "$repo_path"
         fi
         cd "$repo_path"
     fi

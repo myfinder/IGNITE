@@ -322,7 +322,7 @@ EOF
 
     # Bot Token: GH_TOKEN env var にはexportしない（stale化防止）
     # 理由: GitHub App Token有効期限1時間後にstale化→
-    #   credential helper (gh auth git-credential) が失効GH_TOKENを優先参照→認証エラー
+    #   credential helper が失効GH_TOKENを優先参照→認証エラー
     # 代替: git操作はsafe_git_push/fetch/pull(github_helpers.sh)が動的にBot Token取得、
     #   API操作はgithub_api_get()/get_cached_bot_token()が都度取得
     # Bot Tokenキャッシュのプリウォーム（ファイルキャッシュのみ、env varにはセットしない）

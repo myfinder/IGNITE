@@ -1,11 +1,11 @@
 #!/bin/bash
 # GitHub App Token 取得スクリプト
-# curl + JWT でInstallation Access Tokenを生成します
+# GitHub REST API を使用して Installation Access Token を生成します
 #
 # Exit Codes (sysexits.h 準拠):
 #   0              成功
 #   64 EX_USAGE    引数エラー（--repo 未指定等）
-#   69 EX_UNAVAILABLE  必須コマンド未インストール
+#   69 EX_UNAVAILABLE  必須コマンド未インストール（curl/openssl）
 #   73 EX_CANTCREAT    JWT 生成失敗 / Token 生成失敗
 #   75 EX_TEMPFAIL     一時的エラー（API rate limit, ネットワーク）
 #   77 EX_NOPERM       権限エラー（App 未インストール, Installation ID 取得失敗）
@@ -55,14 +55,13 @@ check_prerequisites() {
 
     if ! command -v curl &> /dev/null; then
         error "curl がインストールされていません"
+        echo "  インストール: https://curl.se/" >&2
         has_error=true
     fi
+
     if ! command -v openssl &> /dev/null; then
         error "openssl がインストールされていません"
-        has_error=true
-    fi
-    if ! command -v python3 &> /dev/null; then
-        error "python3 がインストールされていません"
+        echo "  インストール: https://www.openssl.org/" >&2
         has_error=true
     fi
 
@@ -118,6 +117,10 @@ load_config() {
     fi
 }
 
+# =============================================================================
+# GitHub API ベースURL
+# =============================================================================
+
 _normalize_host() {
     local host="$1"
     host="${host#https://}"
@@ -125,20 +128,90 @@ _normalize_host() {
     echo "$host"
 }
 
-get_api_base() {
+get_github_api_base() {
     if [[ -n "${GITHUB_API_URL:-}" ]]; then
         echo "${GITHUB_API_URL%/}"
-        return 0
+        return
     fi
     if [[ -n "${GITHUB_API_BASE:-}" ]]; then
         echo "${GITHUB_API_BASE%/}"
-        return 0
+        return
     fi
     if [[ -n "${GITHUB_HOSTNAME:-}" ]]; then
         echo "https://$( _normalize_host "${GITHUB_HOSTNAME}" )/api/v3"
-        return 0
+        return
+    fi
+    if [[ -n "${GITHUB_BASE_URL:-}" ]]; then
+        local host
+        host=$( _normalize_host "${GITHUB_BASE_URL}" )
+        echo "https://${host}/api/v3"
+        return
     fi
     echo "https://api.github.com"
+}
+
+# =============================================================================
+# JWT 生成
+# =============================================================================
+
+_b64url() {
+    openssl base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+generate_jwt() {
+    local now
+    now=$(date +%s)
+    local iat=$((now - 60))
+    local exp=$((now + 540))
+
+    local header payload
+    header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | _b64url)
+    payload=$(printf '%s' "{\"iat\":${iat},\"exp\":${exp},\"iss\":${APP_ID}}" | _b64url)
+
+    local signature
+    signature=$(printf '%s' "${header}.${payload}" | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" | _b64url)
+
+    if [[ -z "$signature" ]]; then
+        return 1
+    fi
+    echo "${header}.${payload}.${signature}"
+}
+
+# =============================================================================
+# API リクエスト
+# =============================================================================
+
+HTTP_STATUS=""
+
+api_request() {
+    local method="$1"
+    local url="$2"
+    local token="$3"
+    local data="${4:-}"
+
+    local headers_tmp body_tmp
+    headers_tmp=$(mktemp)
+    body_tmp=$(mktemp)
+
+    local -a curl_args=(
+        -sS
+        -X "$method"
+        -D "$headers_tmp"
+        -o "$body_tmp"
+        -H "Accept: application/vnd.github+json"
+        -H "X-GitHub-Api-Version: 2022-11-28"
+        -H "Authorization: Bearer $token"
+    )
+
+    if [[ -n "$data" ]]; then
+        curl_args+=( -H "Content-Type: application/json" -d "$data" )
+    fi
+
+    curl "${curl_args[@]}" "$url" || true
+
+    HTTP_STATUS=$(awk 'NR==1 {print $2}' "$headers_tmp")
+    cat "$body_tmp"
+    rm -f "$headers_tmp" "$body_tmp"
 }
 
 _json_get() {
@@ -147,7 +220,6 @@ _json_get() {
         jq -r "$expr"
         return
     fi
-    warn "jq が未インストールです。pythonで代替パースします。"
     python3 - <<PY
 import json,sys
 data=json.load(sys.stdin)
@@ -170,70 +242,28 @@ print("") if value is None else print(value)
 PY
 }
 
-_b64url() {
-    openssl base64 -A | tr '+/' '-_' | tr -d '='
-}
-
-build_jwt() {
-    local now
-    now=$(date +%s)
-    local iat=$((now - 60))
-    local exp=$((now + 540))
-
-    local header
-    header=$(printf '{"alg":"RS256","typ":"JWT"}' | _b64url)
-    local payload
-    payload=$(printf '{"iat":%s,"exp":%s,"iss":%s}' "$iat" "$exp" "$APP_ID" | _b64url)
-
-    local unsigned="${header}.${payload}"
-    local signature
-    signature=$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" | _b64url)
-    printf '%s.%s' "$unsigned" "$signature"
-}
-
 # =============================================================================
-# リポジトリからInstallation IDを取得
+# リポジトリから Installation ID を取得
 # =============================================================================
 
 get_installation_id_for_repo() {
     local repo="$1"
     local jwt_token
-    local installation_id
-    local api_stderr
-    local http_status
-
-    jwt_token=$(build_jwt) || true
-
-    if [[ -z "$jwt_token" ]]; then
+    jwt_token=$(generate_jwt) || {
         error "JWTトークンの生成に失敗しました"
         return $EX_CANTCREAT
-    fi
+    }
 
-    # リポジトリのインストール情報を取得
-    # JWT認証にはBearerヘッダーが必要（GH_TOKENはtokenタイプで送信されるため使用不可）
-    # stderrをキャプチャしてHTTPステータスを判定
     local api_base
-    api_base=$(get_api_base)
-    local headers_tmp
-    headers_tmp=$(mktemp)
-    local body_tmp
-    body_tmp=$(mktemp)
-    curl -sS -D "$headers_tmp" -o "$body_tmp" \
-        -H "Authorization: Bearer $jwt_token" \
-        -H "Accept: application/vnd.github+json" \
-        "${api_base}/repos/${repo}/installation" || true
+    api_base=$(get_github_api_base)
+    local body
+    body=$(api_request "GET" "${api_base}/repos/${repo}/installation" "$jwt_token")
 
-    local api_err_content
-    api_err_content=$(cat "$body_tmp" 2>/dev/null || true)
-
-    local http_status
-    http_status=$(awk 'NR==1 {print $2}' "$headers_tmp")
-
-    installation_id=$(printf '%s' "$api_err_content" | _json_get '.id')
+    local installation_id
+    installation_id=$(printf '%s' "$body" | _json_get '.id')
 
     if [[ -z "$installation_id" ]] || [[ "$installation_id" == "null" ]]; then
-
-        case "$http_status" in
+        case "$HTTP_STATUS" in
             401)
                 error_with_action \
                     "認証エラー: JWT トークンが無効です (HTTP 401)" \
@@ -242,7 +272,7 @@ get_installation_id_for_repo() {
                 ;;
             403|404)
                 error_with_action \
-                    "リポジトリ ${repo} のInstallation IDを取得できませんでした (HTTP ${http_status})" \
+                    "リポジトリ ${repo} のInstallation IDを取得できませんでした (HTTP ${HTTP_STATUS})" \
                     "確認事項:\n  - GitHub Appがリポジトリにインストールされているか\n  - Organizationリポジトリの場合、Organizationにインストールされているか"
                 return $EX_NOPERM
                 ;;
@@ -259,7 +289,6 @@ get_installation_id_for_repo() {
         esac
     fi
 
-    rm -f "$headers_tmp" "$body_tmp"
     echo "$installation_id"
 }
 
@@ -268,45 +297,48 @@ get_installation_id_for_repo() {
 # =============================================================================
 
 generate_token() {
-    local result
-    local token
+    local jwt_token
+    jwt_token=$(generate_jwt) || {
+        error "JWTトークンの生成に失敗しました"
+        exit $EX_CANTCREAT
+    }
 
     local api_base
-    api_base=$(get_api_base)
-    local jwt_token
-    jwt_token=$(build_jwt) || true
+    api_base=$(get_github_api_base)
+    local body
+    body=$(api_request "POST" "${api_base}/app/installations/${INSTALLATION_ID}/access_tokens" "$jwt_token" "{}")
 
-    local headers_tmp
-    headers_tmp=$(mktemp)
-    local body_tmp
-    body_tmp=$(mktemp)
+    if [[ "$HTTP_STATUS" != "201" && "$HTTP_STATUS" != "200" ]]; then
+        case "$HTTP_STATUS" in
+            401)
+                error "認証エラー: JWT トークンが無効です (HTTP 401)"
+                exit $EX_CANTCREAT
+                ;;
+            403)
+                error "権限エラー: Installation Access Token 生成に失敗しました (HTTP 403)"
+                exit $EX_NOPERM
+                ;;
+            429)
+                error "API rate limit に達しました (HTTP 429)。しばらく待ってから再実行してください"
+                exit $EX_TEMPFAIL
+                ;;
+            *)
+                error "トークンの生成に失敗しました (HTTP ${HTTP_STATUS})"
+                exit $EX_CANTCREAT
+                ;;
+        esac
+    fi
 
-    curl -sS -D "$headers_tmp" -o "$body_tmp" \
-        -H "Authorization: Bearer $jwt_token" \
-        -H "Accept: application/vnd.github+json" \
-        -H "Content-Type: application/json" \
-        -X POST "${api_base}/app/installations/${INSTALLATION_ID}/access_tokens" || true
-
-    result=$(cat "$body_tmp" 2>/dev/null || true)
-
-    if [[ -z "$result" ]]; then
+    local token
+    token=$(printf '%s' "$body" | _json_get '.token')
+    if [[ -z "$token" ]]; then
         error_with_action \
             "トークンの生成に失敗しました" \
             "以下を確認してください:\n  - App ID: $APP_ID\n  - Installation ID: $INSTALLATION_ID\n  - Private Key: $PRIVATE_KEY_PATH"
         exit $EX_CANTCREAT
     fi
 
-    # JSONからトークン値を抽出
-    token=$(printf '%s' "$result" | _json_get '.token')
-    if [[ -n "$token" ]]; then
-        rm -f "$headers_tmp" "$body_tmp"
-        echo "$token"
-        return
-    fi
-
-    # JSON でない場合（ghs_ プレフィックスの生トークン）はそのまま出力
-    rm -f "$headers_tmp" "$body_tmp"
-    echo "$result"
+    echo "$token"
 }
 
 # =============================================================================
@@ -328,13 +360,14 @@ GitHub App Token 取得スクリプト
 
 環境変数:
   IGNITE_GITHUB_CONFIG    設定ファイルのパス（デフォルト: config/github-app.yaml）
-  GITHUB_API_URL          GitHub API Base URL（Enterprise用）
-  GITHUB_HOSTNAME         GitHub Enterprise ホスト名
+  GITHUB_API_URL          GitHub API のベースURL（GHE対応）
+  GITHUB_BASE_URL         GitHub Web のベースURL（GHE対応）
+  GITHUB_HOSTNAME         GitHub ホスト名（GHE対応）
 
 Exit Codes (sysexits.h 準拠):
   0   成功
   64  引数エラー（--repo 未指定等）
-  69  必須コマンド未インストール（curl/openssl/python3）
+  69  必須コマンド未インストール（curl/openssl）
   73  JWT 生成失敗 / Token 生成失敗
   75  一時的エラー（API rate limit）
   77  権限エラー（App 未インストール等）
@@ -348,9 +381,8 @@ Exit Codes (sysexits.h 準拠):
   # トークンを取得
   TOKEN=$(./scripts/utils/get_github_app_token.sh --repo myorg/myrepo)
 
-  # API 呼び出しに使用
-  GITHUB_TOKEN="$TOKEN" curl -H "Authorization: Bearer $TOKEN" \
-    "https://api.github.com/repos/myorg/myrepo/issues/1"
+  # Bot名義でIssueにコメント
+  ./scripts/utils/comment_on_issue.sh 1 --repo myorg/myrepo --bot --body "Hello"
 
   # 前提条件のチェックのみ
   ./scripts/utils/get_github_app_token.sh --check
@@ -374,7 +406,7 @@ main() {
             -c|--check)
                 check_prerequisites
                 load_config
-                echo "前提条件OK: curl/openssl/python3, 設定ファイル" >&2
+                echo "前提条件OK: curl, openssl, 設定ファイル" >&2
                 exit 0
                 ;;
             -r|--repo)

@@ -267,34 +267,47 @@ _load_monitor_state() {
         return 0
     fi
 
-    MONITOR_RESUME_TOKEN=$(STATE_JSON="$state_json" python3 - <<'PY'
-import json,os
-state=os.environ.get("STATE_JSON","{}")
-data=json.loads(state)
-print(data.get("resume_token",""))
+    local parsed
+    if ! parsed=$(STATE_JSON="$state_json" python3 - <<'PY'
+import json
+import os
+import sys
+
+state = os.environ.get("STATE_JSON", "{}")
+try:
+    data = json.loads(state)
+    if not isinstance(data, dict):
+        raise ValueError("monitor state must be an object")
+except (json.JSONDecodeError, ValueError) as exc:
+    print(f"invalid monitor state json: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+resume_token = data.get("resume_token", "")
+failure_count = data.get("failure_count", 0)
+last_exit = data.get("last_exit_code", 0)
+last_failure_at = data.get("last_failure_at", "")
+
+try:
+    failure_count = int(failure_count)
+except (TypeError, ValueError):
+    failure_count = 0
+try:
+    last_exit = int(last_exit)
+except (TypeError, ValueError):
+    last_exit = 0
+
+print(f"{resume_token}\t{failure_count}\t{last_exit}\t{last_failure_at}")
 PY
-)
-    MONITOR_FAILURE_COUNT=$(STATE_JSON="$state_json" python3 - <<'PY'
-import json,os
-state=os.environ.get("STATE_JSON","{}")
-data=json.loads(state)
-print(data.get("failure_count",0))
-PY
-)
-    MONITOR_LAST_EXIT=$(STATE_JSON="$state_json" python3 - <<'PY'
-import json,os
-state=os.environ.get("STATE_JSON","{}")
-data=json.loads(state)
-print(data.get("last_exit_code",0))
-PY
-)
-    MONITOR_LAST_FAILURE_AT=$(STATE_JSON="$state_json" python3 - <<'PY'
-import json,os
-state=os.environ.get("STATE_JSON","{}")
-data=json.loads(state)
-print(data.get("last_failure_at",""))
-PY
-)
+); then
+        log_warn "monitor state JSONの解析に失敗しました。既定値へフォールバックします: $MONITOR_STATE_FILE"
+        MONITOR_RESUME_TOKEN=""
+        MONITOR_FAILURE_COUNT=0
+        MONITOR_LAST_EXIT=0
+        MONITOR_LAST_FAILURE_AT=""
+        return 0
+    fi
+
+    IFS=$'\t' read -r MONITOR_RESUME_TOKEN MONITOR_FAILURE_COUNT MONITOR_LAST_EXIT MONITOR_LAST_FAILURE_AT <<< "$parsed"
 }
 
 _save_monitor_state() {

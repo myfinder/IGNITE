@@ -2,9 +2,8 @@
 # lib/cmd_work_on.sh - work-onコマンド
 [[ -n "${__LIB_CMD_WORK_ON_LOADED:-}" ]] && return; __LIB_CMD_WORK_ON_LOADED=1
 
-# GitHub API ヘルパーの読み込み（gh CLI 撤廃対応）
-_CMD_WORK_ON_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${_CMD_WORK_ON_SCRIPT_DIR}/../utils/github_helpers.sh"
+_CMD_WORK_ON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${_CMD_WORK_ON_DIR}/utils/github_helpers.sh"
 
 # =============================================================================
 # work-on コマンド - Issue番号を指定して実装開始
@@ -109,11 +108,11 @@ cmd_work_on() {
     fi
 
     local issue_title
-    issue_title=$(echo "$issue_info" | jq -r '.title')
+    issue_title=$(printf '%s' "$issue_info" | _json_get '.title')
     local issue_body
-    issue_body=$(echo "$issue_info" | jq -r '.body // ""' | head -c 2000)
+    issue_body=$(printf '%s' "$issue_info" | _json_get '.body' | head -c 2000)
     local issue_url
-    issue_url=$(echo "$issue_info" | jq -r '.html_url')
+    issue_url=$(printf '%s' "$issue_info" | _json_get '.html_url')
 
     print_success "Issue: $issue_title"
     echo ""
