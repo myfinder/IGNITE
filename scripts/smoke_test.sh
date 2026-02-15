@@ -289,9 +289,9 @@ phase_service() {
 
     # service setup-env
     assert "ignite service setup-env exits successfully" \
-        "$SMOKE_DIR/home/.local/bin/ignite" service setup-env --force
+        "$SMOKE_DIR/home/.local/bin/ignite" service setup-env test-session --force
 
-    local env_file="$SMOKE_DIR/home/.config/ignite/env"
+    local env_file="$SMOKE_DIR/home/.config/ignite/env.test-session"
     assert_file_exists "env file created" "$env_file"
 
     # service uninstall

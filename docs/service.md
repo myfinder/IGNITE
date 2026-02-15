@@ -38,7 +38,7 @@ flowchart TB
     end
 
     subgraph Config["設定"]
-        EnvFile["~/.config/ignite/env<br/>chmod 600"]
+        EnvFile["~/.config/ignite/env.&lt;session&gt;<br/>chmod 600"]
     end
 
     Unit -->|"ExecStart=<br/>ignite start --daemon"| Start
@@ -76,8 +76,8 @@ loginctl show-user $(whoami) --property=Linger
 # 1. ユニットファイルをインストール
 ignite service install
 
-# 2. 環境変数を設定（APIキーなど）
-ignite service setup-env
+# 2. 環境変数を設定
+ignite service setup-env my-project
 
 # 3. サービスを有効化（自動起動設定）
 ignite service enable my-project
@@ -345,13 +345,19 @@ ignite service logs my-project --no-follow
 
 ### `setup-env` — 環境変数ファイルの生成
 
-systemdサービスで使用する環境変数ファイルを対話的に生成します。
+systemdサービスで使用する環境変数ファイルをセッション別に生成します。
 
 **書式:**
 
 ```bash
-ignite service setup-env [--force]
+ignite service setup-env <session> [--force]
 ```
+
+**引数:**
+
+| 引数 | 必須 | 説明 |
+|------|------|------|
+| `session` | ✓ | セッション名（`enable`/`start` で使用する名前と同じ） |
 
 **オプション:**
 
@@ -362,10 +368,12 @@ ignite service setup-env [--force]
 **使用例:**
 
 ```bash
-ignite service setup-env
+ignite service setup-env my-project
 ```
 
-**生成ファイル:** `~/.config/ignite/env`
+**生成ファイル:** `~/.config/ignite/env.<session>`
+
+> **Note:** API Key 等のプロジェクト固有変数は `.ignite/.env` で管理してください。`setup-env` はパス・ターミナル設定等の最小限の変数のみを生成します。
 
 ---
 
@@ -435,38 +443,51 @@ tmux list-sessions | grep my-project
 ### ファイルパス
 
 ```
-~/.config/ignite/env
+~/.config/ignite/env.<session>
 ```
 
-> **⚠️ セキュリティ:** APIキーを含むため、必ず `chmod 600` を設定してください。
+> **⚠️ セキュリティ:** 必ず `chmod 600` を設定してください（`setup-env` が自動設定します）。
 
-### 変数テーブル
+### `env.<session>` の変数テーブル
+
+`setup-env` が生成する最小限の変数です。
 
 | 変数名 | 必須 | 説明 | 例 |
 |--------|------|------|-----|
 | `PATH` | ✓ | 実行パス | `${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin` |
 | `HOME` | ✓ | ホームディレクトリ | `/home/user` |
 | `TERM` | ✓ | ターミナルタイプ | `xterm-256color` |
-| `ANTHROPIC_API_KEY` | ✓ | Anthropic APIキー | `sk-ant-...` |
-| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | — | チーム機能有効化 | `1` |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | — | チーム機能有効化（CLI固有） | `1` |
 | `XDG_CONFIG_HOME` | — | XDG設定ディレクトリ | `${HOME}/.config` |
 | `XDG_DATA_HOME` | — | XDGデータディレクトリ | `${HOME}/.local/share` |
+| `IGNITE_WORKSPACE` | — | ワークスペースパス | `/home/user/repos/my-project` |
+
+### API Key 等のプロジェクト固有変数
+
+API Key はワークスペースの `.ignite/.env` で管理します（`cmd_start.sh` が起動時に `source` します）。
+
+```ini
+# .ignite/.env
+ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxx
+```
 
 ### 環境ファイルの例
 
 ```ini
 # IGNITE - systemd EnvironmentFile
-# chmod 600 ~/.config/ignite/env
+# chmod 600 ~/.config/ignite/env.my-project
 
 PATH=/home/user/.local/bin:/usr/local/bin:/usr/bin:/bin
 HOME=/home/user
 TERM=xterm-256color
 
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxx
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
 XDG_CONFIG_HOME=/home/user/.config
 XDG_DATA_HOME=/home/user/.local/share
+
+# ワークスペースパス（systemd 起動時に使用）
+IGNITE_WORKSPACE=/home/user/repos/my-project
 ```
 
 ---

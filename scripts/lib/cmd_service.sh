@@ -137,7 +137,7 @@ _service_install() {
     print_header "インストール完了"
     echo ""
     echo "次のステップ:"
-    echo -e "  1. 環境変数を設定: ${YELLOW}ignite service setup-env${NC}"
+    echo -e "  1. 環境変数を設定: ${YELLOW}ignite service setup-env <session>${NC}"
     echo -e "  2. サービスを有効化: ${YELLOW}ignite service enable <session>${NC}"
     echo -e "  3. linger 有効化: ${YELLOW}loginctl enable-linger $(whoami)${NC}"
 }
@@ -328,16 +328,27 @@ _service_logs() {
 
 _service_setup_env() {
     local _env_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
-    local env_file="${_env_dir}/env"
     local force=false
+    local session=""
 
     # オプション解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -y|--yes|-f|--force) force=true; shift ;;
-            *) break ;;
+            *) session="$1"; shift ;;
         esac
     done
+
+    # セッション名は必須
+    if [[ -z "$session" ]]; then
+        print_error "セッション名を指定してください"
+        echo ""
+        echo "使用方法: ignite service setup-env <session> [--force]"
+        echo "例:       ignite service setup-env my-project"
+        exit 1
+    fi
+
+    local env_file="${_env_dir}/env.${session}"
 
     mkdir -p "${_env_dir}"
 
@@ -361,9 +372,15 @@ _service_setup_env() {
     _cli_env_vars=$(cli_get_env_vars 2>/dev/null || echo "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
 
     # ワークスペースパスの検出
-    local _workspace_dir="${WORKSPACE_DIR:-}"
-    if [[ -z "$_workspace_dir" ]] && [[ -d "$(pwd)/.ignite" ]]; then
+    local _workspace_dir=""
+    if [[ -d "$(pwd)/.ignite" ]]; then
         _workspace_dir="$(pwd)"
+    fi
+
+    # 対話モードでワークスペースパスを入力
+    if [[ -z "$_workspace_dir" ]] && [[ -t 0 ]]; then
+        echo ""
+        read -p "ワークスペースパスを入力してください: " -r _workspace_dir
     fi
 
     # 最小テンプレート生成
@@ -388,43 +405,14 @@ ENVEOF
         echo "IGNITE_WORKSPACE=${_workspace_dir}" >> "$env_file"
     fi
 
-    # ワークスペース .env があればマージ
-    local _ws_env="${IGNITE_RUNTIME_DIR:+$IGNITE_RUNTIME_DIR/.env}"
-    if [[ -n "$_ws_env" ]] && [[ -f "$_ws_env" ]]; then
-        echo "" >> "$env_file"
-        echo "# --- from workspace .env ---" >> "$env_file"
-        grep -v '^\s*#' "$_ws_env" | grep -v '^\s*$' >> "$env_file"
-        print_info "ワークスペース .env をマージしました"
-    fi
+    # パーミッション設定
+    chmod 600 "$env_file"
 
     print_header "IGNITE 環境変数セットアップ"
     echo ""
-    print_success "パス設定を自動検出しました"
-
-    # 対話モードで API キーを設定
-    if [[ -t 0 ]]; then
-        echo ""
-        read -p "Anthropic API Key を入力してください（スキップ: Enter）: " -r api_key
-        if [[ -n "$api_key" ]]; then
-            # sed の特殊文字問題を回避するため pure bash で置換
-            local tmpfile="${env_file}.tmp"
-            while IFS= read -r line; do
-                case "$line" in
-                    ANTHROPIC_API_KEY=*) printf 'ANTHROPIC_API_KEY=%s\n' "$api_key" ;;
-                    *) printf '%s\n' "$line" ;;
-                esac
-            done < "$env_file" > "$tmpfile" && mv "$tmpfile" "$env_file"
-            print_success "API Key を設定しました"
-        else
-            print_warning "API Key はスキップしました（後で $env_file を編集してください）"
-        fi
-    fi
-
-    # パーミッション設定
-    chmod 600 "$env_file"
-    print_success "パーミッションを 600 に設定しました"
-
-    echo ""
     print_success "環境変数ファイルを作成しました: $env_file"
+    print_success "パーミッションを 600 に設定しました"
+    echo ""
+    print_info "API Key 等のプロジェクト固有変数は .ignite/.env に設定してください"
     echo -e "確認・編集: ${YELLOW}nano $env_file${NC}"
 }
