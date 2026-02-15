@@ -68,6 +68,19 @@ class TestBuild:
         assert r.returncode == 0
         assert out.read_text(encoding="utf-8").endswith("test")
 
+    def test_surrogate_chars_in_body(self, tmp_path):
+        """GitHub API等から取得したテキストにサロゲート文字が含まれる場合"""
+        out = tmp_path / "msg.mime"
+        # サロゲート文字を含むバイト列をファイル経由で渡す
+        body_file = tmp_path / "body.txt"
+        body_file.write_bytes("hello \xed\xa0\x80 world".encode("utf-8", errors="surrogateescape")
+                              if hasattr(str, "encode") else b"hello world")
+        r = run_cli("build", "--from", "a", "--to", "b", "--type", "t",
+                     "--body", "hello \udce9 world", "-o", str(out))
+        assert r.returncode == 0
+        content = out.read_text(encoding="utf-8")
+        assert "hello" in content
+
     def test_multiple_to(self):
         r = run_cli("build", "--from", "a", "--to", "b", "c", "--type", "t", "--body", "")
         assert "To: b, c" in r.stdout

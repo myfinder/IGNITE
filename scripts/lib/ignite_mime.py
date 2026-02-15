@@ -235,6 +235,9 @@ def cmd_build(args: argparse.Namespace) -> None:
         status=args.status,
     )
 
+    # GitHub API 等から取得したテキストにサロゲート文字が含まれる場合がある
+    msg = msg.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+
     if args.output:
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
