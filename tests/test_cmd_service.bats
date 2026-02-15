@@ -240,37 +240,45 @@ teardown() {
 # setup-env
 # =============================================================================
 
-@test "setup-env: 環境変数ファイルが生成される" {
+@test "setup-env: セッション名なしでエラー" {
     export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
 
     run _service_setup_env </dev/null
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"セッション名を指定してください"* ]]
+}
+
+@test "setup-env: 環境変数ファイルが生成される" {
+    export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
+
+    run _service_setup_env test-session </dev/null
     [ "$status" -eq 0 ]
-    [ -f "$TEST_TEMP_DIR/xdg_config/ignite/env" ]
+    [ -f "$TEST_TEMP_DIR/xdg_config/ignite/env.test-session" ]
     [[ "$output" == *"環境変数ファイルを作成しました"* ]]
 }
 
 @test "setup-env: パーミッションが 600 になる" {
     export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
 
-    run _service_setup_env </dev/null
+    run _service_setup_env test-session </dev/null
     [ "$status" -eq 0 ]
 
     local perms
-    perms=$(stat -c '%a' "$TEST_TEMP_DIR/xdg_config/ignite/env")
+    perms=$(stat -c '%a' "$TEST_TEMP_DIR/xdg_config/ignite/env.test-session")
     [ "$perms" = "600" ]
 }
 
 @test "setup-env: --force で上書き" {
     export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
     mkdir -p "$TEST_TEMP_DIR/xdg_config/ignite"
-    echo "old" > "$TEST_TEMP_DIR/xdg_config/ignite/env"
+    echo "old" > "$TEST_TEMP_DIR/xdg_config/ignite/env.test-session"
 
-    run _service_setup_env --force </dev/null
+    run _service_setup_env test-session --force </dev/null
     [ "$status" -eq 0 ]
     [[ "$output" == *"環境変数ファイルを作成しました"* ]]
 
     local content
-    content=$(cat "$TEST_TEMP_DIR/xdg_config/ignite/env")
+    content=$(cat "$TEST_TEMP_DIR/xdg_config/ignite/env.test-session")
     # 上書き後に正しいテンプレートが生成されていることを確認
     [[ "$content" == *"XDG_CONFIG_HOME"* ]]
     [[ "$content" != "old" ]]
