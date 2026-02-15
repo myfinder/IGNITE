@@ -131,11 +131,11 @@ EOF
 # cli_get_process_names
 # =============================================================================
 
-@test "cli_get_process_names: opencode（デフォルト）は 'opencode' を返す" {
+@test "cli_get_process_names: opencode（デフォルト）は 'opencode node' を返す" {
     cli_load_config
     local names
     names=$(cli_get_process_names)
-    [[ "$names" == "opencode" ]]
+    [[ "$names" == "opencode node" ]]
 }
 
 @test "cli_get_process_names: claude は 'claude node' を返す" {
@@ -152,7 +152,7 @@ EOF
     [[ "$names" == "claude node" ]]
 }
 
-@test "cli_get_process_names: opencode は 'opencode' を返す" {
+@test "cli_get_process_names: opencode は 'opencode node' を返す" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -161,7 +161,7 @@ EOF
     cli_load_config
     local names
     names=$(cli_get_process_names)
-    [[ "$names" == "opencode" ]]
+    [[ "$names" == "opencode node" ]]
 }
 
 # =============================================================================
