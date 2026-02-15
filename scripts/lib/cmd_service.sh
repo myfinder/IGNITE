@@ -360,6 +360,12 @@ _service_setup_env() {
     local _cli_env_vars
     _cli_env_vars=$(cli_get_env_vars 2>/dev/null || echo "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
 
+    # ワークスペースパスの検出
+    local _workspace_dir="${WORKSPACE_DIR:-}"
+    if [[ -z "$_workspace_dir" ]] && [[ -d "$(pwd)/.ignite" ]]; then
+        _workspace_dir="$(pwd)"
+    fi
+
     # 最小テンプレート生成
     cat > "$env_file" <<ENVEOF
 # IGNITE - systemd EnvironmentFile
@@ -374,6 +380,13 @@ ${_cli_env_vars}
 XDG_CONFIG_HOME=${HOME}/.config
 XDG_DATA_HOME=${HOME}/.local/share
 ENVEOF
+
+    # ワークスペースパスを追記
+    if [[ -n "$_workspace_dir" ]]; then
+        echo "" >> "$env_file"
+        echo "# ワークスペースパス（systemd 起動時に使用）" >> "$env_file"
+        echo "IGNITE_WORKSPACE=${_workspace_dir}" >> "$env_file"
+    fi
 
     # ワークスペース .env があればマージ
     local _ws_env="${IGNITE_RUNTIME_DIR:+$IGNITE_RUNTIME_DIR/.env}"

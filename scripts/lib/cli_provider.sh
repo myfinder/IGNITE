@@ -78,7 +78,7 @@ cli_get_process_names() {
             echo "claude node"
             ;;
         opencode)
-            echo "opencode"
+            echo "opencode node"
             ;;
     esac
 }

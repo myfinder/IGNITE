@@ -42,11 +42,15 @@ setup_session_name() {
     fi
 }
 
-# ワークスペースの設定（指定がなければ .ignite/ 自動検出 → デフォルト）
+# ワークスペースの設定（指定がなければ 環境変数 → .ignite/ 自動検出 → デフォルト）
 setup_workspace() {
     if [[ -z "$WORKSPACE_DIR" ]]; then
+        # 環境変数 IGNITE_WORKSPACE が設定されていれば使用（systemd 連携用）
+        if [[ -n "${IGNITE_WORKSPACE:-}" ]]; then
+            WORKSPACE_DIR="$IGNITE_WORKSPACE"
+            log_info "ワークスペース設定（環境変数）: $WORKSPACE_DIR"
         # CWD に .ignite/ があれば自動検出（Git方式）
-        if [[ -d "$(pwd)/.ignite" ]]; then
+        elif [[ -d "$(pwd)/.ignite" ]]; then
             WORKSPACE_DIR="$(pwd)"
             log_info "ワークスペース検出: $WORKSPACE_DIR"
         else

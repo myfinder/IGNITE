@@ -64,7 +64,23 @@ check_layer1() {
             if [[ "$_matched" == true ]]; then
                 echo "alive"
             else
-                echo "wrong_process"
+                # pane_current_command が CLI 名と一致しない場合、
+                # プロセスツリー内に CLI プロセスが存在するかチェック
+                # （opencode が子プロセスを fork した場合など）
+                local _tree_matched=false
+                if command -v pgrep &>/dev/null; then
+                    for _proc in $_cli_processes; do
+                        if pgrep -P "$pane_pid" -x "$_proc" &>/dev/null; then
+                            _tree_matched=true
+                            break
+                        fi
+                    done
+                fi
+                if [[ "$_tree_matched" == true ]]; then
+                    echo "alive"
+                else
+                    echo "wrong_process"
+                fi
             fi
             ;;
     esac

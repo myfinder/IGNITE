@@ -50,6 +50,7 @@ CONFIG_DIR="${IGNITE_CONFIG_DIR:-$DATA_DIR/config}"
 # インストールモードフラグ
 FORCE=false
 UPGRADE=false
+SKIP_DEPS=false
 
 # =============================================================================
 # ヘルプ
@@ -68,6 +69,7 @@ IGNITE インストーラー v${VERSION}
   --data-dir <path>    データファイルのインストール先 (デフォルト: ~/.local/share/ignite)
   --upgrade            アップグレードモード (バイナリ・データは上書き、設定は保持)
   --force              既存ファイルをすべて上書き
+  --skip-deps          依存関係チェックをスキップ (CI 環境用)
   -h, --help           このヘルプを表示
 
 環境変数:
@@ -425,6 +427,10 @@ main() {
                 FORCE=true
                 shift
                 ;;
+            --skip-deps)
+                SKIP_DEPS=true
+                shift
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -447,10 +453,14 @@ main() {
     echo ""
 
     # 依存関係チェック
-    if ! check_dependencies; then
-        echo ""
-        print_error "依存関係が満たされていません"
-        exit 1
+    if [[ "$SKIP_DEPS" != "true" ]]; then
+        if ! check_dependencies; then
+            echo ""
+            print_error "依存関係が満たされていません"
+            exit 1
+        fi
+    else
+        print_info "依存関係チェックをスキップしました (--skip-deps)"
     fi
 
     echo ""

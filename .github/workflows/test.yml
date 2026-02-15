@@ -67,15 +67,37 @@ jobs:
       - name: Run pytest
         run: python -m pytest tests/ -v
 
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify sqlite3 availability
+        run: sqlite3 --version
+
+      - name: Install opencode
+        run: curl -fsSL https://raw.githubusercontent.com/opencode-ai/opencode/refs/heads/main/install | bash
+
+      - name: Setup systemd user environment
+        run: |
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" >> "$GITHUB_ENV"
+          loginctl enable-linger "$(whoami)" || true
+
+      - name: Run smoke tests
+        run: ./scripts/smoke_test.sh --ci
+
   test:
     name: test
     runs-on: ubuntu-latest
-    needs: [bats-test, shellcheck, pytest]
+    needs: [bats-test, shellcheck, pytest, smoke-test]
     if: always()
     steps:
       - name: Check results
         run: |
-          if [[ "${{ needs.bats-test.result }}" != "success" || "${{ needs.shellcheck.result }}" != "success" || "${{ needs.pytest.result }}" != "success" ]]; then
+          if [[ "${{ needs.bats-test.result }}" != "success" || "${{ needs.shellcheck.result }}" != "success" || "${{ needs.pytest.result }}" != "success" || "${{ needs.smoke-test.result }}" != "success" ]]; then
             echo "One or more checks failed"
             exit 1
           fi

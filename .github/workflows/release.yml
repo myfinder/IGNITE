@@ -28,6 +28,17 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
+      - name: Install opencode
+        run: curl -fsSL https://raw.githubusercontent.com/opencode-ai/opencode/refs/heads/main/install | bash
+
+      - name: Setup systemd user environment
+        run: |
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" >> "$GITHUB_ENV"
+          loginctl enable-linger "$(whoami)" || true
+
+      - name: Run smoke tests on built artifact
+        run: ./scripts/smoke_test.sh --ci
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
