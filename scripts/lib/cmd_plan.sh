@@ -42,6 +42,7 @@ cmd_plan() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
 
     # 引数チェック
     if [[ -z "$goal" ]]; then
@@ -86,9 +87,10 @@ cmd_plan() {
     local escaped_goal="${goal//\"/\\\"}"
 
     # Leaderへメッセージ送信（MIMEフォーマット）
+    # キューディレクトリ直下に配置 → queue_monitor が検知して Leader に配信
     local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
-    mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
-    local message_file="$WORKSPACE_DIR/queue/leader/processed/user_goal_${message_id}.mime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/leader"
+    local message_file="$IGNITE_RUNTIME_DIR/queue/leader/user_goal_${message_id}.mime"
 
     local body_yaml="goal: \"${escaped_goal}\""
     if [[ -n "$context" ]]; then
@@ -100,14 +102,7 @@ context: \"${escaped_context}\""
         --from user --to leader --type user_goal \
         --priority high --body "$body_yaml" -o "$message_file"
 
-    print_success "メッセージを作成しました: $message_file"
-
-    # Leaderに通知（自然言語プロンプトで送信）- pane 0 を明示的に指定
-    sleep 0.5
-    tmux send-keys -l -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" \
-        "$WORKSPACE_DIR/queue/leader/processed/ に新しいメッセージがあります。${message_file} を確認して処理してください。目標: ${goal}"
-    sleep 0.3
-    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" Enter
+    print_success "メッセージをキューに配置しました: $message_file"
 
     echo ""
     print_success "タスク '${goal}' を投入しました"

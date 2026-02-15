@@ -97,27 +97,24 @@ jq --version     # jq 1.6+
 yq --version     # yq 4.x+（任意）
 ```
 
-## 4. Claude Code CLI のインストール
+## 4. OpenCode CLI のインストール
 
-WSL2 内で Claude Code をインストールします：
+WSL2 内で OpenCode をインストールします：
 
 ```bash
-# npm でインストール（Node.js が必要）
-npm install -g @anthropic-ai/claude-code
-
-# Node.js が未インストールの場合は先にインストール
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt install -y nodejs
-npm install -g @anthropic-ai/claude-code
+# 公式インストーラーで導入
+curl -fsSL https://opencode.ai/install | bash
 ```
 
 確認：
 
 ```bash
-claude --version
+opencode --version
 ```
 
-> **Note**: Claude Code CLI v2.1.34 以降は Windows にネイティブ対応（PowerShell + Git Bash）していますが、IGNITE では tmux や Bash スクリプトとの完全な互換性のため、WSL2 内での実行を推奨します。
+> **Note**: IGNITE のデフォルト CLI プロバイダーは OpenCode です。Claude Code を代替として使用する場合は、`npm install -g @anthropic-ai/claude-code` でインストールし、`config/system.yaml` の `cli.provider` を `claude` に変更してください。
+
+> **Ollama（ローカルLLM）を使う場合**: WSL2 内で `ollama serve` を起動し、`config/system.yaml` の `cli.model` を `ollama/qwen3-coder:30b` 等に設定してください。API Key は不要です。詳細は [Ollama 公式ドキュメント](https://docs.ollama.com/integrations/opencode) を参照。
 
 ## 5. IGNITE のインストールと起動
 

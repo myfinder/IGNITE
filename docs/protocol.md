@@ -69,7 +69,6 @@ Content-Transfer-Encoding: 8bit
 - `improvement_suggestion` - 改善提案
 - `improvement_completed` - 改善完了
 - `progress_update` - 進捗報告
-- `system_init` - システム初期化
 - `github_event` - GitHubイベント通知
 - `github_task` - GitHubタスク（トリガー検出）
 - `escalation` - エスカレーション通知
@@ -171,7 +170,7 @@ context: "追加のコンテキスト（オプション）"
 python3 scripts/lib/ignite_mime.py build \
     --from user --to leader --type user_goal --priority high \
     --body 'goal: "READMEファイルを作成する"' \
-    -o "workspace/queue/leader/processed/user_goal_$(date +%s%6N).mime"
+    -o "workspace/.ignite/queue/leader/processed/user_goal_$(date +%s%6N).mime"
 ```
 
 ### strategy_request
@@ -405,7 +404,7 @@ summary: |
 
 Bashでの生成:
 ```bash
-MESSAGE_FILE="workspace/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
+MESSAGE_FILE="workspace/.ignite/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
 python3 scripts/lib/ignite_mime.py build \
     --from "$FROM" --to "$TO" --type "$TYPE" --priority "$PRIORITY" \
     --body "$BODY_YAML" -o "$MESSAGE_FILE"
@@ -416,7 +415,7 @@ python3 scripts/lib/ignite_mime.py build \
 各エージェントのキューディレクトリ:
 
 ```
-workspace/queue/
+workspace/.ignite/queue/
 ├── leader/           # Leader宛て
 │   └── processed/    # 配信済みメッセージ
 ├── strategist/       # Strategist宛て
@@ -447,7 +446,7 @@ workspace/queue/
 python3 scripts/lib/ignite_mime.py build \
     --from "$FROM" --to "$TO" --type "$TYPE" --priority "$PRIORITY" \
     --body "$BODY_YAML" \
-    -o "workspace/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
+    -o "workspace/.ignite/queue/${TO}/${TYPE}_$(date +%s%6N).mime"
 ```
 
 ### 受信側
@@ -475,7 +474,7 @@ python3 scripts/lib/ignite_mime.py build \
 
 ### Dead Letter Queue
 
-リトライ上限（デフォルト3回）に到達したメッセージは `workspace/queue/dead_letter/` に移動されます。
+リトライ上限（デフォルト3回）に到達したメッセージは `workspace/.ignite/queue/dead_letter/` に移動されます。
 
 ## ベストプラクティス
 
@@ -490,16 +489,16 @@ python3 scripts/lib/ignite_mime.py build \
 
 ```bash
 # 最近のメッセージを確認
-find workspace/queue -name "*.mime" -mmin -5 -exec cat {} \;
+find workspace/.ignite/queue -name "*.mime" -mmin -5 -exec cat {} \;
 
 # 特定タイプのメッセージを検索
-find workspace/queue -name "task_assignment_*.mime"
+find workspace/.ignite/queue -name "task_assignment_*.mime"
 
 # メッセージ数をカウント
-find workspace/queue -name "*.mime" | wc -l
+find workspace/.ignite/queue -name "*.mime" | wc -l
 
 # メッセージをJSONでパース
-python3 scripts/lib/ignite_mime.py parse workspace/queue/ignitian_1/processed/task.mime
+python3 scripts/lib/ignite_mime.py parse workspace/.ignite/queue/ignitian_1/processed/task.mime
 ```
 
 ## まとめ

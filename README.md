@@ -4,7 +4,7 @@
   <img src="images/ignite-logo.jpg" width="200">
 </p>
 
-**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** は、claude code CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。<br>
+**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** は、AI Coding Agent CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。<br>
 IGNITEは今はまだ歌って踊ってライブ配信することはできませんが、いつか皆さんの前で素敵なステージを見せることができるよう日々努力を重ねています。
 
 <p align="center">
@@ -131,17 +131,18 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 
 - **OS**: Linux / Windows (WSL2) / macOS（開発モード）
 - **アーキテクチャ**: x86_64 / ARM64
-- **ネットワーク**: 常時インターネット接続（Claude API通信）
+- **ネットワーク**: 常時インターネット接続（API通信）。Ollama 等のローカルLLM 使用時はオフライン動作可
 
-> **Note**: 各Claude Codeプロセスはおよそ300〜500MBのメモリを消費します。
+> **Note**: 各エージェントプロセスはおよそ300〜500MBのメモリを消費します。
 
 ### 必要なソフトウェア
 
 以下のツールがインストールされている必要があります：
 
 ```bash
-# claude CLI
-claude --version
+# AI Coding Agent CLI（いずれか一つ）
+opencode --version   # OpenCode（デフォルト）
+claude --version     # Claude Code（代替）
 
 # tmux
 tmux -V
@@ -156,11 +157,31 @@ bash --version
 yq --version
 ```
 
+> **ローカルLLM**: Ollama / LM Studio / vLLM 等の OpenAI-compatible サーバーにも対応しています。`config/system.yaml` で `model: ollama/qwen3-coder:30b` のように指定してください。API Key は不要です。
+
+#### ローカルLLM を実用的に使うために
+
+IGNITE のエージェントは tool calling（ファイル読み書き、コマンド実行等）を多用するため、ローカルLLM には **高速な推論速度** と **正確な tool calling 対応** の両方が求められます。推論速度のボトルネックはメモリ帯域幅（モデルの重みを毎トークン読み出す速度）です。
+
+| GPU | メモリ帯域 | 24B モデル推定速度 | 実用性 |
+|-----|-----------|-------------------|--------|
+| RTX 5090 (32GB) | 1,792 GB/s | ~60-80 tok/s | 実用的 |
+| Mac Studio M4 Ultra (192GB) | 819 GB/s | ~30-40 tok/s | ギリギリ実用 |
+| A100 80GB | 2,039 GB/s | ~70-90 tok/s | 快適 |
+| H100 80GB | 3,350 GB/s | ~100+ tok/s | 非常に快適 |
+| DGX Spark GB10 (128GB) | ~273 GB/s | ~10-15 tok/s | 遅い（非推奨） |
+
+> **目安**: エージェント用途では最低 **30 tokens/sec** 以上を推奨します。統合メモリが大きい環境（DGX Spark 等）でもメモリ帯域が不足すると実用的な応答速度が出ません。コストパフォーマンスではクラウド API（OpenAI / Anthropic）が依然として優位です。
+
 ### 前提ソフトウェアのインストール
 
-claudeがインストールされていない場合：
+CLI プロバイダーがインストールされていない場合：
 ```bash
-# claudeのインストール方法はAnthropic公式ドキュメントを参照
+# OpenCode（デフォルト）
+curl -fsSL https://opencode.ai/install | bash
+
+# Claude Code（代替）
+npm install -g @anthropic-ai/claude-code
 ```
 
 tmuxがインストールされていない場合：
@@ -216,8 +237,7 @@ tar xzf ignite-*.tar.gz
 
 インストール先：
 - `~/.local/bin/` — 実行ファイル (`ignite` コマンド)
-- `~/.config/ignite/` — 設定ファイル
-- `~/.local/share/ignite/` — データファイル（instructions、scripts等）
+- `~/.local/share/ignite/` — データ・設定ファイル（config、instructions、scripts等）
 
 > **Note**: `~/.local/bin` が PATH に含まれていない場合は、以下を `~/.bashrc` または `~/.zshrc` に追加してください：
 > ```bash
@@ -325,7 +345,7 @@ ignite status
 watch -n 5 ignite status
 
 # または直接ダッシュボードファイルを表示
-cat workspace/dashboard.md
+cat workspace/.ignite/dashboard.md
 ```
 
 #### ログを確認
@@ -524,22 +544,23 @@ ignite/
 │   └── github-watcher.yaml     # GitHub Watcher設定
 │
 ├── workspace/                  # 実行時ワークスペース（.gitignoreで除外）
-│   ├── queue/                  # メッセージキュー（各エージェント用）
-│   │   ├── leader/
-│   │   ├── strategist/
-│   │   ├── architect/
-│   │   ├── evaluator/
-│   │   ├── coordinator/
-│   │   ├── innovator/
-│   │   ├── ignitian_1/          # IGNITIAN-1キュー
-│   │   ├── ignitian_2/          # IGNITIAN-2キュー
-│   │   └── ignitian_{n}/        # IGNITIAN-Nキュー（動的）
-│   ├── context/                # プロジェクトコンテキスト
-│   ├── state/                  # 状態管理ファイル
-│   │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
-│   ├── memory.db               # SQLiteエージェントメモリDB
-│   ├── logs/                   # ログファイル
-│   └── dashboard.md            # リアルタイム進捗ダッシュボード
+│   └── .ignite/                # ランタイムデータ
+│       ├── queue/              # メッセージキュー（各エージェント用）
+│       │   ├── leader/
+│       │   ├── strategist/
+│       │   ├── architect/
+│       │   ├── evaluator/
+│       │   ├── coordinator/
+│       │   ├── innovator/
+│       │   ├── ignitian_1/      # IGNITIAN-1キュー
+│       │   ├── ignitian_2/      # IGNITIAN-2キュー
+│       │   └── ignitian_{n}/    # IGNITIAN-Nキュー（動的）
+│       ├── context/            # プロジェクトコンテキスト
+│       ├── state/              # 状態管理ファイル
+│       │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
+│       ├── memory.db           # SQLiteエージェントメモリDB
+│       ├── logs/               # ログファイル
+│       └── dashboard.md        # リアルタイム進捗ダッシュボード
 │
 ├── docs/                       # ドキュメント
 │   ├── architecture.md         # アーキテクチャ詳細
@@ -639,7 +660,7 @@ ignite start --agents leader
 **注意事項:**
 - 複雑なタスクや大規模な変更には通常モード（協調モード）を推奨します
 - 単独モードではLeaderのログに `[SOLO]` タグが追加されます
-- 設定は `workspace/system_config.yaml` の `system.agent_mode` で管理されます
+- 設定は `workspace/.ignite/runtime.yaml` の `system.agent_mode` で管理されます
 
 ### タスクの種類別の使用例
 
@@ -792,7 +813,7 @@ ignite --version
 
 ### ダッシュボードの見方
 
-`workspace/dashboard.md` の例:
+`workspace/.ignite/dashboard.md` の例:
 
 ```markdown
 # IGNITE Dashboard
@@ -911,10 +932,10 @@ Ctrl+b q 6  # IGNITIAN-1のペインへ移動
 
 ```bash
 # ダッシュボードファイルの存在確認
-ls -la workspace/dashboard.md
+ls -la workspace/.ignite/dashboard.md
 
 # 手動で再作成
-cat > workspace/dashboard.md <<EOF
+cat > workspace/.ignite/dashboard.md <<EOF
 # IGNITE Dashboard
 
 更新日時: $(date '+%Y-%m-%d %H:%M:%S')
@@ -1133,7 +1154,7 @@ IGNITEプロジェクトへの貢献を歓迎します！
 ## 🙏 謝辞
 
 - **multi-agent-shogun** - アーキテクチャの参考元
-- **claude code CLI** - 強力なエージェント実行環境
+- **OpenCode** / **Claude Code** - AI Coding Agent CLI
 - **tmux** - セッション管理ツール
 - **Anthropic** - Claude AI
 

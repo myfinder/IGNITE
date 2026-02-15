@@ -16,9 +16,10 @@ github_app:
   app_id: "YOUR_APP_ID"
 
   # Private Key ファイルのパス（必須）
-  # App設定ページで生成したPrivate Keyファイル
-  # 注意: このファイルは厳重に管理してください
-  private_key_path: "~/.config/ignite/github-app-private-key.pem"
+  # 相対パスは .ignite/ ディレクトリ基準で解決されます
+  # 例: "github-app-private-key.pem" → .ignite/github-app-private-key.pem
+  # .pem ファイルは .gitignore で自動除外されます
+  private_key_path: "github-app-private-key.pem"
 
   # App名（オプション）
   # コメント等でBot名を表示する際に使用

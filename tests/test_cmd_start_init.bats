@@ -45,25 +45,28 @@ teardown() {
 @test "dry-run: ワークスペースディレクトリ構造が作成される" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
+    # IGNITE_RUNTIME_DIR = $TEST_WORKSPACE/.ignite（.ignite/ が存在するため）
+    local runtime_dir="$TEST_WORKSPACE/.ignite"
     [ "$status" -eq 0 ]
-    [ -d "$TEST_WORKSPACE/queue/leader" ]
-    [ -d "$TEST_WORKSPACE/queue/strategist" ]
-    [ -d "$TEST_WORKSPACE/queue/coordinator" ]
-    [ -d "$TEST_WORKSPACE/context" ]
-    [ -d "$TEST_WORKSPACE/logs" ]
-    [ -d "$TEST_WORKSPACE/state" ]
-    [ -d "$TEST_WORKSPACE/repos" ]
+    [ -d "$runtime_dir/queue/leader" ]
+    [ -d "$runtime_dir/queue/strategist" ]
+    [ -d "$runtime_dir/queue/coordinator" ]
+    [ -d "$runtime_dir/context" ]
+    [ -d "$runtime_dir/logs" ]
+    [ -d "$runtime_dir/state" ]
+    [ -d "$runtime_dir/repos" ]
 }
 
 @test "dry-run: DB初期化が実行される（state/memory.db + テーブル作成）" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
+    local runtime_dir="$TEST_WORKSPACE/.ignite"
     [ "$status" -eq 0 ]
-    [ -f "$TEST_WORKSPACE/state/memory.db" ]
+    [ -f "$runtime_dir/state/memory.db" ]
 
     # agent_states テーブルの存在確認
     local tables
-    tables=$(sqlite3 "$TEST_WORKSPACE/state/memory.db" \
+    tables=$(sqlite3 "$runtime_dir/state/memory.db" \
         "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_states';")
     [ "$tables" = "agent_states" ]
 }
@@ -71,24 +74,26 @@ teardown() {
 @test "dry-run: dashboard.md が生成される" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
+    local runtime_dir="$TEST_WORKSPACE/.ignite"
     [ "$status" -eq 0 ]
-    [ -f "$TEST_WORKSPACE/dashboard.md" ]
+    [ -f "$runtime_dir/dashboard.md" ]
 
     # 基本コンテンツの確認
     local content
-    content=$(cat "$TEST_WORKSPACE/dashboard.md")
+    content=$(cat "$runtime_dir/dashboard.md")
     [[ "$content" == *"IGNITE Dashboard"* ]]
 }
 
-@test "dry-run: system_config.yaml が生成される" {
+@test "dry-run: runtime.yaml が生成される" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
+    local runtime_dir="$TEST_WORKSPACE/.ignite"
     [ "$status" -eq 0 ]
-    [ -f "$TEST_WORKSPACE/system_config.yaml" ]
+    [ -f "$runtime_dir/runtime.yaml" ]
 
     # dry_run: true が含まれること
     local content
-    content=$(cat "$TEST_WORKSPACE/system_config.yaml")
+    content=$(cat "$runtime_dir/runtime.yaml")
     [[ "$content" == *"dry_run: true"* ]]
 }
 

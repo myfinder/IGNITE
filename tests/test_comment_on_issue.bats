@@ -8,7 +8,8 @@ load test_helper
 setup() {
     setup_temp_dir
     export WORKSPACE_DIR="$TEST_TEMP_DIR/workspace"
-    mkdir -p "$WORKSPACE_DIR/state"
+    export IGNITE_RUNTIME_DIR="$WORKSPACE_DIR"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
 
     # ログ関数スタブ
     log_info() { echo "INFO: $*" >&2; }

@@ -8,8 +8,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 
-EnvironmentFile=-%h/.ignite/env
-EnvironmentFile=-%h/.ignite/env.%i
+EnvironmentFile=-%h/.config/ignite/env
+EnvironmentFile=-%h/.config/ignite/env.%i
 
 ExecStart=%h/.local/share/ignite/scripts/ignite start --daemon -s %i
 ExecStop=%h/.local/share/ignite/scripts/ignite stop -s %i -y

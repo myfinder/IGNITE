@@ -50,6 +50,7 @@ YAML
     # core.sh をソース
     export PROJECT_ROOT="$SCRIPTS_DIR/.."
     export WORKSPACE_DIR="$TEST_TEMP_DIR/workspace"
+    export IGNITE_RUNTIME_DIR="$WORKSPACE_DIR"
     mkdir -p "$WORKSPACE_DIR"
 
     source "$SCRIPTS_DIR/lib/core.sh"
@@ -249,13 +250,13 @@ YAML
 # TC-17〜TC-20: セキュリティ + .gitignore テスト
 # =============================================================================
 
-@test "TC-17: .gitignore に github-app.yaml が含まれる" {
+@test "TC-17: .gitignore に github-app.yaml が含まれない（コミット可能）" {
     source "$SCRIPTS_DIR/lib/cmd_init.sh"
     local target="$TEST_TEMP_DIR/init_gitignore"
     mkdir -p "$target"
 
     cmd_init --minimal -w "$target"
-    grep -q "github-app.yaml" "$target/.ignite/.gitignore"
+    ! grep -q "github-app.yaml" "$target/.ignite/.gitignore"
 }
 
 @test "TC-18: .gitignore に *.pem が含まれる" {
@@ -398,6 +399,35 @@ YAML
         fi
     done < "$SCRIPTS_DIR/lib/commands.sh"
     # grep で確認済みなのでここには到達しない
+}
+
+@test "TC-28: ignite init で .env.example が生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_env"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    [[ -f "$target/.ignite/.env.example" ]]
+    [[ "$(cat "$target/.ignite/.env.example")" == *"OPENAI_API_KEY"* ]]
+    [[ "$(cat "$target/.ignite/.env.example")" == *"ANTHROPIC_API_KEY"* ]]
+}
+
+@test "TC-29: .gitignore に .ignite/.env が含まれる" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_env_gi"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    grep -q '\.env' "$target/.ignite/.gitignore"
+}
+
+@test "TC-30: --minimal でも .env.example が生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_minimal_env"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    [[ -f "$target/.ignite/.env.example" ]]
 }
 
 @test "TC-27: cmd_validate - XDG_CONFIG_HOME 参照なし" {

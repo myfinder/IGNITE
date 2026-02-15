@@ -95,14 +95,11 @@ IGNITEはポーリング方式でイベントを取得するため、Webhookは�
 ### 2. Private Keyの保存
 
 ```bash
-# IGNITEの設定ディレクトリを作成
-mkdir -p ~/.config/ignite
-
-# ダウンロードしたPrivate Keyを移動
-mv ~/Downloads/ignite-gh-app.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
+# ダウンロードしたPrivate Keyを .ignite/ に移動
+mv ~/Downloads/ignite-gh-app.*.private-key.pem .ignite/github-app-private-key.pem
 
 # 権限を制限
-chmod 600 ~/.config/ignite/github-app-private-key.pem
+chmod 600 .ignite/github-app-private-key.pem
 ```
 
 ## リポジトリへのインストール
@@ -130,7 +127,7 @@ cp config/github-app.yaml.example config/github-app.yaml
 # config/github-app.yaml
 github_app:
   app_id: "123456"
-  private_key_path: "~/.config/ignite/github-app-private-key.pem"
+  private_key_path: "github-app-private-key.pem"  # .ignite/ からの相対パス
   app_name: "your-app-name"
 ```
 
@@ -186,7 +183,7 @@ GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "処理を�
 GitHub Watcher が新しいIssueを検知した場合、Bot名義で自動応答:
 
 ```yaml
-# workspace/queue/leader/github_event_xxx.yaml
+# workspace/.ignite/queue/leader/github_event_xxx.yaml
 type: github_event
 from: github_watcher
 to: leader
@@ -278,7 +275,7 @@ gh extension install Link-/gh-token
 cat config/github-app.yaml | grep private_key_path
 
 # ファイルの存在確認
-ls -la ~/.config/ignite/github-app-private-key.pem
+ls -la .ignite/github-app-private-key.pem
 ```
 
 **原因3: App IDまたはInstallation IDが間違っている**

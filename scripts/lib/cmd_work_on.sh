@@ -49,6 +49,7 @@ cmd_work_on() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
 
     # Issue入力チェック
     if [[ -z "$issue_input" ]]; then
@@ -120,12 +121,13 @@ cmd_work_on() {
     message_id=$(date +%s%6N)
 
     # github_taskメッセージを作成（MIMEフォーマット）
+    # キューディレクトリ直下に配置 → queue_monitor が検知して Leader に配信
     local IGNITE_MIME="${SCRIPT_DIR}/ignite_mime.py"
-    mkdir -p "$WORKSPACE_DIR/queue/leader/processed"
-    local message_file="$WORKSPACE_DIR/queue/leader/processed/github_task_${message_id}.mime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/leader"
+    local message_file="$IGNITE_RUNTIME_DIR/queue/leader/github_task_${message_id}.mime"
 
     local body_yaml
-    body_yaml="trigger: implement
+    body_yaml="trigger: auto
 repository: ${repo}
 issue_number: ${issue_number}
 issue_title: \"${issue_title//\"/\\\"}\"
@@ -140,14 +142,7 @@ url: \"${issue_url}\""
         --priority high --repo "$repo" --issue "$issue_number" \
         --body "$body_yaml" -o "$message_file"
 
-    print_success "タスクメッセージを作成しました: $message_file"
-
-    # Leaderに通知
-    sleep 0.5
-    tmux send-keys -l -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" \
-        "$WORKSPACE_DIR/queue/leader/processed/ に新しいタスクがあります。${message_file} を確認してください。Issue #${issue_number}「${issue_title}」の実装を開始してください。"
-    sleep 0.3
-    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.0" Enter
+    print_success "タスクメッセージをキューに配置しました: $message_file"
 
     echo ""
     print_success "Issue #${issue_number} の実装タスクを投入しました"

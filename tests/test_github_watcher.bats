@@ -9,8 +9,9 @@ load test_helper
 setup() {
     setup_temp_dir
     export WORKSPACE_DIR="$TEST_TEMP_DIR/workspace"
-    mkdir -p "$WORKSPACE_DIR/queue/leader"
-    mkdir -p "$WORKSPACE_DIR/state"
+    export IGNITE_RUNTIME_DIR="$WORKSPACE_DIR"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/leader"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
     export MENTION_PATTERN="@ignite-gh-app"
     export DEFAULT_MESSAGE_PRIORITY="normal"
     export IGNORE_BOT="true"
@@ -36,7 +37,7 @@ setup() {
     # create_event_message: github_event YAML を生成
     create_event_message() {
         local event_type="$1" repo="$2" event_data="$3"
-        local message_file="${WORKSPACE_DIR}/queue/leader/github_event_$(date +%s%6N).yaml"
+        local message_file="${IGNITE_RUNTIME_DIR}/queue/leader/github_event_$(date +%s%6N).yaml"
         local issue_number issue_title
         issue_number=$(echo "$event_data" | jq -r '.number')
         issue_title=$(echo "$event_data" | jq -r '.title')
@@ -57,7 +58,7 @@ EVEOF
     # create_task_message: github_task YAML を生成
     create_task_message() {
         local event_type="$1" repo="$2" event_data="$3" trigger_type="$4"
-        local message_file="${WORKSPACE_DIR}/queue/leader/github_task_$(date +%s%6N).yaml"
+        local message_file="${IGNITE_RUNTIME_DIR}/queue/leader/github_task_$(date +%s%6N).yaml"
         local issue_number issue_title issue_body
         issue_number=$(echo "$event_data" | jq -r '.number')
         issue_title=$(echo "$event_data" | jq -r '.title // ""')
@@ -97,11 +98,11 @@ teardown() {
     process_issues "test/repo"
 
     local task_count
-    task_count=$(ls "$WORKSPACE_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
+    task_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
     [[ "$task_count" -ge 1 ]]
 
-    # trigger が "implement" であること
-    grep -q 'trigger: "implement"' "$WORKSPACE_DIR/queue/leader/github_task_"*.yaml
+    # trigger が "auto" であること（タスク分類は Leader に委譲）
+    grep -q 'trigger: "auto"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
 }
 
 @test "process_issues: メンションなしIssueでgithub_eventが生成される" {
@@ -113,16 +114,16 @@ teardown() {
     process_issues "test/repo"
 
     local event_count
-    event_count=$(ls "$WORKSPACE_DIR/queue/leader/github_event_"*.yaml 2>/dev/null | wc -l)
+    event_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_event_"*.yaml 2>/dev/null | wc -l)
     [[ "$event_count" -ge 1 ]]
 
     # github_task は生成されないこと
     local task_count
-    task_count=$(ls "$WORKSPACE_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
+    task_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
     [[ "$task_count" -eq 0 ]]
 }
 
-@test "process_issues: reviewキーワードでtrigger_type=reviewになる" {
+@test "process_issues: レビューキーワードでもtrigger_type=autoになる（分類はLeader委譲）" {
     fetch_issues() {
         echo '{"id":12347,"number":1001,"title":"レビュー依頼","body":"@ignite-gh-app このPRをレビューしてください","author":"myfinder","author_type":"User","state":"open","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","url":"https://github.com/test/repo/issues/1001"}'
     }
@@ -130,7 +131,7 @@ teardown() {
 
     process_issues "test/repo"
 
-    grep -q 'trigger: "review"' "$WORKSPACE_DIR/queue/leader/github_task_"*.yaml
+    grep -q 'trigger: "auto"' "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml
 }
 
 @test "process_issues: body空(null)のIssueでgithub_eventが生成される" {
@@ -142,11 +143,11 @@ teardown() {
     process_issues "test/repo"
 
     local event_count
-    event_count=$(ls "$WORKSPACE_DIR/queue/leader/github_event_"*.yaml 2>/dev/null | wc -l)
+    event_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_event_"*.yaml 2>/dev/null | wc -l)
     [[ "$event_count" -ge 1 ]]
 
     # github_task は生成されないこと
     local task_count
-    task_count=$(ls "$WORKSPACE_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
+    task_count=$(ls "$IGNITE_RUNTIME_DIR/queue/leader/github_task_"*.yaml 2>/dev/null | wc -l)
     [[ "$task_count" -eq 0 ]]
 }

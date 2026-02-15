@@ -241,37 +241,39 @@ teardown() {
 # =============================================================================
 
 @test "setup-env: 環境変数ファイルが生成される" {
-    export IGNITE_CONFIG_DIR="$TEST_TEMP_DIR/ignite_config"
+    export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
 
     run _service_setup_env </dev/null
     [ "$status" -eq 0 ]
-    [ -f "$TEST_TEMP_DIR/ignite_config/env" ]
+    [ -f "$TEST_TEMP_DIR/xdg_config/ignite/env" ]
     [[ "$output" == *"環境変数ファイルを作成しました"* ]]
 }
 
 @test "setup-env: パーミッションが 600 になる" {
-    export IGNITE_CONFIG_DIR="$TEST_TEMP_DIR/ignite_config"
+    export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
 
     run _service_setup_env </dev/null
     [ "$status" -eq 0 ]
 
     local perms
-    perms=$(stat -c '%a' "$TEST_TEMP_DIR/ignite_config/env")
+    perms=$(stat -c '%a' "$TEST_TEMP_DIR/xdg_config/ignite/env")
     [ "$perms" = "600" ]
 }
 
 @test "setup-env: --force で上書き" {
-    export IGNITE_CONFIG_DIR="$TEST_TEMP_DIR/ignite_config"
-    mkdir -p "$TEST_TEMP_DIR/ignite_config"
-    echo "old" > "$TEST_TEMP_DIR/ignite_config/env"
+    export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg_config"
+    mkdir -p "$TEST_TEMP_DIR/xdg_config/ignite"
+    echo "old" > "$TEST_TEMP_DIR/xdg_config/ignite/env"
 
     run _service_setup_env --force </dev/null
     [ "$status" -eq 0 ]
     [[ "$output" == *"環境変数ファイルを作成しました"* ]]
 
     local content
-    content=$(cat "$TEST_TEMP_DIR/ignite_config/env")
-    [[ "$content" == *"ANTHROPIC_API_KEY"* ]]
+    content=$(cat "$TEST_TEMP_DIR/xdg_config/ignite/env")
+    # 上書き後に正しいテンプレートが生成されていることを確認
+    [[ "$content" == *"XDG_CONFIG_HOME"* ]]
+    [[ "$content" != "old" ]]
 }
 
 # =============================================================================

@@ -38,9 +38,9 @@ BOT_TOKEN_CACHE_TTL="${BOT_TOKEN_CACHE_TTL:-3300}"  # 55分（トークン有効
 
 _get_cache_dir() {
     if [[ -n "${WORKSPACE_DIR:-}" ]]; then
-        echo "$WORKSPACE_DIR/state"
+        echo "$IGNITE_RUNTIME_DIR/state"
     elif [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
-        echo "$IGNITE_WORKSPACE_DIR/state"
+        echo "$IGNITE_WORKSPACE_DIR/.ignite/state"
     else
         log_error "_get_cache_dir: WORKSPACE_DIR も IGNITE_WORKSPACE_DIR も未設定です"
         return 1

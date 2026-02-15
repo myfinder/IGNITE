@@ -24,6 +24,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
+source "${SCRIPT_DIR}/../lib/cli_provider.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
@@ -38,10 +39,12 @@ _RELOAD_REQUESTED=false
 # リトライ/DLQ ハンドラーの読み込み（SCRIPT_DIR/WORKSPACE_DIR保護）
 _QM_SCRIPT_DIR="$SCRIPT_DIR"
 _QM_WORKSPACE_DIR="${WORKSPACE_DIR:-}"
+_QM_RUNTIME_DIR="${IGNITE_RUNTIME_DIR:-}"
 source "${SCRIPT_DIR}/../lib/retry_handler.sh"
 source "${SCRIPT_DIR}/../lib/dlq_handler.sh"
 SCRIPT_DIR="$_QM_SCRIPT_DIR"
 WORKSPACE_DIR="${_QM_WORKSPACE_DIR}"
+IGNITE_RUNTIME_DIR="${_QM_RUNTIME_DIR}"
 
 # yaml_utils（task_timeout動的読み取り用）
 if [[ -f "${SCRIPT_DIR}/../lib/yaml_utils.sh" ]]; then
@@ -101,8 +104,12 @@ _refresh_bot_token_cache() {
 
 # 設定
 WORKSPACE_DIR="${WORKSPACE_DIR:-$PROJECT_ROOT/workspace}"
+IGNITE_RUNTIME_DIR="${IGNITE_RUNTIME_DIR:-$WORKSPACE_DIR}"
 POLL_INTERVAL="${QUEUE_POLL_INTERVAL:-10}"
 TMUX_SESSION="${IGNITE_TMUX_SESSION:-}"
+
+# CLI プロバイダー設定を読み込み（submit keys 判定に必要）
+cli_load_config 2>/dev/null || true
 
 # tmux window名を system.yaml から取得
 TMUX_WINDOW_NAME=$(sed -n '/^tmux:/,/^[^ ]/p' "$IGNITE_CONFIG_DIR/system.yaml" 2>/dev/null \
@@ -190,11 +197,13 @@ send_to_agent() {
         # 形式: session:window.pane (window は省略すると現在のウィンドウ)
         local target="${TMUX_SESSION}:${TMUX_WINDOW_NAME}.${pane_index}"
 
-        # メッセージを送信してからEnterを送信
+        # メッセージを送信してから確定キーを送信
         # -l (literal mode) でシェルメタキャラクタのエスケープを防止
         if tmux send-keys -l -t "$target" "$message" 2>/dev/null; then
             sleep 0.3
-            tmux send-keys -t "$target" Enter 2>/dev/null
+            local _submit_keys
+            _submit_keys=$(cli_get_submit_keys 2>/dev/null || echo "C-m")
+            eval "tmux send-keys -t '$target' $_submit_keys" 2>/dev/null
             log_success "エージェント $agent (pane $pane_index) にメッセージを送信しました"
             return 0
         else
@@ -212,10 +221,10 @@ send_to_agent() {
 # =============================================================================
 
 _get_report_cache_dir() {
-    if [[ -n "${WORKSPACE_DIR:-}" ]]; then
-        echo "$WORKSPACE_DIR/state"
+    if [[ -n "${IGNITE_RUNTIME_DIR:-}" ]]; then
+        echo "$IGNITE_RUNTIME_DIR/state"
     else
-        log_error "WORKSPACE_DIR が未設定です。レポートキャッシュディレクトリを決定できません。"
+        log_error "IGNITE_RUNTIME_DIR が未設定です。レポートキャッシュディレクトリを決定できません。"
         return 1
     fi
 }
@@ -232,7 +241,7 @@ _trigger_daily_report() {
 
     # Issue を確保（なければ作成）
     local report_issue
-    report_issue=$(WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" ensure --repo "$repo" 2>/dev/null) || {
+    report_issue=$(WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" ensure --repo "$repo" 2>/dev/null) || {
         log_warn "日次レポート Issue の確保に失敗しました ($repo)"
         return 0
     }
@@ -249,7 +258,7 @@ _trigger_daily_report() {
 - **Trigger:** ${trigger}
 - **Time:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
-    WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+    WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
         --repo "$repo" \
         --issue "$report_issue" \
         --body "$comment_body" 2>/dev/null || {
@@ -306,7 +315,7 @@ _report_progress() {
         report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
         [[ -n "$report_issue" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$comment_body" 2>/dev/null || true
@@ -369,7 +378,7 @@ _report_evaluation() {
         report_issue=$(jq -r --arg repo "$repo" --arg date "$today" '.[$repo][$date] // empty' "$cache_file" 2>/dev/null)
         [[ -n "$report_issue" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" comment \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" comment \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$comment_body" 2>/dev/null || true
@@ -384,8 +393,8 @@ _generate_repo_report() {
     local repo="$1"
     local today="$2"
     local timestamp="$3"
-    local db="$WORKSPACE_DIR/state/memory.db"
-    local dashboard="$WORKSPACE_DIR/dashboard.md"
+    local db="$IGNITE_RUNTIME_DIR/state/memory.db"
+    local dashboard="$IGNITE_RUNTIME_DIR/dashboard.md"
 
     # Layer 1: 入力バリデーション（Defense in Depth）
     if [[ ! "$repo" =~ ^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ ]]; then
@@ -451,7 +460,7 @@ EOF
 }
 
 _sync_dashboard_to_reports() {
-    local dashboard="$WORKSPACE_DIR/dashboard.md"
+    local dashboard="$IGNITE_RUNTIME_DIR/dashboard.md"
     [[ -f "$dashboard" ]] || return 0
 
     local daily_report_script="${SCRIPT_DIR}/daily_report.sh"
@@ -484,7 +493,7 @@ _sync_dashboard_to_reports() {
         body=$(_generate_repo_report "$repo" "$today" "$timestamp")
         [[ -n "$body" ]] || continue
 
-        WORKSPACE_DIR="$WORKSPACE_DIR" "$daily_report_script" update \
+        WORKSPACE_DIR="$WORKSPACE_DIR" IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR" "$daily_report_script" update \
             --repo "$repo" \
             --issue "$report_issue" \
             --body "$body" 2>/dev/null || true
@@ -784,7 +793,7 @@ monitor_queues() {
     _MONITOR_START_EPOCH=$(date +%s)
 
     # DLQ ディレクトリ事前作成
-    mkdir -p "$WORKSPACE_DIR/queue/dead_letter"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/dead_letter"
 
     local poll_count=0
     local SYNC_INTERVAL=30    # 30 × 10秒 = ~5分
@@ -798,17 +807,17 @@ monitor_queues() {
         fi
 
         # Leader キュー
-        scan_queue "$WORKSPACE_DIR/queue/leader" "leader"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
 
         # Sub-Leaders キュー
-        scan_queue "$WORKSPACE_DIR/queue/strategist" "strategist"
-        scan_queue "$WORKSPACE_DIR/queue/architect" "architect"
-        scan_queue "$WORKSPACE_DIR/queue/evaluator" "evaluator"
-        scan_queue "$WORKSPACE_DIR/queue/coordinator" "coordinator"
-        scan_queue "$WORKSPACE_DIR/queue/innovator" "innovator"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
+        scan_queue "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
 
         # IGNITIAN キュー（個別ディレクトリ方式 - Sub-Leadersと同じパターン）
-        for ignitian_dir in "$WORKSPACE_DIR/queue"/ignitian[_-]*; do
+        for ignitian_dir in "$IGNITE_RUNTIME_DIR/queue"/ignitian[_-]*; do
             [[ -d "$ignitian_dir" ]] || continue
             local dirname
             dirname=$(basename "$ignitian_dir")
@@ -816,13 +825,13 @@ monitor_queues() {
         done
 
         # タイムアウト検査（全キューの processed/ を走査）
-        scan_for_timeouts "$WORKSPACE_DIR/queue/leader" "leader"
-        scan_for_timeouts "$WORKSPACE_DIR/queue/strategist" "strategist"
-        scan_for_timeouts "$WORKSPACE_DIR/queue/architect" "architect"
-        scan_for_timeouts "$WORKSPACE_DIR/queue/evaluator" "evaluator"
-        scan_for_timeouts "$WORKSPACE_DIR/queue/coordinator" "coordinator"
-        scan_for_timeouts "$WORKSPACE_DIR/queue/innovator" "innovator"
-        for ignitian_dir in "$WORKSPACE_DIR/queue"/ignitian[_-]*; do
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
+        scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
+        for ignitian_dir in "$IGNITE_RUNTIME_DIR/queue"/ignitian[_-]*; do
             [[ -d "$ignitian_dir" ]] || continue
             local dirname
             dirname=$(basename "$ignitian_dir")

@@ -23,7 +23,7 @@ flowchart TB
         Leader[Leader<br/>Yui Iha]
         SubLeaders[Sub-Leaders / IGNITIANs]
 
-        GW -->|"github_event_*.mime<br/>workspace/queue/leader/"| Leader
+        GW -->|"github_event_*.mime<br/>workspace/.ignite/queue/leader/"| Leader
         Leader -->|Existing flow| SubLeaders
     end
 
@@ -75,8 +75,7 @@ cp config/github-watcher.yaml.example /path/to/workspace/.ignite/github-watcher.
 |---|---|---|
 | 1 (Highest) | Environment variable | `IGNITE_WATCHER_CONFIG` |
 | 2 | Workspace-specific | `<workspace>/.ignite/github-watcher.yaml` |
-| 3 | User default | `~/.ignite/github-watcher.yaml` |
-| 4 (Lowest) | Project default | `config/github-watcher.yaml` |
+| 3 (Lowest) | Project default | `config/github-watcher.yaml` |
 
 **Starting with a specific workspace:**
 
@@ -112,25 +111,16 @@ watcher:
 
 ### 3. Trigger Configuration
 
-Start automatic tasks via mentions or keywords:
+Start automatic tasks via mentions (task classification is delegated to Leader LLM):
 
 ```yaml
 triggers:
   # Mention pattern
   mention_pattern: "@ignite-gh-app"
 
-  # Actions by keyword
-  keywords:
-    implement:
-      - "implement"
-      - "fix this"
-      - "create PR"
-    review:
-      - "review"
-      - "check this"
-    explain:
-      - "explain"
-      - "describe"
+  # Task classification is delegated to Leader (LLM)
+  # Watcher focuses on mention detection + message forwarding.
+  # Leader determines the intent from trigger_comment content.
 
   # Auto-trigger labels
   auto_labels:
@@ -273,7 +263,7 @@ to: leader
 timestamp: "2026-02-03T12:10:00+09:00"
 priority: high
 payload:
-  trigger: "implement"
+  trigger: "auto"
   repository: owner/repo
   issue_number: 123
   issue_title: "Fix login bug"
@@ -304,19 +294,24 @@ Mentioning in GitHub Issue/PR comments like below will automatically start IGNIT
 @ignite-gh-app create a PR
 ```
 
-### Trigger Types
+### Task Classification
 
-| Trigger | Description | Keyword Examples |
-|---------|-------------|------------------|
-| `implement` | Implement Issue/feature | implement, fix this |
-| `review` | Code review | review, check this |
-| `explain` | Explanation | explain, describe |
+Watcher forwards all mentions to Leader with `trigger: "auto"`. Leader determines the intent from `trigger_comment` content and selects the appropriate action:
+
+| Action | Description | Comment Examples |
+|--------|-------------|------------------|
+| Implement/Fix | Implement Issue/feature, bug fix | implement, fix this |
+| Review | Code review | review, check this |
+| Explain | Explanation | explain, describe |
+| Analysis/Insights | Memory analysis | insights, analyze |
+| GitHub Operations | Issue/PR operations | close this, add label |
+| Compound Request | Sequential execution of multiple actions | review and fix if needed |
 
 ## Issue → PR Auto-creation Flow
 
 1. **Trigger detection**: User comments `@ignite-gh-app implement this`
-2. **Task message generation**: GitHub Watcher creates `github_task` message
-3. **IGNITE processing**: Task execution through Leader → Strategist → IGNITIANs flow
+2. **Task message generation**: GitHub Watcher creates `github_task` message (`trigger: "auto"`)
+3. **IGNITE processing**: Leader determines intent → Strategist → IGNITIANs flow
 4. **PR creation**: After implementation, create PR as Bot using `create_pr.sh`
 5. **Notification**: Comment PR link on Issue
 
@@ -349,7 +344,7 @@ ignite work-on https://github.com/owner/repo/issues/123
 
 ### Processed Events
 
-Processed events are recorded in `workspace/state/github_watcher_state.json`:
+Processed events are recorded in `workspace/.ignite/state/github_watcher_state.json`:
 
 ```json
 {
@@ -404,7 +399,7 @@ Processed events older than 24 hours are automatically cleaned up.
 
 Reset state file:
 ```bash
-rm workspace/state/github_watcher_state.json
+rm workspace/.ignite/state/github_watcher_state.json
 ```
 
 ### API Rate Limiting
@@ -422,10 +417,10 @@ gh api /rate_limit
 
 ```bash
 # Check Watcher logs
-tail -f workspace/logs/github_watcher.log
+tail -f workspace/.ignite/logs/github_watcher.log
 
 # Check generated messages
-ls -la workspace/queue/leader/github_*.mime
+ls -la workspace/.ignite/queue/leader/github_*.mime
 ```
 
 ## Security Notes
@@ -487,7 +482,7 @@ Utility script for cloning and working with external repositories.
 
 # Get path
 REPO_PATH=$(./scripts/utils/setup_repo.sh path owner/repo)
-echo $REPO_PATH  # workspace/repos/owner_repo
+echo $REPO_PATH  # workspace/.ignite/repos/owner_repo
 
 # Create Issue branch
 ./scripts/utils/setup_repo.sh branch "$REPO_PATH" 123

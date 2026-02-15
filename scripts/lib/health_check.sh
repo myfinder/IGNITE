@@ -46,16 +46,26 @@ check_layer1() {
         return
     fi
 
-    # プロセス種別判定
+    # プロセス種別判定（CLI Provider に応じた動的マッチ）
+    local _cli_processes
+    _cli_processes=$(cli_get_process_names 2>/dev/null || echo "opencode")
     case "$pane_cmd" in
-        claude|node)
-            echo "alive"
-            ;;
         bash|zsh|sh)
             echo "alive"
             ;;
         *)
-            echo "wrong_process"
+            local _matched=false
+            for _proc in $_cli_processes; do
+                if [[ "$pane_cmd" == "$_proc" ]]; then
+                    _matched=true
+                    break
+                fi
+            done
+            if [[ "$_matched" == true ]]; then
+                echo "alive"
+            else
+                echo "wrong_process"
+            fi
             ;;
     esac
 }

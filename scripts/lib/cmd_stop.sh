@@ -65,11 +65,12 @@ cmd_stop() {
     if [[ -z "$WORKSPACE_DIR" ]]; then
         setup_workspace
     fi
+    setup_workspace_config "$WORKSPACE_DIR"
 
     # GitHub Watcher を停止
-    if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
         local watcher_pid
-        watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
         if kill -0 "$watcher_pid" 2>/dev/null; then
             print_info "GitHub Watcherを停止中..."
             kill "$watcher_pid" 2>/dev/null || true
@@ -84,13 +85,13 @@ cmd_stop() {
             fi
             print_success "GitHub Watcher停止完了"
         fi
-        rm -f "$WORKSPACE_DIR/github_watcher.pid"
+        rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
     fi
 
     # キューモニターを停止
-    if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
+    if [[ -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid" ]]; then
         local queue_pid
-        queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        queue_pid=$(cat "$IGNITE_RUNTIME_DIR/queue_monitor.pid")
         if kill -0 "$queue_pid" 2>/dev/null; then
             print_info "キューモニターを停止中..."
             kill "$queue_pid" 2>/dev/null || true
@@ -105,7 +106,7 @@ cmd_stop() {
             fi
             print_success "キューモニター停止完了"
         fi
-        rm -f "$WORKSPACE_DIR/queue_monitor.pid"
+        rm -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid"
     fi
 
     # コスト履歴を保存

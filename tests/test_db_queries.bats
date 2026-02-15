@@ -10,6 +10,7 @@ setup() {
     setup_temp_dir
     export DB_PATH="$TEST_TEMP_DIR/state/memory.db"
     export WORKSPACE_DIR="$TEST_TEMP_DIR"
+    export IGNITE_RUNTIME_DIR="$WORKSPACE_DIR"
     mkdir -p "$TEST_TEMP_DIR/state"
 
     # _generate_repo_report 関数を抽出して読み込み

@@ -95,14 +95,11 @@ In the "Private keys" section at the bottom of your App's settings page:
 ### 2. Save Private Key
 
 ```bash
-# Create IGNITE config directory
-mkdir -p ~/.config/ignite
-
-# Move downloaded Private Key
-mv ~/Downloads/ignite-gh-app.*.private-key.pem ~/.config/ignite/github-app-private-key.pem
+# Move downloaded Private Key to .ignite/
+mv ~/Downloads/ignite-gh-app.*.private-key.pem .ignite/github-app-private-key.pem
 
 # Restrict permissions
-chmod 600 ~/.config/ignite/github-app-private-key.pem
+chmod 600 .ignite/github-app-private-key.pem
 ```
 
 ## Installing to Repository
@@ -130,7 +127,7 @@ cp config/github-app.yaml.example config/github-app.yaml
 # config/github-app.yaml
 github_app:
   app_id: "123456"
-  private_key_path: "~/.config/ignite/github-app-private-key.pem"
+  private_key_path: "github-app-private-key.pem"  # relative to .ignite/
   app_name: "your-app-name"
 ```
 
@@ -186,7 +183,7 @@ GH_TOKEN="$BOT_TOKEN" gh issue comment 123 --repo owner/repo --body "Processing 
 When GitHub Watcher detects a new Issue, auto-respond as Bot:
 
 ```yaml
-# workspace/queue/leader/github_event_xxx.yaml
+# workspace/.ignite/queue/leader/github_event_xxx.yaml
 type: github_event
 from: github_watcher
 to: leader
@@ -278,7 +275,7 @@ gh extension install Link-/gh-token
 cat config/github-app.yaml | grep private_key_path
 
 # Verify file exists
-ls -la ~/.config/ignite/github-app-private-key.pem
+ls -la .ignite/github-app-private-key.pem
 ```
 
 **Cause 3: Incorrect App ID or Installation ID**

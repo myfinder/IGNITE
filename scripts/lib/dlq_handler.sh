@@ -54,8 +54,8 @@ move_to_dlq() {
         return 1
     fi
 
-    local workspace_dir="${WORKSPACE_DIR:-workspace}"
-    local dlq_dir="${workspace_dir}/queue/dead_letter"
+    local runtime_dir="${IGNITE_RUNTIME_DIR:-${WORKSPACE_DIR:-workspace}}"
+    local dlq_dir="${runtime_dir}/queue/dead_letter"
 
     local filename
     filename=$(basename "$task_file")
@@ -143,8 +143,8 @@ escalate_to_leader() {
     local error_reason="${3:-unknown}"
     local recommended_action="${4:-manual_review}"
 
-    local workspace_dir="${WORKSPACE_DIR:-workspace}"
-    local leader_queue_dir="${workspace_dir}/queue/leader"
+    local runtime_dir="${IGNITE_RUNTIME_DIR:-${WORKSPACE_DIR:-workspace}}"
+    local leader_queue_dir="${runtime_dir}/queue/leader"
 
     local timestamp
     timestamp=$(date -Iseconds)
@@ -181,7 +181,7 @@ failure_reason: \"${error_reason}\"
 retry_count: ${retry_count}
 max_retries: ${DLQ_MAX_RETRIES}
 recommended_action: \"${recommended_action}\"
-dlq_path: \"${workspace_dir}/queue/dead_letter/\"
+dlq_path: \"${runtime_dir}/queue/dead_letter/\"
 notes: \"リトライ上限に到達したためエスカレーションします\""
     python3 "$_DLQ_IGNITE_MIME" build \
         --from queue_monitor --to leader --type escalation \

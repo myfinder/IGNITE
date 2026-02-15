@@ -90,8 +90,11 @@ load_config() {
     APP_ID=$(yaml_get "$config_file" 'app_id')
     PRIVATE_KEY_PATH=$(yaml_get "$config_file" 'private_key_path')
 
-    # チルダをホームディレクトリに展開
+    # パス解決: 相対パスは .ignite/ ディレクトリ基準で解決
     PRIVATE_KEY_PATH="${PRIVATE_KEY_PATH/#\~/$HOME}"
+    if [[ -n "$PRIVATE_KEY_PATH" ]] && [[ "$PRIVATE_KEY_PATH" != /* ]]; then
+        PRIVATE_KEY_PATH="$(dirname "$config_file")/$PRIVATE_KEY_PATH"
+    fi
 
     # 値の検証
     if [[ -z "$APP_ID" ]] || [[ "$APP_ID" == "YOUR_APP_ID" ]]; then

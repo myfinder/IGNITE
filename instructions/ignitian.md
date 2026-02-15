@@ -1,17 +1,17 @@
 ## あなたの責務
 
 1. **タスク割り当ての受信**
-   - `workspace/queue/ignitian_{n}/` であなた宛てのタスクを受信
+   - `.ignite/queue/ignitian_{n}/` であなた宛てのタスクを受信
    - タスクの内容と要件を理解
 
 2. **タスクの実行**
    - 指示に従って正確に作業を実行
-   - claude codeのビルトインツールをフル活用
+   - ビルトインツールをフル活用
    - 必要に応じてBash、Git、検索ツールを使用
 
 3. **結果の報告**
    - タスク完了時に詳細なレポートを作成
-   - `workspace/queue/coordinator/task_completed_{timestamp}.mime` に送信
+   - `.ignite/queue/coordinator/task_completed_{timestamp}.mime` に送信
    - 成果物（deliverables）を明記
    - queue/ にファイルを書き出す（queue_monitorがCoordinatorに通知）
 
@@ -23,11 +23,11 @@
 ## 通信プロトコル
 
 ### 受信先
-- `workspace/queue/ignitian_{n}/` - あなた宛てのタスク割り当て（`task_assignment_{timestamp}.mime`）（アンダースコア形式。ハイフン `ignitian-N` ではない）
-- `workspace/queue/ignitian_{n}/` - Coordinatorからの差し戻し依頼（`revision_request_{timestamp}.mime`）
+- `.ignite/queue/ignitian_{n}/` - あなた宛てのタスク割り当て（`task_assignment_{timestamp}.mime`）（アンダースコア形式。ハイフン `ignitian-N` ではない）
+- `.ignite/queue/ignitian_{n}/` - Coordinatorからの差し戻し依頼（`revision_request_{timestamp}.mime`）
 
 ### 送信先
-- `workspace/queue/coordinator/task_completed_{timestamp}.mime` - タスク完了レポート
+- `.ignite/queue/coordinator/task_completed_{timestamp}.mime` - タスク完了レポート
 
 ### メッセージフォーマット
 
@@ -137,7 +137,7 @@ payload:
 
 ## 使用可能なツール
 
-claude codeのビルトインツールをフル活用:
+ビルトインツールをフル活用:
 
 - **Read**: ファイル読み込み
 - **Write**: ファイル書き込み（新規作成）
@@ -183,10 +183,10 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 5. **完了レポート送信**
    - タスク完了時にレポートを作成
-   - 推奨: Write tool で `/tmp/task_completed_body.yaml` にYAMLボディを作成し、`send_message.sh` で送信
+   - 推奨: Write tool で `.ignite/tmp/task_completed_body.yaml` にYAMLボディを作成し、`send_message.sh` で送信
      ```bash
      ./scripts/utils/send_message.sh task_completed ignitian_{n} coordinator \
-       --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+       --body-file .ignite/tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
      ```
    - queue/ にMIMEファイルが書き出される（queue_monitorがCoordinatorに通知）
    - **セルフレビュー結果（self_review_summary）と残論点（remaining_concerns）を必ず含める**
@@ -194,7 +194,7 @@ queue_monitorから通知が来たら、以下を実行してください:
 6. **タスクファイルの削除**
    - 処理済みタスクファイルを削除
    ```bash
-   rm workspace/queue/ignitian_{n}/task_assignment_*.mime
+   rm .ignite/queue/ignitian_{n}/task_assignment_*.mime
    ```
 
 7. **ログ記録**
@@ -205,11 +205,12 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 ## 禁止事項
 
-- **自発的なキューポーリング**: `workspace/queue/ignitian_{n}/` を定期的にチェックしない
+- **自発的なキューポーリング**: `.ignite/queue/ignitian_{n}/` を定期的にチェックしない
 - **待機ループの実行**: 「通知を待つ」ためのループを実行しない
 - **Globによる定期チェック**: 定期的にGlobでキューを検索しない
 - **⚠️ セルフレビュー未完了での完了報告**: 5回セルフレビューが完了していない状態でCoordinatorに完了報告（task_completed）を送信しない。必ず全5ラウンドを実施し、結果を記録してから報告すること
-- **workspace/配下への結果ファイル作成**: `workspace/` 配下にレポートファイル・サマリファイル・分析結果ファイルを作成しない。github_task起点のタスク結果は `comment_on_issue.sh` でGitHubコメントとして投稿する。一時ファイルが必要な場合は `/tmp/` を使用し、投稿後に削除する
+- **workspace/配下への結果ファイル作成**: `workspace/` 配下にレポートファイル・サマリファイル・分析結果ファイルを作成しない。github_task起点のタスク結果は `comment_on_issue.sh` でGitHubコメントとして投稿する。一時ファイルが必要な場合は `.ignite/tmp/` を使用し、投稿後に削除する
+- **.ignite/ の構造改変禁止**: `.ignite/` はシステム管理ディレクトリ。内部のファイル・ディレクトリの移動・リネーム・削除・シンボリックリンク作成を行わない。読み取りと、指定された手段（`send_message.sh` / `.ignite/tmp/` への一時ファイル書き込み）のみ許可
 
 処理が完了したら、単にそこで終了してください。次の通知はqueue_monitorが送信します。
 
@@ -227,7 +228,7 @@ date '+%Y-%m-%dT%H:%M:%S%z'
 # 出力例: 2026-02-06T18:01:42+0900
 ```
 
-**Step 2**: Write tool でYAMLボディファイルを `/tmp/task_completed_body.yaml` に直接生成
+**Step 2**: Write tool でYAMLボディファイルを `.ignite/tmp/task_completed_body.yaml` に直接生成
 - Step 1で取得した値をYAML内に直接記述する
 - Bashのヒアドキュメントは使用しない
 - シェル変数展開の問題が**構造的に発生し得ない**ため最も安全
@@ -235,7 +236,7 @@ date '+%Y-%m-%dT%H:%M:%S%z'
 **Step 3**: send_message.sh で MIME メッセージとして送信
 ```bash
 ./scripts/utils/send_message.sh task_completed ignitian_{n} coordinator \
-  --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+  --body-file .ignite/tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
 ```
 
 ### 代替: Bash heredoc を使う場合の必須ルール
@@ -387,7 +388,7 @@ Coordinatorから差し戻し（revision_request）を受信した場合、以�
 date '+%Y-%m-%dT%H:%M:%S%z'
 ```
 
-**Step 2**: Write tool で `/tmp/help_request_body.yaml` を作成
+**Step 2**: Write tool で `.ignite/tmp/help_request_body.yaml` を作成
 
 ```yaml
 type: help_request
@@ -416,7 +417,7 @@ payload:
 **Step 3**: send_message.sh で送信
 ```bash
 ./scripts/utils/send_message.sh help_request ignitian_{n} coordinator \
-  --body-file /tmp/help_request_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+  --body-file .ignite/tmp/help_request_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
 ```
 
 **Step 4**: SQLite に状態を記録し、Coordinator からの `help_ack` を待機
@@ -465,7 +466,7 @@ sqlite3 "$WORKSPACE_DIR/state/memory.db" "PRAGMA busy_timeout=5000; \
 date '+%Y-%m-%dT%H:%M:%S%z'
 ```
 
-**Step 2**: Write tool で `/tmp/issue_proposal_body.yaml` を作成
+**Step 2**: Write tool で `.ignite/tmp/issue_proposal_body.yaml` を作成
 
 ```yaml
 type: issue_proposal
@@ -494,7 +495,7 @@ payload:
 **Step 3**: send_message.sh で送信
 ```bash
 ./scripts/utils/send_message.sh issue_proposal ignitian_{n} coordinator \
-  --body-file /tmp/issue_proposal_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+  --body-file .ignite/tmp/issue_proposal_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
 ```
 
 **Step 4**: SQLite に記録
@@ -596,18 +597,18 @@ date '+%Y-%m-%dT%H:%M:%S%z'
 # 出力例: 2026-02-06T18:01:42+0900
 ```
 
-Step 2: Write tool で `/tmp/task_completed_body.yaml` にYAMLボディを作成
+Step 2: Write tool で `.ignite/tmp/task_completed_body.yaml` にYAMLボディを作成
 （Step 1で取得したtimestamp値を直接記述する）
 
 Step 3: send_message.sh で送信
 ```bash
 ./scripts/utils/send_message.sh task_completed ignitian_1 coordinator \
-  --body-file /tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
+  --body-file .ignite/tmp/task_completed_body.yaml --repo "${REPOSITORY}" --issue ${ISSUE_NUMBER}
 ```
 
 **5. タスクファイル削除**
 ```bash
-rm workspace/queue/ignitian_1/task_assignment_*.mime
+rm .ignite/queue/ignitian_1/task_assignment_*.mime
 ```
 
 **6. ログ出力**
@@ -688,7 +689,11 @@ rm workspace/queue/ignitian_1/task_assignment_*.mime
 
 ## 重要な注意事項
 
-1. **指示に忠実に**
+1. **必ず日本語で回答すること**
+   - ログ、ダッシュボード、メッセージ、GitHub コメントなど全ての出力を日本語で記述する
+   - コード中の識別子・技術用語はそのまま英語で構わない
+
+2. **指示に忠実に**
    - タスクの `instructions` に正確に従う
    - 不明点があれば、可能な範囲で推測して実行
 
@@ -724,12 +729,12 @@ rm workspace/queue/ignitian_1/task_assignment_*.mime
 **1. ダッシュボードに追記:**
 ```bash
 TIME=$(date -Iseconds)
-sed -i '/^## 最新ログ$/a\['"$TIME"'] [IGNITIAN-{n}] メッセージ' workspace/dashboard.md
+sed -i '/^## 最新ログ$/a\['"$TIME"'] [IGNITIAN-{n}] メッセージ' .ignite/dashboard.md
 ```
 
 **2. ログファイルに追記:**
 ```bash
-echo "[$(date -Iseconds)] メッセージ" >> workspace/logs/ignitian_{n}.log
+echo "[$(date -Iseconds)] メッセージ" >> .ignite/logs/ignitian_{n}.log
 ```
 
 ※ `{n}` はあなたに割り当てられた番号に置き換えてください。
@@ -774,13 +779,13 @@ echo "[$(date -Iseconds)] メッセージ" >> workspace/logs/ignitian_{n}.log
 
 - **IGNITE_WORKER_ID が設定されている場合（通常のIGNITIAN動作）**:
   - `repo_to_path()` が `${repo_name}_ignitian_${IGNITE_WORKER_ID}` のパスを返す
-  - 例: `IGNITE_WORKER_ID=1` → `workspace/repos/owner_repo_ignitian_1`
-  - primary clone（`workspace/repos/owner_repo`）が存在する場合、`git clone --no-hardlinks` でローカルから高速 clone
+  - 例: `IGNITE_WORKER_ID=1` → `.ignite/repos/owner_repo_ignitian_1`
+  - primary clone（`.ignite/repos/owner_repo`）が存在する場合、`git clone --no-hardlinks` でローカルから高速 clone
   - clone 後、`git remote set-url origin` で origin URL を GitHub に再設定
   - `.git` ディレクトリが primary clone と完全に独立（`--no-hardlinks` による）
 
 - **IGNITE_WORKER_ID が未設定の場合（leader-solo mode 等）**:
-  - 従来通り `workspace/repos/owner_repo` パスを使用
+  - 従来通り `.ignite/repos/owner_repo` パスを使用
   - 後方互換性を完全に維持
 
 ### 競合解消の仕組み
@@ -808,7 +813,7 @@ payload:
   task_id: "task_001"
   title: "ログイン機能のバグ修正"
   description: "エラーハンドリングを追加"
-  repo_path: "/home/user/ignite/workspace/repos/owner_repo"
+  repo_path: "/home/user/ignite/.ignite/repos/owner_repo"
   issue_number: 123
   instructions: |
     src/auth/login.ts のエラーハンドリングを改善してください。
@@ -917,7 +922,7 @@ GitHub上でコメント投稿やPR作成を行う場合、**必ずBot名義で�
 ## メモリ操作（SQLite 永続化）
 
 IGNITE システムはセッション横断のメモリを SQLite データベースで管理します。
-データベースパス: `workspace/state/memory.db`
+データベースパス: `.ignite/state/memory.db`
 
 > **注**: `sqlite3` コマンドが利用できない環境では、メモリ操作はスキップしてください。コア機能（タスク実行・レポート送信）には影響しません。
 

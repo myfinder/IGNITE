@@ -12,20 +12,16 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 設定ディレクトリ解決:
 # 1. 環境変数 IGNITE_CONFIG_DIR が設定済みならそのまま使用
-# 2. HOME/.ignite があればそちらを優先
-# 3. フォールバック: PROJECT_ROOT/config（テンプレート）
+# 2. フォールバック: PROJECT_ROOT/config
 if [[ -z "${IGNITE_CONFIG_DIR:-}" ]]; then
-    if [[ -d "${HOME}/.ignite" ]]; then
-        IGNITE_CONFIG_DIR="${HOME}/.ignite"
-    else
-        IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
-    fi
+    IGNITE_CONFIG_DIR="$PROJECT_ROOT/config"
 fi
 IGNITE_DATA_DIR="$PROJECT_ROOT"
 IGNITE_INSTRUCTIONS_DIR="$PROJECT_ROOT/instructions"
 IGNITE_CHARACTERS_DIR="$PROJECT_ROOT/characters"
 IGNITE_SCRIPTS_DIR="$PROJECT_ROOT/scripts"
 DEFAULT_WORKSPACE_DIR="$PROJECT_ROOT/workspace"
+IGNITE_RUNTIME_DIR=""  # setup_workspace_config で設定
 
 # セッション名とワークスペース（後でコマンドラインで上書き可能）
 SESSION_NAME="${SESSION_NAME:-}"
@@ -54,7 +50,7 @@ fi
 unset _CHARACTERS_FILE
 
 # デフォルト設定
-DEFAULT_MODEL="claude-opus-4-6"
+DEFAULT_MODEL="openai/gpt-5.2-codex"
 DEFAULT_WORKER_COUNT=3
 
 # Claude セッションデータのパス（PROJECT_ROOT から動的に生成）
@@ -157,16 +153,34 @@ get_config() {
 # Workspace Config（.ignite/ 一本化）
 # =============================================================================
 
-# setup_workspace_config - .ignite/ を検出し IGNITE_CONFIG_DIR を切り替え
+# setup_workspace_config - .ignite/ を検出し IGNITE_CONFIG_DIR / IGNITE_RUNTIME_DIR を切り替え
 # Usage: setup_workspace_config <workspace_dir>
-# .ignite/ が存在する場合は IGNITE_CONFIG_DIR を .ignite/ に更新
+# .ignite/ が存在する場合は全ランタイムディレクトリを .ignite/ 配下に統一
 setup_workspace_config() {
     local ws_dir="${1:-$WORKSPACE_DIR}"
     local ignite_dir="${ws_dir}/.ignite"
 
     if [[ -d "$ignite_dir" ]]; then
         IGNITE_CONFIG_DIR="$ignite_dir"
+        IGNITE_RUNTIME_DIR="$ignite_dir"
         log_info "ワークスペース設定を検出: $ignite_dir"
+
+        # instructions: なければグローバルからコピー
+        if [[ ! -d "$ignite_dir/instructions" ]]; then
+            mkdir -p "$ignite_dir/instructions"
+            cp "$IGNITE_INSTRUCTIONS_DIR"/*.md "$ignite_dir/instructions/" 2>/dev/null || true
+        fi
+        IGNITE_INSTRUCTIONS_DIR="$ignite_dir/instructions"
+
+        # characters: なければグローバルからコピー
+        if [[ ! -d "$ignite_dir/characters" ]]; then
+            mkdir -p "$ignite_dir/characters"
+            cp "$IGNITE_CHARACTERS_DIR"/*.md "$ignite_dir/characters/" 2>/dev/null || true
+        fi
+        IGNITE_CHARACTERS_DIR="$ignite_dir/characters"
+    else
+        # .ignite/ がない場合は WORKSPACE_DIR 直下（後方互換）
+        IGNITE_RUNTIME_DIR="$ws_dir"
     fi
 }
 
@@ -186,3 +200,7 @@ resolve_config() {
 # system.yaml から読み込むグローバル設定
 TMUX_WINDOW_NAME=$(get_config tmux window_name "ignite")
 DEFAULT_MESSAGE_PRIORITY=$(get_config defaults message_priority "normal")
+
+# CLI Provider 抽象化レイヤー
+source "${SCRIPT_DIR}/cli_provider.sh"
+cli_load_config

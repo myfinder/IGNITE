@@ -83,18 +83,26 @@ cmd_init() {
     print_info ".ignite/ ディレクトリを作成中..."
     mkdir -p "$ignite_dir"
 
-    # .gitignore 生成（.ignite/ 内 — credentials + 秘密鍵を保護）
+    # .ignite/.gitignore 生成（ランタイムデータ除外）
     cat > "$ignite_dir/.gitignore" <<'GITIGNORE'
-# IGNITE workspace config
-# credentials・秘密鍵はコミットしない
-github-app.yaml
-*.pem
+# IGNITE runtime data (auto-generated, do not commit)
+queue/
+logs/
+state/
+context/
+costs/
+archive/
+repos/
+tmp/
+dashboard.md
+runtime.yaml
+opencode_*.json
 
-# ローカルのみの設定（必要に応じてコメント解除）
-# system.yaml
-# github-watcher.yaml
+# secrets (never commit)
+.env
+*.pem
 GITIGNORE
-    print_success ".gitignore を生成しました（github-app.yaml, *.pem を除外）"
+    print_success ".ignite/.gitignore を生成しました（ランタイムデータ・秘密鍵・.env を除外）"
 
     # --migrate: ~/.config/ignite/ から .ignite/ へ移行
     if [[ "$migrate" == true ]]; then
@@ -110,15 +118,37 @@ GITIGNORE
             _copy_config_template "characters.yaml" "$ignite_dir"
             _copy_config_template "pricing.yaml" "$ignite_dir"
 
-            # github-watcher.yaml は example があればコピー
-            if [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
-                _copy_config_template "github-watcher.yaml" "$ignite_dir"
-            elif [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml.example" ]]; then
-                cp "$IGNITE_CONFIG_DIR/github-watcher.yaml.example" "$ignite_dir/github-watcher.yaml"
-                print_success "github-watcher.yaml をexampleからコピーしました"
-            fi
+            # github-watcher.yaml / github-app.yaml は .example からコピー
+            _copy_example_config "github-watcher.yaml" "$ignite_dir"
+            _copy_example_config "github-app.yaml" "$ignite_dir"
         fi
     fi
+
+    # .env.example の生成（--minimal でも生成 — API キーは最小構成でも必要）
+    cat > "$ignite_dir/.env.example" <<'ENVEOF'
+# IGNITE 環境変数（.env にコピーして値を設定してください）
+# cp .env.example .env && vi .env
+#
+# このファイル (.env.example) はコミット可能です。
+# .env は .gitignore で自動的に除外されます。
+
+# --- API Keys (OpenCode 使用時に必要) ---
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+
+# --- Ollama（ローカルLLM使用時） ---
+# system.yaml で model: ollama/<model> を指定すると自動的に Ollama に接続します
+# 事前に ollama serve を起動し、モデルを pull しておくこと（API Key は不要）
+# デフォルト接続先: http://localhost:11434/v1（変更する場合のみ設定）
+# OLLAMA_API_URL=http://localhost:11434/v1
+
+# --- GitHub Token (GitHub App 未使用時のフォールバック) ---
+# GH_TOKEN=ghp_...
+ENVEOF
+    print_success ".env.example を生成しました"
+
+    # instructions/characters のコピー
+    _copy_instructions "$ignite_dir"
 
     # .ignite/ パーミッション設定（credentials 保護）
     chmod 700 "$ignite_dir"
@@ -135,13 +165,16 @@ GITIGNORE
     echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
         echo "      ├── characters.yaml"
-        echo "      └── pricing.yaml"
-    else
-        echo "      └── (minimal mode)"
+        echo "      ├── pricing.yaml"
+        echo "      ├── github-watcher.yaml.example"
+        echo "      ├── github-app.yaml.example"
     fi
+    echo "      ├── .env.example"
+    echo "      ├── instructions/"
+    echo "      └── characters/"
     echo ""
-    echo -e "${YELLOW}注意:${NC} github-app.yaml（credentials）は .ignite/.gitignore で"
-    echo -e "自動的にGit追跡から除外されます（セキュリティ保護）。"
+    echo -e "${YELLOW}注意:${NC} ランタイムデータ（queue/, logs/, state/ 等）は .ignite/.gitignore で"
+    echo -e "自動的にGit追跡から除外されます。"
     echo ""
     echo "次のステップ:"
     echo -e "  1. 設定を編集: ${YELLOW}vi ${ignite_dir}/system.yaml${NC}"
@@ -216,6 +249,30 @@ _cmd_init_migrate() {
     echo -e "確認後に手動で削除してください: ${YELLOW}rm -rf $legacy_dir${NC}"
 }
 
+# _copy_instructions - instructions/characters をワークスペースにコピー
+# Usage: _copy_instructions <dest_ignite_dir>
+_copy_instructions() {
+    local dest_dir="$1"
+
+    # instructions のコピー
+    if [[ -d "$IGNITE_INSTRUCTIONS_DIR" ]]; then
+        mkdir -p "$dest_dir/instructions"
+        cp "$IGNITE_INSTRUCTIONS_DIR"/*.md "$dest_dir/instructions/" 2>/dev/null || true
+        print_success "instructions/ をコピーしました"
+    else
+        print_warning "instructions ディレクトリが見つかりません（スキップ）"
+    fi
+
+    # characters のコピー
+    if [[ -d "$IGNITE_CHARACTERS_DIR" ]]; then
+        mkdir -p "$dest_dir/characters"
+        cp "$IGNITE_CHARACTERS_DIR"/*.md "$dest_dir/characters/" 2>/dev/null || true
+        print_success "characters/ をコピーしました"
+    else
+        print_warning "characters ディレクトリが見つかりません（スキップ）"
+    fi
+}
+
 # _copy_config_template - テンプレート設定からワークスペースにコピー
 # Usage: _copy_config_template <filename> <dest_dir>
 _copy_config_template() {
@@ -227,6 +284,18 @@ _copy_config_template() {
         print_success "$filename をコピーしました"
     else
         print_warning "$filename がテンプレート設定に見つかりません（スキップ）"
+    fi
+}
+
+# _copy_example_config - .example テンプレートからコピー
+# Usage: _copy_example_config <filename> <dest_dir>
+_copy_example_config() {
+    local filename="$1"
+    local dest_dir="$2"
+
+    if [[ -f "$IGNITE_CONFIG_DIR/${filename}.example" ]]; then
+        cp "$IGNITE_CONFIG_DIR/${filename}.example" "$dest_dir/${filename}.example"
+        print_success "${filename}.example をコピーしました"
     fi
 }
 
@@ -253,7 +322,7 @@ _cmd_init_help() {
     echo ""
     echo "設計:"
     echo "  - .ignite/ が唯一の設定ソースです"
-    echo "  - github-app.yaml は .gitignore で自動除外されます"
-    echo "  - *.pem（秘密鍵）も .gitignore で自動除外されます"
+    echo "  - github-app.yaml はコミット可能（app_id + pemパスのみ）"
+    echo "  - *.pem（秘密鍵）は .gitignore で自動除外されます"
     echo "  - .ignite/ はリポジトリにコミット可能です（チーム共有用）"
 }

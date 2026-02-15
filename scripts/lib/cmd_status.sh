@@ -30,6 +30,7 @@ cmd_status() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -71,10 +72,10 @@ cmd_status() {
     echo ""
 
     # ダッシュボード表示
-    if [[ -f "$WORKSPACE_DIR/dashboard.md" ]]; then
+    if [[ -f "$IGNITE_RUNTIME_DIR/dashboard.md" ]]; then
         print_header "ダッシュボード"
         echo ""
-        cat "$WORKSPACE_DIR/dashboard.md"
+        cat "$IGNITE_RUNTIME_DIR/dashboard.md"
         echo ""
     else
         print_warning "ダッシュボードが見つかりません"
@@ -84,7 +85,7 @@ cmd_status() {
     print_header "キュー状態"
     echo ""
 
-    for queue_dir in "$WORKSPACE_DIR/queue"/*; do
+    for queue_dir in "$IGNITE_RUNTIME_DIR/queue"/*; do
         if [[ -d "$queue_dir" ]]; then
             local queue_name
             queue_name=$(basename "$queue_dir")
@@ -104,9 +105,9 @@ cmd_status() {
 
     # GitHub Watcher状態
     print_header "GitHub Watcher"
-    if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
         local watcher_pid
-        watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+        watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
         if kill -0 "$watcher_pid" 2>/dev/null; then
             print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
         else
@@ -118,9 +119,9 @@ cmd_status() {
 
     # キューモニター状態
     print_header "キューモニター"
-    if [[ -f "$WORKSPACE_DIR/queue_monitor.pid" ]]; then
+    if [[ -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid" ]]; then
         local queue_pid
-        queue_pid=$(cat "$WORKSPACE_DIR/queue_monitor.pid")
+        queue_pid=$(cat "$IGNITE_RUNTIME_DIR/queue_monitor.pid")
         if kill -0 "$queue_pid" 2>/dev/null; then
             print_success "キューモニター: 実行中 (PID: $queue_pid)"
         else
@@ -135,8 +136,8 @@ cmd_status() {
     print_header "最新ログ (直近5件)"
     echo ""
 
-    if [[ -d "$WORKSPACE_DIR/logs" ]] && [[ "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
-        for log_file in "$WORKSPACE_DIR/logs"/*.log; do
+    if [[ -d "$IGNITE_RUNTIME_DIR/logs" ]] && [[ "$(ls -A "$IGNITE_RUNTIME_DIR/logs" 2>/dev/null)" ]]; then
+        for log_file in "$IGNITE_RUNTIME_DIR/logs"/*.log; do
             if [[ -f "$log_file" ]]; then
                 echo -e "${BLUE}$(basename "$log_file"):${NC}"
                 tail -n 5 "$log_file" 2>/dev/null | sed 's/^/  /'
@@ -149,7 +150,7 @@ cmd_status() {
     fi
 
     print_header "コマンド"
-    echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat $WORKSPACE_DIR/dashboard.md${NC}"
+    echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat $IGNITE_RUNTIME_DIR/dashboard.md${NC}"
     echo -e "  tmuxアタッチ: ${YELLOW}./scripts/ignite attach -s $SESSION_NAME${NC}"
     echo -e "  システム停止: ${YELLOW}./scripts/ignite stop -s $SESSION_NAME${NC}"
 }

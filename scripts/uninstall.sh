@@ -41,7 +41,6 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 # =============================================================================
 
 BIN_DIR="${IGNITE_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
-CONFIG_DIR="${IGNITE_CONFIG_DIR:-$HOME/.ignite}"
 DATA_DIR="${IGNITE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ignite}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ignite"
 
@@ -57,8 +56,7 @@ IGNITE アンインストーラー v${VERSION}
   ./uninstall.sh [オプション]
 
 オプション:
-  --purge      設定ファイルも削除
-  --all        設定・キャッシュもすべて削除（ワークスペースは残す）
+  --all        キャッシュもすべて削除（ワークスペースは残す）
   --dry-run    削除せずに対象ファイルを表示
   -y, --yes    確認なしで実行
   -h, --help   このヘルプを表示
@@ -66,13 +64,9 @@ IGNITE アンインストーラー v${VERSION}
 削除対象:
   デフォルト:
     - $BIN_DIR/ignite (実行ファイル)
-    - $DATA_DIR (データファイル)
-
-  --purge:
-    + $CONFIG_DIR (設定ファイル)
+    - $DATA_DIR (データ・設定ファイル)
 
   --all:
-    + $CONFIG_DIR (設定ファイル)
     + $CACHE_DIR (キャッシュ)
 
 保持されるもの:
@@ -80,7 +74,7 @@ IGNITE アンインストーラー v${VERSION}
 
 例:
   ./uninstall.sh              # 基本的なアンインストール
-  ./uninstall.sh --purge      # 設定ファイルも削除
+  ./uninstall.sh --all        # キャッシュも削除
   ./uninstall.sh --dry-run    # 削除対象を確認
 EOF
 }
@@ -127,22 +121,6 @@ uninstall_data() {
     fi
 }
 
-uninstall_config() {
-    print_header "設定ファイルの削除"
-
-    if [[ -d "$CONFIG_DIR" ]]; then
-        if [[ "$DRY_RUN" == "true" ]]; then
-            print_info "[DRY-RUN] 削除: $CONFIG_DIR"
-            ls -la "$CONFIG_DIR" 2>/dev/null | tail -n +2 | head -10
-        else
-            rm -rf "$CONFIG_DIR"
-            print_success "$CONFIG_DIR を削除しました"
-        fi
-    else
-        print_info "$CONFIG_DIR は存在しません"
-    fi
-}
-
 uninstall_cache() {
     print_header "キャッシュの削除"
 
@@ -168,9 +146,6 @@ confirm_uninstall() {
     echo ""
     echo "  - $BIN_DIR/ignite"
     echo "  - $DATA_DIR"
-    if [[ "$PURGE" == "true" ]] || [[ "$ALL" == "true" ]]; then
-        echo "  - $CONFIG_DIR"
-    fi
     if [[ "$ALL" == "true" ]]; then
         echo "  - $CACHE_DIR"
     fi
@@ -189,7 +164,6 @@ confirm_uninstall() {
 # =============================================================================
 
 main() {
-    local PURGE=false
     local ALL=false
     local DRY_RUN=false
     local YES=false
@@ -197,13 +171,8 @@ main() {
     # 引数解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --purge)
-                PURGE=true
-                shift
-                ;;
             --all)
                 ALL=true
-                PURGE=true
                 shift
                 ;;
             --dry-run)
@@ -246,11 +215,6 @@ main() {
     echo ""
     uninstall_data
 
-    if [[ "$PURGE" == "true" ]]; then
-        echo ""
-        uninstall_config
-    fi
-
     if [[ "$ALL" == "true" ]]; then
         echo ""
         uninstall_cache
@@ -263,12 +227,6 @@ main() {
     else
         print_header "アンインストール完了"
         print_success "IGNITE が正常にアンインストールされました"
-
-        if [[ "$PURGE" != "true" ]]; then
-            echo ""
-            print_info "設定ファイルは残っています: $CONFIG_DIR"
-            print_info "完全に削除するには --purge オプションを使用してください"
-        fi
     fi
     echo ""
 }

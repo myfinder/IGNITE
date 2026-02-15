@@ -97,27 +97,24 @@ jq --version     # jq 1.6+
 yq --version     # yq 4.x+ (optional)
 ```
 
-## 4. Install Claude Code CLI
+## 4. Install OpenCode CLI
 
-Install Claude Code inside WSL2:
+Install OpenCode inside WSL2:
 
 ```bash
-# Install via npm (Node.js required)
-npm install -g @anthropic-ai/claude-code
-
-# Or install Node.js first if needed
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt install -y nodejs
-npm install -g @anthropic-ai/claude-code
+# Install via official installer
+curl -fsSL https://opencode.ai/install | bash
 ```
 
 Verify:
 
 ```bash
-claude --version
+opencode --version
 ```
 
-> **Note**: Claude Code CLI v2.1.34+ supports Windows natively (PowerShell + Git Bash), but running inside WSL2 provides the best experience for IGNITE, as it ensures full compatibility with tmux and Bash scripts.
+> **Note**: IGNITE uses OpenCode as the default CLI provider. To use Claude Code as an alternative, install it with `npm install -g @anthropic-ai/claude-code` and set `cli.provider` to `claude` in `config/system.yaml`.
+
+> **To use Ollama (local LLM)**: Start `ollama serve` inside WSL2 and set `cli.model` to `ollama/qwen3-coder:30b` (or similar) in `config/system.yaml`. No API key required. See [Ollama documentation](https://docs.ollama.com/integrations/opencode) for details.
 
 ## 5. Install and Run IGNITE
 

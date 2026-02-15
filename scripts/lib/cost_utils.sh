@@ -21,7 +21,7 @@ load_pricing() {
     # デフォルトモデルの料金を取得（pricing.yaml の defaults.model から動的取得）
     local default_model
     default_model=$(grep -A1 "^defaults:" "$pricing_file" | grep "model:" | awk '{print $2}' | tr -d '"')
-    default_model=${default_model:-claude-opus-4-6}
+    default_model=${default_model:-openai/gpt-5.2-codex}
     PRICE_INPUT=$(grep -A5 "${default_model}:" "$pricing_file" | grep "input_per_1m_tokens:" | head -1 | awk '{print $2}')
     PRICE_OUTPUT=$(grep -A5 "${default_model}:" "$pricing_file" | grep "output_per_1m_tokens:" | head -1 | awk '{print $2}')
     PRICE_CACHE_READ=$(grep -A5 "${default_model}:" "$pricing_file" | grep "cache_read_per_1m_tokens:" | head -1 | awk '{print $2}')
@@ -42,6 +42,10 @@ load_pricing() {
 
 # セッションIDからトークン使用量を集計
 collect_session_tokens() {
+    if ! cli_is_cost_tracking_supported 2>/dev/null; then
+        echo '{"input":0,"output":0,"cache_read":0,"cache_creation":0}'
+        return
+    fi
     local session_id="$1"
     local session_file="$CLAUDE_PROJECTS_DIR/${session_id}.jsonl"
     local session_dir="$CLAUDE_PROJECTS_DIR/${session_id}"
@@ -151,6 +155,9 @@ calculate_cost() {
 
 # sessions-index.json から起動時刻以降のセッションを検索
 find_sessions_after_time() {
+    if ! cli_is_cost_tracking_supported 2>/dev/null; then
+        return 1
+    fi
     local after_time="$1"  # ISO 8601 形式
     local sessions_index="$CLAUDE_PROJECTS_DIR/sessions-index.json"
 
@@ -167,6 +174,9 @@ find_sessions_after_time() {
 
 # エージェント役割からsessions-index.jsonを検索してセッションIDを解決
 resolve_agent_session_id() {
+    if ! cli_is_cost_tracking_supported 2>/dev/null; then
+        return 1
+    fi
     local agent_role="$1"
     local started_at="$2"
     local sessions_index="$CLAUDE_PROJECTS_DIR/sessions-index.json"
@@ -222,7 +232,10 @@ resolve_agent_session_id() {
 
 # sessions.yamlのsession_idがnullのエージェントを自動解決
 update_sessions_yaml() {
-    local sessions_file="$WORKSPACE_DIR/costs/sessions.yaml"
+    if ! cli_is_cost_tracking_supported 2>/dev/null; then
+        return 1
+    fi
+    local sessions_file="$IGNITE_RUNTIME_DIR/costs/sessions.yaml"
 
     [[ ! -f "$sessions_file" ]] && return 1
 
@@ -275,7 +288,7 @@ update_sessions_yaml() {
 # エージェント名からセッションIDを取得
 get_agent_session_id() {
     local agent_role="$1"
-    local sessions_file="$WORKSPACE_DIR/costs/sessions.yaml"
+    local sessions_file="$IGNITE_RUNTIME_DIR/costs/sessions.yaml"
 
     if [[ ! -f "$sessions_file" ]]; then
         return 1
@@ -291,7 +304,7 @@ get_agent_session_id() {
 
 # コスト一覧を表示（セッション履歴）
 list_cost_sessions() {
-    local history_dir="$WORKSPACE_DIR/costs/history"
+    local history_dir="$IGNITE_RUNTIME_DIR/costs/history"
 
     print_header "コスト履歴一覧"
     echo ""
@@ -326,7 +339,7 @@ list_cost_sessions() {
 
 # コスト履歴を保存する関数
 save_cost_history() {
-    local sessions_file="$WORKSPACE_DIR/costs/sessions.yaml"
+    local sessions_file="$IGNITE_RUNTIME_DIR/costs/sessions.yaml"
 
     if [[ ! -f "$sessions_file" ]]; then
         print_warning "セッション情報が見つかりません。コスト履歴はスキップします。"
@@ -347,8 +360,8 @@ save_cost_history() {
     local date_suffix
     date_suffix=$(date +%Y-%m-%d)
 
-    local history_file="$WORKSPACE_DIR/costs/history/${session_name}_${date_suffix}.yaml"
-    mkdir -p "$WORKSPACE_DIR/costs/history"
+    local history_file="$IGNITE_RUNTIME_DIR/costs/history/${session_name}_${date_suffix}.yaml"
+    mkdir -p "$IGNITE_RUNTIME_DIR/costs/history"
 
     # エージェント定義
     local -a agents=("leader" "strategist" "architect" "evaluator" "coordinator" "innovator")

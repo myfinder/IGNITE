@@ -10,6 +10,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# WORKSPACE_DIR が未設定の場合、IGNITE_WORKSPACE_DIR からフォールバック
+WORKSPACE_DIR="${WORKSPACE_DIR:-${IGNITE_WORKSPACE_DIR:-}}"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # YAMLユーティリティ
@@ -107,14 +109,10 @@ load_config() {
 
     STATE_FILE=$(yaml_get "$config_file" 'state_file')
     STATE_FILE=${STATE_FILE:-$DEFAULT_STATE_FILE}
-    # IGNITE_WORKSPACE_DIR が設定されていればそれを基準にする（インストールモード対応）
-    if [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
-        # state_file が "workspace/..." で始まる場合は "workspace/" を除去
-        STATE_FILE="${STATE_FILE#workspace/}"
-        STATE_FILE="${IGNITE_WORKSPACE_DIR}/${STATE_FILE}"
-    else
-        STATE_FILE="${PROJECT_ROOT}/${STATE_FILE}"
-    fi
+    # state_file が "workspace/..." で始まる場合は "workspace/" を除去
+    STATE_FILE="${STATE_FILE#workspace/}"
+    # IGNITE_RUNTIME_DIR (.ignite/) 配下に配置
+    STATE_FILE="${IGNITE_RUNTIME_DIR:-${WORKSPACE_DIR:+${WORKSPACE_DIR}/.ignite}}/${STATE_FILE}"
 
     IGNORE_BOT=$(yaml_get "$config_file" 'ignore_bot')
     IGNORE_BOT=${IGNORE_BOT:-true}
@@ -187,7 +185,9 @@ load_config() {
     else
         WORKSPACE_DIR=$(yaml_get "$config_file" 'workspace')
         WORKSPACE_DIR=${WORKSPACE_DIR:-"workspace"}
-        WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
+        if [[ "$WORKSPACE_DIR" != /* ]]; then
+            WORKSPACE_DIR="${PROJECT_ROOT}/${WORKSPACE_DIR}"
+        fi
     fi
 
     # アクセス制御設定
@@ -613,7 +613,7 @@ create_event_message() {
     timestamp=$(date -Iseconds)
     local message_id
     message_id=$(date +%s%6N)
-    local queue_dir="${WORKSPACE_DIR}/queue/leader"
+    local queue_dir="${IGNITE_RUNTIME_DIR}/queue/leader"
     # IGNITE_MIME はファイルスコープで定義済み
 
     mkdir -p "$queue_dir"
@@ -745,7 +745,7 @@ create_task_message() {
     local timestamp message_id
     timestamp=$(date -Iseconds)
     message_id=$(date +%s%6N)
-    local queue_dir="${WORKSPACE_DIR}/queue/leader"
+    local queue_dir="${IGNITE_RUNTIME_DIR}/queue/leader"
 
     mkdir -p "$queue_dir"
 
@@ -877,15 +877,8 @@ process_issues() {
         if [[ "$body" =~ $MENTION_PATTERN ]]; then
             log_event "トリガー検知: $MENTION_PATTERN (by $author)"
 
-            # トリガータイプを判別
-            local trigger_type="implement"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (レビュー|review) ]]; then
-                trigger_type="review"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "issue_created" "$repo" "$issue" "$trigger_type")
@@ -947,15 +940,8 @@ process_issue_comments() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="implement"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (レビュー|review) ]]; then
-                trigger_type="review"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "issue_comment" "$repo" "$comment" "$trigger_type")
@@ -1024,15 +1010,8 @@ process_prs() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="review"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "pr_created" "$repo" "$pr" "$trigger_type")
@@ -1101,15 +1080,8 @@ process_pr_comments() {
                 continue
             fi
 
-            # トリガータイプを判別
-            local trigger_type="review"
-            if [[ "$body" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$body" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$body" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             local message_file
             message_file=$(create_task_message "pr_comment" "$repo" "$comment" "$trigger_type")
@@ -1188,15 +1160,8 @@ process_pr_reviews() {
                 continue
             fi
 
-            # トリガータイプを判別（本体 + コード行コメントから）
-            local trigger_type="review"
-            if [[ "$all_text" =~ (インサイト|insights?) ]]; then
-                trigger_type="insights"
-            elif [[ "$all_text" =~ (実装|implement) ]]; then
-                trigger_type="implement"
-            elif [[ "$all_text" =~ (説明|explain) ]]; then
-                trigger_type="explain"
-            fi
+            # タスク分類は Leader（LLM）に委譲
+            local trigger_type="auto"
 
             # コード行コメントがある場合、reviewデータにマージ
             if [[ -n "$review_comments" ]]; then

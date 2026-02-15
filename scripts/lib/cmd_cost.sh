@@ -53,6 +53,7 @@ cmd_cost() {
 
     # ワークスペースを設定
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
 
     # session_id が null のエージェントがあれば自動解決を試みる
     update_sessions_yaml 2>/dev/null || true
@@ -67,12 +68,12 @@ cmd_cost() {
     load_pricing || exit 1
 
     # セッション情報の取得元を決定
-    local sessions_file="$WORKSPACE_DIR/costs/sessions.yaml"
+    local sessions_file="$IGNITE_RUNTIME_DIR/costs/sessions.yaml"
     local started_at=""
 
     if [[ -n "$target_session" ]]; then
         # 履歴から検索
-        local history_file="$WORKSPACE_DIR/costs/history/${target_session}.yaml"
+        local history_file="$IGNITE_RUNTIME_DIR/costs/history/${target_session}.yaml"
         if [[ -f "$history_file" ]]; then
             sessions_file="$history_file"
             started_at=$(grep "^started_at:" "$history_file" | awk '{print $2}' | tr -d '"')

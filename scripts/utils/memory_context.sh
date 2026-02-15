@@ -27,9 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _get_db_path() {
     if [[ -n "${WORKSPACE_DIR:-}" ]]; then
-        echo "$WORKSPACE_DIR/state/memory.db"
+        echo "$IGNITE_RUNTIME_DIR/state/memory.db"
     elif [[ -n "${IGNITE_WORKSPACE_DIR:-}" ]]; then
-        echo "$IGNITE_WORKSPACE_DIR/state/memory.db"
+        echo "$IGNITE_WORKSPACE_DIR/.ignite/state/memory.db"
     else
         log_error "WORKSPACE_DIR または IGNITE_WORKSPACE_DIR が未設定です"
         return 1

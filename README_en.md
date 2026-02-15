@@ -131,17 +131,18 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 
 - **OS**: Linux (currently Linux only; macOS can run in development mode)
 - **Architecture**: x86_64 / ARM64
-- **Network**: Always-on internet connection (Claude API communication)
+- **Network**: Always-on internet connection (API communication). Offline operation possible when using local LLMs such as Ollama
 
-> **Note**: Each Claude Code process consumes approximately 300-500MB of memory.
+> **Note**: Each agent process consumes approximately 300-500MB of memory.
 
 ### Required Software
 
 The following tools must be installed:
 
 ```bash
-# claude CLI
-claude --version
+# AI Coding Agent CLI (one of the following)
+opencode --version   # OpenCode (default)
+claude --version     # Claude Code (alternative)
 
 # tmux
 tmux -V
@@ -153,11 +154,31 @@ bash --version
 yq --version
 ```
 
+> **Local LLM**: Ollama / LM Studio / vLLM and other OpenAI-compatible servers are also supported. Set `model: ollama/qwen3-coder:30b` (or similar) in `config/system.yaml`. No API key required.
+
+#### Hardware Requirements for Practical Local LLM Usage
+
+IGNITE agents heavily rely on tool calling (file read/write, command execution, etc.), so local LLMs require both **fast inference speed** and **accurate tool calling support**. The inference speed bottleneck is memory bandwidth (the speed at which model weights are read per token).
+
+| GPU | Memory Bandwidth | Est. Speed (24B model) | Practicality |
+|-----|-------------------|----------------------|--------------|
+| RTX 5090 (32GB) | 1,792 GB/s | ~60-80 tok/s | Practical |
+| Mac Studio M4 Ultra (192GB) | 819 GB/s | ~30-40 tok/s | Borderline |
+| A100 80GB | 2,039 GB/s | ~70-90 tok/s | Comfortable |
+| H100 80GB | 3,350 GB/s | ~100+ tok/s | Very comfortable |
+| DGX Spark GB10 (128GB) | ~273 GB/s | ~10-15 tok/s | Too slow (not recommended) |
+
+> **Guideline**: A minimum of **30 tokens/sec** is recommended for agentic use. Even environments with large unified memory (e.g., DGX Spark) cannot achieve practical response speeds if memory bandwidth is insufficient. Cloud APIs (OpenAI / Anthropic) remain superior in cost-effectiveness.
+
 ### Installation
 
-If claude is not installed:
+If CLI provider is not installed:
 ```bash
-# See Anthropic official documentation for claude installation
+# OpenCode (default)
+curl -fsSL https://opencode.ai/install | bash
+
+# Claude Code (alternative)
+npm install -g @anthropic-ai/claude-code
 ```
 
 If tmux is not installed:
@@ -208,8 +229,7 @@ By default, IGNITE is installed to the following locations:
 | Path | Description |
 |------|-------------|
 | `~/.local/bin/` | Executable (`ignite` command) |
-| `~/.config/ignite/` | Configuration files |
-| `~/.local/share/ignite/` | Data files (instructions, scripts) |
+| `~/.local/share/ignite/` | Data & configuration files (config, instructions, scripts) |
 
 ### PATH Configuration
 
@@ -326,7 +346,7 @@ ignite status
 watch -n 5 ignite status
 
 # Or display dashboard file directly
-cat workspace/dashboard.md
+cat workspace/.ignite/dashboard.md
 ```
 
 #### View Logs
@@ -525,22 +545,23 @@ ignite/
 │   └── github-watcher.yaml     # GitHub Watcher settings
 │
 ├── workspace/                  # Runtime workspace (excluded via .gitignore)
-│   ├── queue/                  # Message queues (per agent)
-│   │   ├── leader/
-│   │   ├── strategist/
-│   │   ├── architect/
-│   │   ├── evaluator/
-│   │   ├── coordinator/
-│   │   ├── innovator/
-│   │   ├── ignitian_1/          # IGNITIAN-1 queue
-│   │   ├── ignitian_2/          # IGNITIAN-2 queue
-│   │   └── ignitian_{n}/        # IGNITIAN-N queue (dynamic)
-│   ├── context/                # Project context
-│   ├── state/                  # State management files
-│   │   └── report_issues.json  # Daily report Issue number cache
-│   ├── memory.db               # SQLite agent memory DB
-│   ├── logs/                   # Log files
-│   └── dashboard.md            # Real-time progress dashboard
+│   └── .ignite/                # Runtime data
+│       ├── queue/              # Message queues (per agent)
+│       │   ├── leader/
+│       │   ├── strategist/
+│       │   ├── architect/
+│       │   ├── evaluator/
+│       │   ├── coordinator/
+│       │   ├── innovator/
+│       │   ├── ignitian_1/      # IGNITIAN-1 queue
+│       │   ├── ignitian_2/      # IGNITIAN-2 queue
+│       │   └── ignitian_{n}/    # IGNITIAN-N queue (dynamic)
+│       ├── context/            # Project context
+│       ├── state/              # State management files
+│       │   └── report_issues.json  # Daily report Issue number cache
+│       ├── memory.db           # SQLite agent memory DB
+│       ├── logs/               # Log files
+│       └── dashboard.md        # Real-time progress dashboard
 │
 ├── docs/                       # Documentation
 │   ├── architecture.md         # Architecture details
@@ -640,7 +661,7 @@ A lightweight mode where only the Leader processes tasks without launching Sub-L
 **Notes:**
 - Normal mode (coordination mode) is recommended for complex tasks or large-scale changes
 - In solo mode, the `[SOLO]` tag is added to Leader's logs
-- Configuration is managed in `workspace/system_config.yaml` under `system.agent_mode`
+- Configuration is managed in `workspace/.ignite/runtime.yaml` under `system.agent_mode`
 
 ### Usage Examples by Task Type
 
@@ -793,7 +814,7 @@ ignite --version
 
 ### Understanding the Dashboard
 
-Example of `workspace/dashboard.md`:
+Example of `workspace/.ignite/dashboard.md`:
 
 ```markdown
 # IGNITE Dashboard
@@ -912,10 +933,10 @@ Ctrl+b q 6  # Go to IGNITIAN-1's pane
 
 ```bash
 # Verify dashboard file exists
-ls -la workspace/dashboard.md
+ls -la workspace/.ignite/dashboard.md
 
 # Manually recreate
-cat > workspace/dashboard.md <<EOF
+cat > workspace/.ignite/dashboard.md <<EOF
 # IGNITE Dashboard
 
 Updated: $(date '+%Y-%m-%d %H:%M:%S')
@@ -1135,7 +1156,7 @@ When forking, please replace character assets (`characters/`, `images/`) with yo
 ## 🙏 Acknowledgments
 
 - **multi-agent-shogun** - Architecture reference
-- **claude code CLI** - Powerful agent execution environment
+- **OpenCode** / **Claude Code** - AI Coding Agent CLI
 - **tmux** - Session management tool
 - **Anthropic** - Claude AI
 

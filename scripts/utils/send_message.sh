@@ -128,12 +128,18 @@ fi
 # =============================================================================
 # 宛先ディレクトリ解決
 # =============================================================================
-QUEUE_DIR="${WORKSPACE_DIR:-workspace}/queue/${TO}"
-
-if [[ ! -d "$QUEUE_DIR" ]]; then
-    echo "❌ エラー: $QUEUE_DIR が存在しません" >&2
+# .ignite/ 構成（v0.5.0+）を自動検知
+if [[ -d "${WORKSPACE_DIR:-.}/.ignite" ]]; then
+    QUEUE_DIR="${WORKSPACE_DIR:-.}/.ignite/queue/${TO}"
+elif [[ -n "${IGNITE_RUNTIME_DIR:-}" ]]; then
+    QUEUE_DIR="${IGNITE_RUNTIME_DIR}/queue/${TO}"
+else
+    echo "❌ エラー: .ignite/ ディレクトリが見つかりません。ignite init を実行してください" >&2
     exit 1
 fi
+
+# 宛先キューディレクトリがなければ作成
+mkdir -p "$QUEUE_DIR"
 
 # =============================================================================
 # MIME メッセージ生成（ignite_mime.py build に委譲）

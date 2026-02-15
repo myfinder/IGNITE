@@ -44,8 +44,8 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 # =============================================================================
 
 BIN_DIR="${IGNITE_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
-CONFIG_DIR="${IGNITE_CONFIG_DIR:-$HOME/.ignite}"
 DATA_DIR="${IGNITE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ignite}"
+CONFIG_DIR="${IGNITE_CONFIG_DIR:-$DATA_DIR/config}"
 
 # インストールモードフラグ
 FORCE=false
@@ -64,7 +64,7 @@ IGNITE インストーラー v${VERSION}
 
 オプション:
   --bin-dir <path>     実行ファイルのインストール先 (デフォルト: ~/.local/bin)
-  --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.ignite)
+  --config-dir <path>  設定ファイルのインストール先 (デフォルト: ~/.local/share/ignite/config)
   --data-dir <path>    データファイルのインストール先 (デフォルト: ~/.local/share/ignite)
   --upgrade            アップグレードモード (バイナリ・データは上書き、設定は保持)
   --force              既存ファイルをすべて上書き
@@ -75,7 +75,6 @@ IGNITE インストーラー v${VERSION}
   IGNITE_CONFIG_DIR    設定ファイルのインストール先
   IGNITE_DATA_DIR      データファイルのインストール先
   XDG_BIN_HOME         XDG準拠の実行ファイルディレクトリ
-  XDG_CONFIG_HOME      XDG準拠の設定ディレクトリ
   XDG_DATA_HOME        XDG準拠のデータディレクトリ
 
 例:
@@ -95,8 +94,24 @@ check_dependencies() {
 
     local missing=()
 
-    # 必須コマンド
-    for cmd in tmux claude gh; do
+    # system.yaml から CLI プロバイダーを簡易パース
+    local cli_provider="opencode"
+    local system_yaml="$CONFIG_DIR/system.yaml"
+    if [[ -f "$system_yaml" ]]; then
+        local _prov
+        _prov=$(sed -n '/^cli:/,/^[^ ]/p' "$system_yaml" 2>/dev/null \
+            | awk -F': ' '/^  provider:/{print $2; exit}' | sed 's/ *#.*//' | tr -d '"' | tr -d "'")
+        [[ -n "$_prov" ]] && cli_provider="$_prov"
+    fi
+
+    # プロバイダーに応じた必須コマンドリスト
+    local required_cmds="tmux gh"
+    case "$cli_provider" in
+        opencode) required_cmds="tmux opencode gh" ;;
+        *)        required_cmds="tmux opencode gh" ;;
+    esac
+
+    for cmd in $required_cmds; do
         if command -v "$cmd" &> /dev/null; then
             print_success "$cmd が見つかりました"
         else
@@ -115,6 +130,9 @@ check_dependencies() {
                     ;;
                 claude)
                     echo "  - claude: npm install -g @anthropic-ai/claude-code"
+                    ;;
+                opencode)
+                    echo "  - opencode: https://opencode.ai/"
                     ;;
                 gh)
                     echo "  - gh: https://cli.github.com/"
@@ -368,7 +386,7 @@ check_path() {
 
 write_config_paths() {
     # インストールパスを記録（ignite が参照するため）
-    cat > "$CONFIG_DIR/.install_paths" << EOF
+    cat > "$DATA_DIR/.install_paths" << EOF
 # IGNITE インストールパス (自動生成)
 BIN_DIR="$BIN_DIR"
 CONFIG_DIR="$CONFIG_DIR"

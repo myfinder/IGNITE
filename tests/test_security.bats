@@ -9,8 +9,9 @@ load test_helper
 setup() {
     setup_temp_dir
     export WORKSPACE_DIR="$TEST_TEMP_DIR/workspace"
-    mkdir -p "$WORKSPACE_DIR/state"
-    mkdir -p "$WORKSPACE_DIR/queue/leader"
+    export IGNITE_RUNTIME_DIR="$WORKSPACE_DIR"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/leader"
 
     # ログ関数スタブ
     log_info() { :; }

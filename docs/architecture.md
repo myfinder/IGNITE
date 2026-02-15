@@ -2,7 +2,7 @@
 
 ## システム概要
 
-IGNITEは、claude code CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。
+IGNITEは、AI Coding Agent CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。
 
 ## アーキテクチャ構成
 
@@ -189,13 +189,14 @@ ignite/
 │   └── github-watcher.yaml  # GitHub Watcher設定
 │
 ├── workspace/           # 実行時ワークスペース（.gitignore）
-│   ├── queue/           # メッセージキュー（タスク完了レポート含む）
-│   ├── context/         # コンテキスト
-│   ├── state/           # 状態管理ファイル
-│   │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
-│   ├── memory.db        # SQLiteエージェントメモリDB
-│   ├── logs/            # ログファイル
-│   └── dashboard.md     # 進捗ダッシュボード
+│   └── .ignite/         # ランタイムデータ
+│       ├── queue/       # メッセージキュー（タスク完了レポート含む）
+│       ├── context/     # コンテキスト
+│       ├── state/       # 状態管理ファイル
+│       │   └── report_issues.json  # 日次レポートIssue番号キャッシュ
+│       ├── memory.db    # SQLiteエージェントメモリDB
+│       ├── logs/        # ログファイル
+│       └── dashboard.md # 進捗ダッシュボード
 │
 └── docs/                # ドキュメント
     ├── architecture.md  # このファイル
@@ -226,7 +227,7 @@ Session `ignite-session` の単一ウィンドウ内に、全ペインが `tiled
 
 ### エージェント起動
 
-各ペインでclaude code CLIが起動:
+各ペインでCLI Agentが起動:
 ```bash
 claude-code --dangerously-skip-permissions
 ```
@@ -262,7 +263,7 @@ claude-code --dangerously-skip-permissions
 
 5. **IGNITIANSが並列実行**
    - タスクを読み取り
-   - claude codeツールで実行
+   - CLIツールで実行
    - 完了レポートを作成
 
 6. **Evaluatorが評価**
@@ -354,7 +355,7 @@ graph LR
 
 **キューディレクトリ:**
 ```
-workspace/queue/
+workspace/.ignite/queue/
 ├── leader/              # Leaderエージェント用
 │   ├── *.mime           # 未処理メッセージ
 │   └── processed/       # 処理中・完了メッセージ
@@ -467,7 +468,7 @@ sequenceDiagram
 
 ### 状態管理
 
-`workspace/state/report_issues.json` にリポジトリ×日付→Issue番号のキャッシュを保持し、重複作成を防止します（アトミック書き込み対応）。
+`workspace/.ignite/state/report_issues.json` にリポジトリ×日付→Issue番号のキャッシュを保持し、重複作成を防止します（アトミック書き込み対応）。
 
 ## パフォーマンス最適化
 
@@ -484,7 +485,7 @@ sequenceDiagram
 ## セキュリティ考慮事項
 
 ### ローカルPC権限
-- claude codeは`--dangerously-skip-permissions`で起動
+- CLIエージェントはパーミッション自動承認モードで起動
 - ローカルPCの全権限を持つ
 - 信頼できるタスクのみを実行
 
@@ -496,10 +497,10 @@ sequenceDiagram
 ## 監視とデバッグ
 
 ### ダッシュボード
-`workspace/dashboard.md` で全体進捗を可視化
+`workspace/.ignite/dashboard.md` で全体進捗を可視化
 
 ### ログファイル
-各エージェントのログ: `workspace/logs/{role}.log`
+各エージェントのログ: `workspace/.ignite/logs/{role}.log`
 
 ### ステータス確認
 ```bash

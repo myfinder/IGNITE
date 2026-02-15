@@ -23,7 +23,7 @@ flowchart TB
         Leader[Leader<br/>伊羽ユイ]
         SubLeaders[Sub-Leaders / IGNITIANs]
 
-        GW -->|"github_event_*.mime<br/>workspace/queue/leader/"| Leader
+        GW -->|"github_event_*.mime<br/>workspace/.ignite/queue/leader/"| Leader
         Leader -->|既存フロー| SubLeaders
     end
 
@@ -75,8 +75,7 @@ cp config/github-watcher.yaml.example /path/to/workspace/.ignite/github-watcher.
 |---|---|---|
 | 1（最高） | 環境変数 | `IGNITE_WATCHER_CONFIG` |
 | 2 | ワークスペース固有 | `<workspace>/.ignite/github-watcher.yaml` |
-| 3 | ユーザーデフォルト | `~/.ignite/github-watcher.yaml` |
-| 4（最低） | プロジェクトデフォルト | `config/github-watcher.yaml` |
+| 3（最低） | プロジェクトデフォルト | `config/github-watcher.yaml` |
 
 **ワークスペース指定での起動:**
 
@@ -112,25 +111,16 @@ watcher:
 
 ### 3. トリガー設定
 
-メンションやキーワードで自動タスクを起動:
+メンションで自動タスクを起動（タスク分類は Leader が自然言語で判断）:
 
 ```yaml
 triggers:
   # メンションパターン
   mention_pattern: "@ignite-gh-app"
 
-  # キーワード別アクション
-  keywords:
-    implement:
-      - "実装して"
-      - "implement"
-      - "fix this"
-    review:
-      - "レビューして"
-      - "review"
-    explain:
-      - "説明して"
-      - "explain"
+  # タスク分類は Leader（LLM）に委譲
+  # Watcher はメンション検出 + メッセージ転送に専念し、
+  # trigger_comment の内容から意図を判断する処理は Leader が行う
 
   # 自動トリガーラベル
   auto_labels:
@@ -273,7 +263,7 @@ to: leader
 timestamp: "2026-02-03T12:10:00+09:00"
 priority: high
 payload:
-  trigger: "implement"
+  trigger: "auto"
   repository: owner/repo
   issue_number: 123
   issue_title: "ログイン機能のバグ修正"
@@ -304,19 +294,24 @@ GitHubのIssue/PRコメントで以下のようにメンションすると、IGN
 @ignite-gh-app PRを作成して
 ```
 
-### トリガータイプ
+### タスク分類
 
-| トリガー | 説明 | キーワード例 |
-|----------|------|--------------|
-| `implement` | Issue/機能の実装 | 実装して, implement, fix this |
-| `review` | コードレビュー | レビューして, review |
-| `explain` | 説明・解説 | 説明して, explain |
+Watcher は全てのメンションを `trigger: "auto"` で Leader に転送します。Leader が `trigger_comment` の内容から意図を判断し、以下のアクションを選択します:
+
+| アクション | 説明 | コメント例 |
+|------------|------|------------|
+| 実装・修正 | Issue/機能の実装、バグ修正 | 実装して, fix this, 修正して |
+| レビュー・確認 | コードレビュー | レビューして, review, 確認して |
+| 説明 | 説明・解説 | 説明して, explain, 教えて |
+| 分析・インサイト | メモリ分析 | インサイト, 分析して |
+| GitHub 操作 | Issue/PR の操作 | 閉じて, ラベルを付けて |
+| 複合リクエスト | 複数アクションの逐次実行 | レビューして問題があれば修正して |
 
 ## Issue → PR 自動作成フロー
 
 1. **トリガー検知**: ユーザーが `@ignite-gh-app 実装して` とコメント
-2. **タスクメッセージ生成**: GitHub Watcherが `github_task` メッセージを作成
-3. **IGNITE処理**: Leader → Strategist → IGNITIANs の流れでタスク実行
+2. **タスクメッセージ生成**: GitHub Watcherが `github_task` メッセージを作成（`trigger: "auto"`）
+3. **IGNITE処理**: Leader が意図を判断 → Strategist → IGNITIANs の流れでタスク実行
 4. **PR作成**: 実装完了後、`create_pr.sh` でBot名義でPR作成
 5. **通知**: PRリンクをIssueにコメント
 
@@ -349,7 +344,7 @@ ignite work-on https://github.com/owner/repo/issues/123
 
 ### 処理済みイベント
 
-処理済みイベントは `workspace/state/github_watcher_state.json` に記録されます:
+処理済みイベントは `workspace/.ignite/state/github_watcher_state.json` に記録されます:
 
 ```json
 {
@@ -404,7 +399,7 @@ ignite work-on https://github.com/owner/repo/issues/123
 
 ステートファイルをリセット:
 ```bash
-rm workspace/state/github_watcher_state.json
+rm workspace/.ignite/state/github_watcher_state.json
 ```
 
 ### APIレート制限
@@ -422,10 +417,10 @@ gh api /rate_limit
 
 ```bash
 # Watcherのログを確認
-tail -f workspace/logs/github_watcher.log
+tail -f workspace/.ignite/logs/github_watcher.log
 
 # 生成されたメッセージを確認
-ls -la workspace/queue/leader/github_*.mime
+ls -la workspace/.ignite/queue/leader/github_*.mime
 ```
 
 ## セキュリティに関する注意
@@ -487,7 +482,7 @@ ignite watcher ack 123 owner/repo
 
 # パス取得
 REPO_PATH=$(./scripts/utils/setup_repo.sh path owner/repo)
-echo $REPO_PATH  # workspace/repos/owner_repo
+echo $REPO_PATH  # workspace/.ignite/repos/owner_repo
 
 # Issue用ブランチ作成
 ./scripts/utils/setup_repo.sh branch "$REPO_PATH" 123

@@ -36,7 +36,7 @@ Leaderに初期化メッセージを送信中...
 
 次のステップ:
   1. tmuxセッションに接続: tmux attach -t ignite-session
-  2. ダッシュボード確認: cat workspace/dashboard.md
+  2. ダッシュボード確認: cat workspace/.ignite/dashboard.md
   3. タスク投入: ignite plan "目標"
 
 tmuxセッションにアタッチしますか? (Y/n):
@@ -56,12 +56,12 @@ ignite plan "READMEファイルを作成する"
 
 目標: READMEファイルを作成する
 
-✓ メッセージを作成しました: workspace/queue/leader/user_goal_1738315200123456.mime
+✓ メッセージを作成しました: workspace/.ignite/queue/leader/user_goal_1738315200123456.mime
 
 ✓ タスク 'READMEファイルを作成する' を投入しました
 
 次のステップ:
-  1. ダッシュボード確認: cat workspace/dashboard.md
+  1. ダッシュボード確認: cat workspace/.ignite/dashboard.md
   2. ステータス確認: ignite status
   3. tmuxセッション表示: tmux attach -t ignite-session
 ```
@@ -71,7 +71,7 @@ ignite plan "READMEファイルを作成する"
 ダッシュボードをリアルタイム監視:
 
 ```bash
-watch -n 5 cat workspace/dashboard.md
+watch -n 5 cat workspace/.ignite/dashboard.md
 ```
 
 表示例:
@@ -211,8 +211,8 @@ ignite plan \
 **4. 結果確認**
 
 分析結果は以下で確認できます:
-- `workspace/dashboard.md` - 進捗と概要
-- `workspace/logs/` - 各エージェントのログ
+- `workspace/.ignite/dashboard.md` - 進捗と概要
+- `workspace/.ignite/logs/` - 各エージェントのログ
 - Innovatorからの改善提案メッセージ
 
 ---
@@ -378,7 +378,7 @@ ignite plan "ドキュメント作成"
 常にダッシュボードで全体進捗を確認:
 
 ```bash
-watch -n 5 cat workspace/dashboard.md
+watch -n 5 cat workspace/.ignite/dashboard.md
 ```
 
 ### 4. ログの活用
@@ -386,7 +386,7 @@ watch -n 5 cat workspace/dashboard.md
 問題が発生した場合はログを確認:
 
 ```bash
-tail -f workspace/logs/*.log
+tail -f workspace/.ignite/logs/*.log
 ```
 
 ### 5. tmuxセッションの活用
@@ -412,7 +412,7 @@ tmux attach -t ignite-session
 
 ダッシュボードで依存関係を確認:
 ```bash
-cat workspace/dashboard.md
+cat workspace/.ignite/dashboard.md
 ```
 
 **原因2: IGNITIANが応答しない**
@@ -427,14 +427,14 @@ tmux attach -t ignite-session
 
 キューをクリア:
 ```bash
-rm workspace/queue/*/*.mime
+rm workspace/.ignite/queue/*/*.mime
 ```
 
 ### エラーメッセージが出る
 
 ログを確認:
 ```bash
-grep -i error workspace/logs/*.log
+grep -i error workspace/.ignite/logs/*.log
 ```
 
 ### システムが起動しない

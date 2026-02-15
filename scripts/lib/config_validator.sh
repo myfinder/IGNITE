@@ -174,8 +174,11 @@ validate_file_exists() {
     val=$(yq -r "${path} // \"\"" "$file" 2>/dev/null)
     [[ -z "$val" || "$val" == "null" ]] && return 0
 
-    # ~ を展開
+    # ~ を展開、相対パスは設定ファイルのディレクトリ基準で解決
     local expanded="${val/#\~/$HOME}"
+    if [[ "$expanded" != /* ]]; then
+        expanded="$(dirname "$file")/$expanded"
+    fi
     if [[ ! -f "$expanded" ]]; then
         validation_warn "$file" "$path" "ファイルが見つかりません: ${val}" "パスを確認してください"
         return 1
@@ -238,7 +241,7 @@ validate_system_yaml() {
 
     # delays セクション (9)
     local delay_keys=(
-        leader_startup claude_startup leader_init
+        leader_startup cli_startup leader_init
         agent_stabilize agent_retry_wait process_cleanup
         session_create permission_accept prompt_send
     )

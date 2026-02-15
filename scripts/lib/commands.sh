@@ -45,10 +45,12 @@ cmd_activate() {
 
     print_info "検出されたペイン数: $pane_count"
 
-    # 各paneに対してEnterを送信して、入力待ちのコマンドを実行
+    # 各paneに対して確定キーを送信して、入力待ちのコマンドを実行
+    local _submit_keys
+    _submit_keys=$(cli_get_submit_keys 2>/dev/null || echo "C-m")
     for ((i=1; i<pane_count; i++)); do
         print_info "pane $i をアクティベート中..."
-        tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$i" Enter
+        eval "tmux send-keys -t '$SESSION_NAME:$TMUX_WINDOW_NAME.$i' $_submit_keys"
         sleep 1
     done
 
@@ -98,6 +100,7 @@ cmd_notify() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
 
     if [[ -z "$target" ]] || [[ -z "$message" ]]; then
         print_error "ターゲットとメッセージを指定してください"
@@ -162,8 +165,8 @@ cmd_notify() {
     timestamp=$(date -Iseconds)
     local message_id
     message_id=$(date +%s%6N)
-    mkdir -p "$WORKSPACE_DIR/queue/${target}/processed"
-    local message_file="$WORKSPACE_DIR/queue/${target}/processed/notify_${message_id}.mime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue/${target}"
+    local message_file="$IGNITE_RUNTIME_DIR/queue/${target}/notify_${message_id}.mime"
 
     local body_yaml
     body_yaml="message: |
@@ -173,12 +176,7 @@ $(printf '%s' "$message" | sed 's/^/  /')"
         --priority "${DEFAULT_MESSAGE_PRIORITY}" \
         --body "$body_yaml" -o "$message_file"
 
-    print_success "メッセージを送信しました: $message_file"
-
-    tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane_num" \
-        "$WORKSPACE_DIR/queue/${target}/processed/ に新しいメッセージがあります。${message_file} を確認してください。" Enter
-
-    print_success "pane $pane_num に通知を送信しました"
+    print_success "メッセージをキューに配置しました: $message_file"
 }
 
 # =============================================================================
@@ -244,23 +242,23 @@ cmd_logs() {
 
     # ワークスペースを設定
     setup_workspace
-    setup_workspace_config ""
+    setup_workspace_config "$WORKSPACE_DIR"
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
 
-    if [[ ! -d "$WORKSPACE_DIR/logs" ]] || [[ -z "$(ls -A "$WORKSPACE_DIR/logs" 2>/dev/null)" ]]; then
+    if [[ ! -d "$IGNITE_RUNTIME_DIR/logs" ]] || [[ -z "$(ls -A "$IGNITE_RUNTIME_DIR/logs" 2>/dev/null)" ]]; then
         print_warning "ログファイルが見つかりません"
         exit 0
     fi
 
     if [[ "$follow" == true ]]; then
         print_info "ログをリアルタイム監視中... (Ctrl+C で終了)"
-        tail -f "$WORKSPACE_DIR/logs"/*.log 2>/dev/null
+        tail -f "$IGNITE_RUNTIME_DIR/logs"/*.log 2>/dev/null
     else
         print_header "ログ (直近${lines}行)"
         echo ""
-        for log_file in "$WORKSPACE_DIR/logs"/*.log; do
+        for log_file in "$IGNITE_RUNTIME_DIR/logs"/*.log; do
             if [[ -f "$log_file" ]]; then
                 echo -e "${BLUE}=== $(basename "$log_file") ===${NC}"
                 tail -n "$lines" "$log_file" 2>/dev/null
@@ -303,6 +301,7 @@ cmd_clean() {
     # セッション名とワークスペースを設定
     setup_session_name
     setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -322,17 +321,17 @@ cmd_clean() {
     # 確認
     if [[ "$skip_confirm" == false ]]; then
         echo "以下のディレクトリがクリアされます:"
-        echo "  - $WORKSPACE_DIR/queue/*"
-        echo "  - $WORKSPACE_DIR/logs/*"
-        echo "  - $WORKSPACE_DIR/context/*"
-        echo "  - $WORKSPACE_DIR/state/*"
-        echo "  - $WORKSPACE_DIR/archive/*"
-        echo "  - $WORKSPACE_DIR/costs/sessions.yaml"
-        echo "  - $WORKSPACE_DIR/dashboard.md"
-        echo "  - $WORKSPACE_DIR/system_config.yaml"
-        echo "  - $WORKSPACE_DIR/coordinator_state.yaml"
+        echo "  - $IGNITE_RUNTIME_DIR/queue/*"
+        echo "  - $IGNITE_RUNTIME_DIR/logs/*"
+        echo "  - $IGNITE_RUNTIME_DIR/context/*"
+        echo "  - $IGNITE_RUNTIME_DIR/state/*"
+        echo "  - $IGNITE_RUNTIME_DIR/archive/*"
+        echo "  - $IGNITE_RUNTIME_DIR/costs/sessions.yaml"
+        echo "  - $IGNITE_RUNTIME_DIR/dashboard.md"
+        echo "  - $IGNITE_RUNTIME_DIR/runtime.yaml"
+        echo "  - $IGNITE_RUNTIME_DIR/coordinator_state.yaml"
         echo ""
-        echo -e "${YELLOW}注意: costs/history/ はクリアされません（履歴保持）${NC}"
+        echo -e "${YELLOW}注意: $IGNITE_RUNTIME_DIR/costs/history/ はクリアされません（履歴保持）${NC}"
         echo ""
         read -p "続行しますか? (y/N): " -n 1 -r
         echo
@@ -345,26 +344,26 @@ cmd_clean() {
     # クリーンアップ実行
     print_info "workspaceをクリア中..."
 
-    rm -rf "$WORKSPACE_DIR/queue"/*/
-    mkdir -p "$WORKSPACE_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator}
+    rm -rf "$IGNITE_RUNTIME_DIR/queue"/*/
+    mkdir -p "$IGNITE_RUNTIME_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator}
     # IGNITIANキューディレクトリの動的作成
     local _worker_count
     _worker_count=$(get_worker_count)
     for i in $(seq 1 "$_worker_count"); do
-        mkdir -p "$WORKSPACE_DIR/queue/ignitian_${i}"
+        mkdir -p "$IGNITE_RUNTIME_DIR/queue/ignitian_${i}"
     done
 
-    rm -rf "$WORKSPACE_DIR/logs"/*
-    rm -rf "$WORKSPACE_DIR/context"/*
-    rm -f "$WORKSPACE_DIR/dashboard.md"
-    rm -f "$WORKSPACE_DIR/system_config.yaml"
-    rm -f "$WORKSPACE_DIR/coordinator_state.yaml"
-    rm -rf "$WORKSPACE_DIR/state"/*
-    rm -rf "$WORKSPACE_DIR/archive"/*
-    mkdir -p "$WORKSPACE_DIR/archive"/{leader,strategist,coordinator}
+    rm -rf "$IGNITE_RUNTIME_DIR/logs"/*
+    rm -rf "$IGNITE_RUNTIME_DIR/context"/*
+    rm -f "$IGNITE_RUNTIME_DIR/dashboard.md"
+    rm -f "$IGNITE_RUNTIME_DIR/runtime.yaml"
+    rm -f "$IGNITE_RUNTIME_DIR/coordinator_state.yaml"
+    rm -rf "$IGNITE_RUNTIME_DIR/state"/*
+    rm -rf "$IGNITE_RUNTIME_DIR/archive"/*
+    mkdir -p "$IGNITE_RUNTIME_DIR/archive"/{leader,strategist,coordinator}
 
     # コストのセッション情報をクリア（履歴は保持）
-    rm -f "$WORKSPACE_DIR/costs/sessions.yaml"
+    rm -f "$IGNITE_RUNTIME_DIR/costs/sessions.yaml"
 
     print_success "workspaceをクリアしました"
 }
@@ -454,37 +453,39 @@ cmd_watcher() {
     # ワークスペース解決（PIDファイル参照に必要）
     setup_session_name
     setup_workspace
-    setup_workspace_config ""
+    setup_workspace_config "$WORKSPACE_DIR"
 
     case "$action" in
         start)
             print_info "GitHub Watcherを起動します..."
             # 既存プロセスの停止（PIDベース）
-            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
                 local old_pid
-                old_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                old_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
                 if kill -0 "$old_pid" 2>/dev/null; then
                     kill "$old_pid" 2>/dev/null || true
                     sleep 1
                 fi
-                rm -f "$WORKSPACE_DIR/github_watcher.pid"
+                rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
             fi
-            local watcher_log="$WORKSPACE_DIR/logs/github_watcher.log"
-            mkdir -p "$WORKSPACE_DIR/logs"
+            local watcher_log="$IGNITE_RUNTIME_DIR/logs/github_watcher.log"
+            mkdir -p "$IGNITE_RUNTIME_DIR/logs"
             export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
             export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
+            export WORKSPACE_DIR="$WORKSPACE_DIR"
             export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+            export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
             export IGNITE_TMUX_SESSION="${SESSION_NAME:-}"
             "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
-            echo "$watcher_pid" > "$WORKSPACE_DIR/github_watcher.pid"
+            echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/github_watcher.pid"
             print_success "GitHub Watcherをバックグラウンドで起動しました (PID: $watcher_pid)"
             ;;
         stop)
             print_info "GitHub Watcherを停止します..."
-            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
                 local watcher_pid
-                watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
                 if kill -0 "$watcher_pid" 2>/dev/null; then
                     kill "$watcher_pid" 2>/dev/null || true
                     local wait_count=0
@@ -499,20 +500,20 @@ cmd_watcher() {
                 else
                     print_warning "GitHub Watcher (PID: $watcher_pid) は既に停止しています"
                 fi
-                rm -f "$WORKSPACE_DIR/github_watcher.pid"
+                rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
             else
                 print_warning "PIDファイルが見つかりません"
             fi
             ;;
         status)
-            if [[ -f "$WORKSPACE_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
                 local watcher_pid
-                watcher_pid=$(cat "$WORKSPACE_DIR/github_watcher.pid")
+                watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
                 if kill -0 "$watcher_pid" 2>/dev/null; then
                     print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
                 else
                     print_warning "GitHub Watcher: 停止中 (stale PID: $watcher_pid)"
-                    rm -f "$WORKSPACE_DIR/github_watcher.pid"
+                    rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
                 fi
             else
                 print_warning "GitHub Watcher: 停止中"

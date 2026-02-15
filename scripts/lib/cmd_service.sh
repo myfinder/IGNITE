@@ -327,7 +327,8 @@ _service_logs() {
 # =============================================================================
 
 _service_setup_env() {
-    local env_file="${IGNITE_CONFIG_DIR}/env"
+    local _env_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ignite"
+    local env_file="${_env_dir}/env"
     local force=false
 
     # オプション解析
@@ -338,7 +339,7 @@ _service_setup_env() {
         esac
     done
 
-    mkdir -p "${IGNITE_CONFIG_DIR}"
+    mkdir -p "${_env_dir}"
 
     if [[ -f "$env_file" ]] && [[ "$force" != true ]]; then
         print_warning "既に $env_file が存在します"
@@ -355,6 +356,10 @@ _service_setup_env() {
         fi
     fi
 
+    # CLI Provider 固有の環境変数を取得
+    local _cli_env_vars
+    _cli_env_vars=$(cli_get_env_vars 2>/dev/null || echo "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
+
     # 最小テンプレート生成
     cat > "$env_file" <<ENVEOF
 # IGNITE - systemd EnvironmentFile
@@ -364,12 +369,20 @@ PATH=${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
 HOME=${HOME}
 TERM=xterm-256color
 
-ANTHROPIC_API_KEY=your-api-key-here
-CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+${_cli_env_vars}
 
 XDG_CONFIG_HOME=${HOME}/.config
 XDG_DATA_HOME=${HOME}/.local/share
 ENVEOF
+
+    # ワークスペース .env があればマージ
+    local _ws_env="${IGNITE_RUNTIME_DIR:+$IGNITE_RUNTIME_DIR/.env}"
+    if [[ -n "$_ws_env" ]] && [[ -f "$_ws_env" ]]; then
+        echo "" >> "$env_file"
+        echo "# --- from workspace .env ---" >> "$env_file"
+        grep -v '^\s*#' "$_ws_env" | grep -v '^\s*$' >> "$env_file"
+        print_info "ワークスペース .env をマージしました"
+    fi
 
     print_header "IGNITE 環境変数セットアップ"
     echo ""
