@@ -305,3 +305,42 @@ format_health_status() {
             ;;
     esac
 }
+
+# =============================================================================
+# JSONエクスポート
+# =============================================================================
+
+# get_agents_health_json <session>
+# 戻り値(stdout): エージェント状態JSON配列
+get_agents_health_json() {
+    local session="$1"
+    local lines
+    lines=$(get_all_agents_health "$session" 2>/dev/null || true)
+    if [[ -z "$lines" ]]; then
+        echo "[]"
+        return
+    fi
+
+    HEALTH_LINES="$lines" python3 - <<'PY'
+import json
+import os
+
+agents = []
+data = os.environ.get("HEALTH_LINES", "")
+for raw in data.splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+    parts = line.split(':', 2)
+    if len(parts) != 3:
+        continue
+    pane, name, status = parts
+    try:
+        pane_id = int(pane)
+    except ValueError:
+        pane_id = None
+    agents.append({"pane": pane_id, "name": name, "status": status})
+
+print(json.dumps(agents, ensure_ascii=False))
+PY
+}
