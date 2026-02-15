@@ -244,17 +244,11 @@ expand_patterns() {
 
         # Organization API でリポジトリ一覧を取得（org → user フォールバック）
         local repos=""
-        local repos_json=""
-        repos_json=$(github_api_paginate "$org" "/orgs/${org}/repos?per_page=100" 2>/dev/null) || true
-        if [[ -z "$repos_json" ]]; then
-            repos_json=$(github_api_paginate "$org" "/users/${org}/repos?per_page=100" 2>/dev/null) || true
-        fi
-        if [[ -z "$repos_json" ]]; then
+        repos=$(gh api "/orgs/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || \
+        repos=$(gh api "/users/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || {
             log_warn "リポジトリ一覧の取得に失敗: $org"
             continue
-        fi
-
-        repos=$(echo "$repos_json" | jq -r '.[].full_name')
+        }
 
         # glob マッチングでフィルタ
         local match_count=0
@@ -461,25 +455,19 @@ fetch_issues() {
         api_url="${api_url}&since=${since}"
     fi
 
-    local issues_json=""
-    issues_json=$(github_api_get "$repo" "$api_url" 2>/dev/null) || true
-    if [[ -z "$issues_json" ]]; then
-        echo ""
-        return
-    fi
-
-    echo "$issues_json" | jq -c '.[] | select(.pull_request == null) | {
-        id: .id,
-        number: .number,
-        title: .title,
-        body: .body,
-        author: .user.login,
-        author_type: .user.type,
-        state: .state,
-        created_at: .created_at,
-        updated_at: .updated_at,
-        url: .html_url
-    }' 2>/dev/null || echo ""
+    gh api "$api_url" \
+        --jq '.[] | select(.pull_request == null) | {
+            id: .id,
+            number: .number,
+            title: .title,
+            body: .body,
+            author: .user.login,
+            author_type: .user.type,
+            state: .state,
+            created_at: .created_at,
+            updated_at: .updated_at,
+            url: .html_url
+        }' 2>/dev/null || echo ""
 }
 
 # Issueコメントを取得
@@ -497,22 +485,16 @@ fetch_issue_comments() {
         api_url="${api_url}&since=${since}"
     fi
 
-    local comments_json=""
-    comments_json=$(github_api_get "$repo" "$api_url" 2>/dev/null) || true
-    if [[ -z "$comments_json" ]]; then
-        echo ""
-        return
-    fi
-
-    echo "$comments_json" | jq -c '.[] | {
-        id: .id,
-        issue_number: (.issue_url | split("/") | last | tonumber),
-        body: .body,
-        author: .user.login,
-        author_type: .user.type,
-        created_at: .created_at,
-        url: .html_url
-    }' 2>/dev/null || echo ""
+    gh api "$api_url" \
+        --jq '.[] | {
+            id: .id,
+            issue_number: (.issue_url | split("/") | last | tonumber),
+            body: .body,
+            author: .user.login,
+            author_type: .user.type,
+            created_at: .created_at,
+            url: .html_url
+        }' 2>/dev/null || echo ""
 }
 
 # PRイベントを取得
@@ -527,27 +509,21 @@ fetch_prs() {
     # 取得後に created_at でフィルタリングする
     # 注: updated_at は考慮していないが、既存PRへの更新（コメント追加等）は
     #     fetch_pr_comments() で別途取得するため問題ない
-    local prs_json=""
-    prs_json=$(github_api_get "$repo" "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" 2>/dev/null) || true
-    if [[ -z "$prs_json" ]]; then
-        echo ""
-        return
-    fi
-
-    echo "$prs_json" | jq -c --arg since "${since:-1970-01-01T00:00:00Z}" '.[] | select(.created_at >= $since) | {
-        id: .id,
-        number: .number,
-        title: .title,
-        body: .body,
-        author: .user.login,
-        author_type: .user.type,
-        state: .state,
-        created_at: .created_at,
-        updated_at: .updated_at,
-        url: .html_url,
-        head_ref: .head.ref,
-        base_ref: .base.ref
-    }' 2>/dev/null || echo ""
+    gh api "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" \
+        --jq --arg since "${since:-1970-01-01T00:00:00Z}" '.[] | select(.created_at >= $since) | {
+            id: .id,
+            number: .number,
+            title: .title,
+            body: .body,
+            author: .user.login,
+            author_type: .user.type,
+            state: .state,
+            created_at: .created_at,
+            updated_at: .updated_at,
+            url: .html_url,
+            head_ref: .head.ref,
+            base_ref: .base.ref
+        }' 2>/dev/null || echo ""
 }
 
 # PRコメントを取得（レビューコメントも含む）
@@ -565,24 +541,18 @@ fetch_pr_comments() {
         api_url="${api_url}&since=${since}"
     fi
 
-    local pr_comments_json=""
-    pr_comments_json=$(github_api_get "$repo" "$api_url" 2>/dev/null) || true
-    if [[ -z "$pr_comments_json" ]]; then
-        echo ""
-        return
-    fi
-
-    echo "$pr_comments_json" | jq -c '.[] | {
-        id: .id,
-        pr_number: (.pull_request_url | split("/") | last | tonumber),
-        body: .body,
-        author: .user.login,
-        author_type: .user.type,
-        created_at: .created_at,
-        url: .html_url,
-        path: .path,
-        line: .line
-    }' 2>/dev/null || echo ""
+    gh api "$api_url" \
+        --jq '.[] | {
+            id: .id,
+            pr_number: (.pull_request_url | split("/") | last | tonumber),
+            body: .body,
+            author: .user.login,
+            author_type: .user.type,
+            created_at: .created_at,
+            url: .html_url,
+            path: .path,
+            line: .line
+        }' 2>/dev/null || echo ""
 }
 
 # PRレビューを取得（Approve/Request changes/Comment）
@@ -598,15 +568,13 @@ fetch_pr_reviews() {
 
     # オープンなPRを取得してレビューをチェック
     local open_prs
-    local open_prs_json=""
-    open_prs_json=$(github_api_get "$repo" "/repos/${repo}/pulls?state=open&per_page=30" 2>/dev/null) || true
-    open_prs=$(echo "$open_prs_json" | jq -r '.[].number' 2>/dev/null || echo "")
+    open_prs=$(gh api "/repos/${repo}/pulls?state=open&per_page=30" --jq '.[].number' 2>/dev/null || echo "")
 
     [[ -z "$open_prs" ]] && return
 
     for pr_number in $open_prs; do
         local reviews_json
-        reviews_json=$(github_api_get "$repo" "/repos/${repo}/pulls/${pr_number}/reviews" 2>/dev/null || echo "[]")
+        reviews_json=$(gh api "/repos/${repo}/pulls/${pr_number}/reviews" 2>/dev/null || echo "[]")
         # bodyが空でも取得（コード行コメントのみのレビューも検知するため）
         jq -c --arg since "$since" --arg pr_number "$pr_number" \
             '.[] | select(.submitted_at >= $since) | {
@@ -628,13 +596,8 @@ fetch_pr_review_comments() {
     local pr_number="$2"
     local review_id="$3"
 
-    local review_comments_json=""
-    review_comments_json=$(github_api_get "$repo" "/repos/${repo}/pulls/${pr_number}/reviews/${review_id}/comments" 2>/dev/null) || true
-    if [[ -z "$review_comments_json" ]]; then
-        echo ""
-        return
-    fi
-    echo "$review_comments_json" | jq -r '.[].body' 2>/dev/null | tr '\n' ' ' || echo ""
+    gh api "/repos/${repo}/pulls/${pr_number}/reviews/${review_id}/comments" \
+        --jq '.[] | .body' 2>/dev/null | tr '\n' ' ' || echo ""
 }
 
 # =============================================================================
@@ -799,12 +762,12 @@ create_task_message() {
     local issue_body=""
     if [[ "$event_type" == "issue_comment" ]] && [[ "$issue_number" != "0" ]]; then
         local issue_info
-        issue_info=$(github_api_get "$repo" "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "{}")
+        issue_info=$(gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "{}")
         issue_title=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.title // ""')" 256)
         issue_body=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     elif [[ "$event_type" =~ ^pr_(comment|review)$ ]] && [[ "$issue_number" != "0" ]]; then
         local pr_info
-        pr_info=$(github_api_get "$repo" "/repos/${repo}/pulls/${issue_number}" 2>/dev/null || echo "{}")
+        pr_info=$(gh api "/repos/${repo}/pulls/${issue_number}" 2>/dev/null || echo "{}")
         issue_title=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.title // ""')" 256)
         issue_body=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     else
@@ -1381,11 +1344,6 @@ main() {
 
     # 設定読み込み
     load_config
-
-    if ! _require_jq_or_warn; then
-        log_error "jq が必要です。インストールしてください"
-        exit 1
-    fi
 
     # ステート初期化
     init_state

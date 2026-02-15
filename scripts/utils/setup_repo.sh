@@ -88,13 +88,7 @@ EOF
 # リポジトリのデフォルトブランチを取得
 get_default_branch() {
     local repo="$1"
-    local repo_json=""
-    repo_json=$(github_api_get "$repo" "/repos/${repo}" 2>/dev/null) || true
-    local branch=""
-    if [[ -n "$repo_json" ]]; then
-        branch=$(printf '%s' "$repo_json" | _json_get '.default_branch')
-    fi
-    echo "${branch:-main}"
+    gh api "/repos/${repo}" --jq '.default_branch' 2>/dev/null || echo "main"
 }
 
 # 設定ファイルからベースブランチを取得（なければデフォルトブランチ）
@@ -205,9 +199,28 @@ setup_repo() {
             git -C "$repo_path" remote set-url origin "https://github.com/${repo}.git"
         else
             log_info "リポジトリをclone中: $repo"
-            if ! safe_git_clone "$repo" "$repo_path" "$branch"; then
-                log_warn "認証付きcloneに失敗。通常のgit cloneを試行します"
-                git clone "$(_build_repo_https_url "$repo")" "$repo_path" --branch "$branch"
+            # privateリポジトリ対応：GitHub App Tokenを使用
+            local bot_token=""
+            local _token_err _token_rc=0
+            _token_err=$(mktemp)
+            # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
+            # --repo オプションでリポジトリを指定（Organization対応）
+            if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
+                bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
+            else
+                bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
+            fi
+            if [[ $_token_rc -ne 0 ]]; then
+                log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
+                [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
+                bot_token=""
+            fi
+            rm -f "$_token_err"
+            if [[ -n "$bot_token" ]]; then
+                log_info "GitHub App Token を使用してclone"
+                GH_TOKEN="$bot_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
+            else
+                gh repo clone "$repo" "$repo_path" -- --branch "$branch" || git clone "https://github.com/${repo}.git" "$repo_path" --branch "$branch"
             fi
         fi
         cd "$repo_path"

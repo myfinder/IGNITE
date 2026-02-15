@@ -293,10 +293,10 @@ cli_get_env_vars() {
 cli_get_required_commands() {
     case "$CLI_PROVIDER" in
         claude)
-            echo "tmux claude curl openssl jq"
+            echo "tmux claude gh"
             ;;
         opencode)
-            echo "tmux opencode curl openssl jq"
+            echo "tmux opencode gh"
             ;;
     esac
 }
