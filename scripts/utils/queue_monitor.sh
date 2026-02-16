@@ -147,21 +147,24 @@ _resolve_task_timeout() {
     echo "$_TASK_TIMEOUT"
 }
 
-# task_health.json の永続化
-_write_task_health_snapshot() {
-    local state_dir="$IGNITE_RUNTIME_DIR/state"
-    local output_file="$state_dir/task_health.json"
-    mkdir -p "$state_dir"
+# =============================================================================
+# キュー統計の共通スキャン（_write_task_health_snapshot / _log_progress で共有）
+# X-IGNITE-Status ヘッダーを grep で高速に取得（python3 呼び出しを回避）
+# =============================================================================
+# グローバルキャッシュ変数（ポーリング1サイクル内で再利用）
+_QUEUE_STATS_CACHE=""
+_QUEUE_STATS_EPOCH=0
 
-    local timestamp
-    timestamp=$(date -Iseconds)
-
-    local agents_json="[]"
-    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        agents_json=$(get_agents_health_json "$TMUX_SESSION:$TMUX_WINDOW_NAME" 2>/dev/null || echo "[]")
+_scan_queue_stats() {
+    local now_epoch
+    now_epoch=$(date +%s)
+    # 同一秒内のキャッシュを再利用
+    if [[ -n "$_QUEUE_STATS_CACHE" ]] && [[ "$_QUEUE_STATS_EPOCH" -eq "$now_epoch" ]]; then
+        printf '%s' "$_QUEUE_STATS_CACHE"
+        return
     fi
 
-    local queue_lines=""
+    local result=""
     for queue_dir in "$IGNITE_RUNTIME_DIR/queue"/*; do
         [[ -d "$queue_dir" ]] || continue
         local queue_name
@@ -178,8 +181,9 @@ _write_task_health_snapshot() {
         if [[ -d "$processed_dir" ]]; then
             for file in "$processed_dir"/*.mime; do
                 [[ -f "$file" ]] || continue
+                # grep でヘッダーから直接取得（python3 起動を回避）
                 local status
-                status=$(mime_get "$file" "status")
+                status=$(grep -m1 '^X-IGNITE-Status:' "$file" 2>/dev/null | sed 's/^X-IGNITE-Status:[[:space:]]*//' | tr -d '\r')
                 case "$status" in
                     processing|"")
                         processing_count=$((processing_count + 1))
@@ -194,9 +198,31 @@ _write_task_health_snapshot() {
             done
         fi
 
-        queue_lines+="${queue_name}|${pending_count}|${processing_count}|${retrying_count}|${delivered_count}"
-        queue_lines+=$'\n'
+        result+="${queue_name}|${pending_count}|${processing_count}|${retrying_count}|${delivered_count}"
+        result+=$'\n'
     done
+
+    _QUEUE_STATS_CACHE="$result"
+    _QUEUE_STATS_EPOCH="$now_epoch"
+    printf '%s' "$result"
+}
+
+# task_health.json の永続化
+_write_task_health_snapshot() {
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    local output_file="$state_dir/task_health.json"
+    mkdir -p "$state_dir"
+
+    local timestamp
+    timestamp=$(date -Iseconds)
+
+    local agents_json="[]"
+    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        agents_json=$(get_agents_health_json "$TMUX_SESSION:$TMUX_WINDOW_NAME" 2>/dev/null || echo "[]")
+    fi
+
+    local queue_lines
+    queue_lines=$(_scan_queue_stats)
 
     TASK_HEALTH_TIMESTAMP="$timestamp" \
     TASK_HEALTH_SESSION="$TMUX_SESSION" \
@@ -356,18 +382,9 @@ _write_heartbeat() {
     _ensure_state_dir
     local timestamp
     timestamp=$(date -Iseconds)
-    MONITOR_HEARTBEAT_TIMESTAMP="$timestamp" \
-    MONITOR_HEARTBEAT_TOKEN="${MONITOR_RESUME_TOKEN:-}" \
-    MONITOR_HEARTBEAT_SESSION="$TMUX_SESSION" \
-    python3 - <<'PY' > "$MONITOR_HEARTBEAT_FILE"
-import json,os
-data={
-  "timestamp": os.environ.get("MONITOR_HEARTBEAT_TIMESTAMP",""),
-  "resume_token": os.environ.get("MONITOR_HEARTBEAT_TOKEN",""),
-  "tmux_session": os.environ.get("MONITOR_HEARTBEAT_SESSION","")
-}
-print(json.dumps(data, ensure_ascii=False))
-PY
+    printf '{"timestamp":"%s","resume_token":"%s","tmux_session":"%s"}\n' \
+        "$timestamp" "${MONITOR_RESUME_TOKEN:-}" "$TMUX_SESSION" \
+        > "$MONITOR_HEARTBEAT_FILE"
 }
 
 _log_progress() {
@@ -380,37 +397,16 @@ _log_progress() {
     local retrying_total=0
     local delivered_total=0
 
-    for queue_dir in "$IGNITE_RUNTIME_DIR/queue"/*; do
-        [[ -d "$queue_dir" ]] || continue
-        local queue_name
-        queue_name=$(basename "$queue_dir")
-        [[ "$queue_name" == "dead_letter" ]] && continue
-
-        local pending
-        pending=$(find "$queue_dir" -maxdepth 1 -name "*.mime" -type f 2>/dev/null | wc -l)
-
-        local processed_dir="$queue_dir/processed"
-        local processing=0
-        local retrying=0
-        local delivered=0
-        if [[ -d "$processed_dir" ]]; then
-            for file in "$processed_dir"/*.mime; do
-                [[ -f "$file" ]] || continue
-                local status
-                status=$(mime_get "$file" "status")
-                case "$status" in
-                    processing|"") processing=$((processing + 1)) ;;
-                    retrying) retrying=$((retrying + 1)) ;;
-                    delivered|completed) delivered=$((delivered + 1)) ;;
-                esac
-            done
-        fi
-
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local _name pending processing retrying delivered
+        IFS='|' read -r _name pending processing retrying delivered <<< "$line"
         pending_total=$((pending_total + pending))
         processing_total=$((processing_total + processing))
         retrying_total=$((retrying_total + retrying))
         delivered_total=$((delivered_total + delivered))
-    done
+    done <<< "$(_scan_queue_stats)"
 
     printf '%s resume=%s pending=%s processing=%s retrying=%s delivered=%s\n' \
         "$timestamp" "${MONITOR_RESUME_TOKEN:-}" \
