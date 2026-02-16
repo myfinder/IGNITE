@@ -348,11 +348,11 @@ _report_progress() {
     local summary
     summary=$(grep -E '^\s+summary:' "$file" | head -1 | sed 's/^.*summary: *//; s/^"//; s/"$//')
     local tasks_completed
-    tasks_completed=$(grep -E '^\s+tasks_completed:' "$file" | head -1 | awk '{print $2}')
+    tasks_completed=$(grep -E '^\s+completed:' "$file" | head -1 | awk '{print $2}')
     local tasks_total
-    tasks_total=$(grep -E '^\s+tasks_total:' "$file" | head -1 | awk '{print $2}')
+    tasks_total=$(grep -E '^\s+total_tasks:' "$file" | head -1 | awk '{print $2}')
     local issue_id
-    issue_id=$(grep -E '^\s+issue_id:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
+    issue_id=$(grep -E '^\s+issue:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
     # repository フィールドを抽出（あれば per-repo フィルタ）
     local msg_repo
     msg_repo=$(grep -E '^\s+repository:' "$file" | head -1 | awk '{print $2}' | tr -d '"')
