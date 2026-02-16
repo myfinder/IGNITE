@@ -1,6 +1,6 @@
 #!/bin/bash
 # GitHub API 共通ヘルパー関数
-# Bot Token取得（キャッシュ + リトライ機構）、_gh_api() ラッパーを提供
+# Bot Token取得（キャッシュ + リトライ機構）、GitHub API ヘルパーを提供
 #
 # 使用方法（source で読み込み）:
 #   source "${SCRIPT_DIR}/github_helpers.sh"
@@ -9,7 +9,7 @@
 #   get_cached_bot_token <repo>  - キャッシュ付きBot Token取得
 #   _get_bot_token_internal <repo> - 内部Token取得（リトライ付き）
 #   _get_cache_dir              - キャッシュディレクトリ解決
-#   _gh_api <repo> <gh args...> - Bot Token自動適用のghラッパー
+#   github_api_get/post/request - curl+jqベースのGitHub APIラッパー
 #   safe_git_push [git push args] - 認証エラー検出+Token更新+リトライ付きgit push
 #   safe_git_fetch [git fetch args] - 認証エラー検出+Token更新+リトライ付きgit fetch
 

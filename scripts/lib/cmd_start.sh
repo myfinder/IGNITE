@@ -319,7 +319,7 @@ EOF
     # 理由: GitHub App Token有効期限1時間後にstale化→
     #   credential helper (gh auth git-credential) が失効GH_TOKENを優先参照→認証エラー
     # 代替: git操作はsafe_git_push/fetch/pull(github_helpers.sh)が動的にBot Token取得、
-    #   API操作は_gh_api()/get_cached_bot_token()が都度取得
+    #   API操作はgithub_api_get()/get_cached_bot_token()が都度取得
     # Bot Tokenキャッシュのプリウォーム（ファイルキャッシュのみ、env varにはセットしない）
     _resolve_bot_token >/dev/null 2>&1 || true
     local _gh_export=""

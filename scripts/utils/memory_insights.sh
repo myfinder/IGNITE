@@ -77,15 +77,15 @@ _validate_issue_num() {
 ensure_insight_label() {
     local repo="$1"
 
-    if _gh_api "$repo" api "repos/$repo/labels/$INSIGHT_LABEL" &>/dev/null; then
+    if github_api_get "$repo" "/repos/$repo/labels/$INSIGHT_LABEL" &>/dev/null; then
         return 0
     fi
 
     log_info "ラベル '$INSIGHT_LABEL' を作成中..."
-    if _gh_api "$repo" label create "$INSIGHT_LABEL" \
-        --repo "$repo" \
-        --color "$INSIGHT_LABEL_COLOR" \
-        --description "$INSIGHT_LABEL_DESCRIPTION" &>/dev/null; then
+    local label_json
+    label_json=$(jq -n --arg name "$INSIGHT_LABEL" --arg color "$INSIGHT_LABEL_COLOR" --arg desc "$INSIGHT_LABEL_DESCRIPTION" \
+        '{"name": $name, "color": $color, "description": $desc}')
+    if github_api_post "$repo" "/repos/$repo/labels" "$label_json" &>/dev/null; then
         log_success "ラベル '$INSIGHT_LABEL' を作成しました"
     else
         log_warn "ラベル作成に失敗しました（既に存在する可能性があります）"
@@ -197,12 +197,10 @@ cmd_check_duplicates() {
 
     # ignite-insight ラベル + タイトルキーワードで検索
     local result
-    result=$(_gh_api "$repo" issue list --repo "$repo" \
-        --label "$INSIGHT_LABEL" \
-        --state open \
-        --search "in:title \"${title}\"" \
-        --json number,title,url \
-        -q '.' 2>/dev/null) || true
+    local search_query="repo:${repo} is:issue is:open label:${INSIGHT_LABEL} in:title \"${title}\""
+    local encoded_query
+    encoded_query=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$search_query'''))")
+    result=$(github_api_get "$repo" "/search/issues?q=${encoded_query}&per_page=30" 2>/dev/null | jq -c '[.items[] | {number, title, url: .html_url}]' 2>/dev/null) || true
 
     if [[ -z "$result" ]]; then
         echo "[]"
@@ -243,23 +241,25 @@ cmd_create_issue() {
     # ラベルを確保
     ensure_insight_label "$repo"
 
-    # ラベルの組み立て
-    local label_args="--label $INSIGHT_LABEL"
+    log_info "Issue を作成中: $repo - $title"
+    local issue_body
+    issue_body=$(cat "$body_file")
+    local all_labels="[\"$INSIGHT_LABEL\""
     if [[ -n "$labels" ]]; then
         IFS=',' read -ra LABEL_ARRAY <<< "$labels"
         for l in "${LABEL_ARRAY[@]}"; do
             l=$(echo "$l" | xargs)  # trim
-            label_args="${label_args} --label ${l}"
+            all_labels="${all_labels},\"${l}\""
         done
     fi
-
-    log_info "Issue を作成中: $repo - $title"
+    all_labels="${all_labels}]"
+    local issue_json
+    issue_json=$(jq -n --arg title "$title" --arg body "$issue_body" --argjson labels "$all_labels" \
+        '{"title": $title, "body": $body, "labels": $labels}')
+    local issue_response
+    issue_response=$(github_api_post "$repo" "/repos/$repo/issues" "$issue_json" 2>/dev/null) || true
     local issue_url
-    issue_url=$(_gh_api "$repo" issue create \
-        --repo "$repo" \
-        --title "$title" \
-        --body-file "$body_file" \
-        $label_args 2>/dev/null) || true
+    issue_url=$(printf '%s' "$issue_response" | jq -r '.html_url // empty')
 
     if [[ -z "$issue_url" ]]; then
         log_error "Issue の作成に失敗しました"
@@ -314,9 +314,11 @@ cmd_comment_duplicate() {
     fi
 
     log_info "Issue #$issue_num にコメントを追加中..."
-    if _gh_api "$repo" issue comment "$issue_num" \
-        --repo "$repo" \
-        --body-file "$body_file" &>/dev/null; then
+    local comment_body
+    comment_body=$(cat "$body_file")
+    local comment_json
+    comment_json=$(jq -n --arg body "$comment_body" '{"body": $body}')
+    if github_api_post "$repo" "/repos/${repo}/issues/${issue_num}/comments" "$comment_json" &>/dev/null; then
 
         # insight_log に記録
         if [[ -n "$memory_ids" ]]; then
@@ -352,11 +354,8 @@ cmd_list_issues() {
     _validate_repo "$repo" || return 1
 
     local result
-    result=$(_gh_api "$repo" issue list --repo "$repo" \
-        --state open \
-        --limit "$limit" \
-        --json number,title,labels,url \
-        -q '.' 2>/dev/null) || true
+    result=$(github_api_get "$repo" "/repos/$repo/issues?state=open&per_page=$limit" 2>/dev/null | \
+        jq -c '[.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], url: .html_url}]' 2>/dev/null) || true
 
     if [[ -z "$result" ]]; then
         echo "[]"
