@@ -58,6 +58,14 @@ systemd サービスの起動テストや queue_monitor のプログレス表示
 
 エージェント間通信は MIME 形式を使用します。詳細は [docs/protocol.md](docs/protocol.md) を参照してください。
 
+## ドキュメント規約
+
+- `docs/` 配下にドキュメントを作成する際は、日本語版と英語版の両方を用意すること
+- ファイル命名規則:
+  - 日本語版: `docs/<name>.md`
+  - 英語版: `docs/<name>_en.md`
+- 例: `docs/startup-parallelization.md` / `docs/startup-parallelization_en.md`
+
 ## 重要な注意事項
 
 - デフォルト CLI プロバイダーは **OpenCode** です（`config/system.yaml` の `cli.provider`）
