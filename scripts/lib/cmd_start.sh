@@ -78,9 +78,8 @@ cmd_start() {
     # ワークスペース固有の CLI 設定を再読み込み
     cli_load_config
 
-    # 起動並列化（feature flag）
-    START_PARALLEL_ENABLED="${IGNITE_START_PARALLEL:-false}"
-    START_PARALLEL_SLOTS="${IGNITE_START_PARALLEL_SLOTS:-2}"
+    # 起動並列化
+    START_PARALLEL_SLOTS="${IGNITE_START_PARALLEL_SLOTS:-5}"
     START_PARALLEL_TIMEOUT="${IGNITE_START_PARALLEL_TIMEOUT:-90}"
 
     # .ignite/ 未検出時のエラー表示
@@ -380,8 +379,6 @@ EOF
     echo ""
     print_success "IGNITE Leader が起動しました"
 
-    # 並列起動設定（feature flag）
-    local parallel_enabled="$START_PARALLEL_ENABLED"
     local parallel_slots="$START_PARALLEL_SLOTS"
     local parallel_timeout="$START_PARALLEL_TIMEOUT"
     if [[ -z "$parallel_slots" ]] || [[ "$parallel_slots" -lt 1 ]]; then
@@ -472,34 +469,19 @@ EOF
         echo ""
 
         local pane_num=1
-        if [[ "$parallel_enabled" == "true" ]]; then
-            print_info "Sub-Leaders 並列起動: slots=${parallel_slots}, timeout=${parallel_timeout}s"
+        print_info "Sub-Leaders 並列起動: slots=${parallel_slots}, timeout=${parallel_timeout}s"
 
-            for i in "${!SUB_LEADERS[@]}"; do
-                local role="${SUB_LEADERS[$i]}"
-                local name="${SUB_LEADER_NAMES[$i]}"
-                _create_agent_pane "$pane_num" "${name} (${role^})"
-                _wait_for_slot
-                _start_job "Sub-Leader ${name}" start_agent_in_pane "$role" "$name" "$pane_num" "$_gh_export"
-                ((pane_num++))
-            done
+        for i in "${!SUB_LEADERS[@]}"; do
+            local role="${SUB_LEADERS[$i]}"
+            local name="${SUB_LEADER_NAMES[$i]}"
+            _create_agent_pane "$pane_num" "${name} (${role^})"
+            _wait_for_slot
+            _start_job "Sub-Leader ${name}" start_agent_in_pane "$role" "$name" "$pane_num" "$_gh_export"
+            ((pane_num++))
+        done
 
-            _wait_all_jobs
-            print_success "Sub-Leaders 起動完了 (${_job_success}/${#SUB_LEADERS[@]}名)"
-        else
-            for i in "${!SUB_LEADERS[@]}"; do
-                local role="${SUB_LEADERS[$i]}"
-                local name="${SUB_LEADER_NAMES[$i]}"
-
-                if ! start_agent "$role" "$name" "$pane_num" "$_gh_export"; then
-                    print_warning "Sub-Leader ${name} の起動に失敗しましたが、続行します"
-                fi
-
-                ((pane_num++))
-            done
-
-            print_success "Sub-Leaders 起動完了 (${#SUB_LEADERS[@]}名)"
-        fi
+        _wait_all_jobs
+        print_success "Sub-Leaders 起動完了 (${_job_success}/${#SUB_LEADERS[@]}名)"
     fi
 
     # IGNITIANs の起動 (worker_count > 0 かつ agent_mode が full の場合)
@@ -512,37 +494,23 @@ EOF
         # Sub-Leaders の後のペイン番号から開始
         local start_pane=$((1 + ${#SUB_LEADERS[@]}))
 
-        if [[ "$parallel_enabled" == "true" ]]; then
-            print_info "IGNITIANs 並列起動: slots=${parallel_slots}, timeout=${parallel_timeout}s"
-            _job_pids=()
-            declare -A _job_label=()
-            declare -A _job_start=()
-            _job_success=0
-            _job_failed=0
+        print_info "IGNITIANs 並列起動: slots=${parallel_slots}, timeout=${parallel_timeout}s"
+        _job_pids=()
+        declare -A _job_label=()
+        declare -A _job_start=()
+        _job_success=0
+        _job_failed=0
 
-            for ((i=1; i<=worker_count; i++)); do
-                local pane_num=$((start_pane + i - 1))
-                _create_agent_pane "$pane_num" "IGNITIAN-${i}"
-                _wait_for_slot
-                _start_job "IGNITIAN-${i}" start_ignitian_in_pane "$i" "$pane_num" "$_gh_export"
-            done
+        for ((i=1; i<=worker_count; i++)); do
+            local pane_num=$((start_pane + i - 1))
+            _create_agent_pane "$pane_num" "IGNITIAN-${i}"
+            _wait_for_slot
+            _start_job "IGNITIAN-${i}" start_ignitian_in_pane "$i" "$pane_num" "$_gh_export"
+        done
 
-            _wait_all_jobs
-            actual_ignitian_count=$_job_success
-            print_success "IGNITIANs 起動完了 (${actual_ignitian_count}/${worker_count}並列)"
-        else
-            for ((i=1; i<=worker_count; i++)); do
-                local pane_num=$((start_pane + i - 1))
-
-                if ! start_ignitian "$i" "$pane_num" "$_gh_export"; then
-                    print_warning "IGNITIAN-${i} の起動に失敗しましたが、続行します"
-                else
-                    actual_ignitian_count=$((actual_ignitian_count + 1))
-                fi
-            done
-
-            print_success "IGNITIANs 起動完了 (${actual_ignitian_count}並列)"
-        fi
+        _wait_all_jobs
+        actual_ignitian_count=$_job_success
+        print_success "IGNITIANs 起動完了 (${actual_ignitian_count}/${worker_count}並列)"
     fi
 
     # ランタイム情報ファイルを作成（IGNITIANs数などを記録）

@@ -116,19 +116,6 @@ start_agent_in_pane() {
     return 1
 }
 
-start_agent() {
-    local role="$1"      # strategist, architect, etc.
-    local name="$2"      # キャラクター名（characters.yaml で定義）
-    local pane="$3"      # ペイン番号
-    local _gh_export="${4:-}"  # GH_TOKEN export コマンド（cmd_start.sh から渡される）
-
-    # ペイン作成
-    tmux split-window -t "$SESSION_NAME:$TMUX_WINDOW_NAME" -h
-    tmux select-layout -t "$SESSION_NAME:$TMUX_WINDOW_NAME" tiled
-
-    start_agent_in_pane "$role" "$name" "$pane" "$_gh_export"
-}
-
 # IGNITIANS 起動関数
 start_ignitian_in_pane() {
     local id="$1"        # IGNITIAN番号 (1, 2, 3, ...)
@@ -194,14 +181,3 @@ start_ignitian_in_pane() {
     return 1
 }
 
-start_ignitian() {
-    local id="$1"        # IGNITIAN番号 (1, 2, 3, ...)
-    local pane="$2"      # ペイン番号
-    local _gh_export="${3:-}"  # GH_TOKEN export コマンド（cmd_start.sh から渡される）
-
-    # ペイン作成
-    tmux split-window -t "$SESSION_NAME:$TMUX_WINDOW_NAME" -h
-    tmux select-layout -t "$SESSION_NAME:$TMUX_WINDOW_NAME" tiled
-
-    start_ignitian_in_pane "$id" "$pane" "$_gh_export"
-}
