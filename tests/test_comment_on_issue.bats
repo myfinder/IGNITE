@@ -17,9 +17,13 @@ setup() {
     log_error() { echo "ERROR: $*" >&2; }
     export -f log_info log_warn log_error
 
-    # get_bot_token スタブ
-    get_bot_token() { echo "ghs_fake_token_for_test"; }
-    export -f get_bot_token
+    # get_auth_token スタブ（GitHub App優先の挙動を模倣）
+    get_auth_token() { AUTH_TOKEN_SOURCE="github_app"; echo "ghs_fake_token_for_test"; }
+    export -f get_auth_token
+
+    # _print_auth_error スタブ
+    _print_auth_error() { echo "ERROR: auth token missing" >&2; }
+    export -f _print_auth_error
 
     # gh api モックディレクトリ
     mkdir -p "$TEST_TEMP_DIR/mock_bin"

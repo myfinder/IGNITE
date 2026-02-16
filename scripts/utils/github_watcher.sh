@@ -244,8 +244,8 @@ expand_patterns() {
 
         # Organization API でリポジトリ一覧を取得（org → user フォールバック）
         local repos=""
-        repos=$(gh api "/orgs/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || \
-        repos=$(gh api "/users/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || {
+        repos=$(_gh_api "" api "/orgs/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || \
+        repos=$(_gh_api "" api "/users/${org}/repos" --paginate --jq '.[].full_name' 2>/dev/null) || {
             log_warn "リポジトリ一覧の取得に失敗: $org"
             continue
         }
@@ -455,7 +455,7 @@ fetch_issues() {
         api_url="${api_url}&since=${since}"
     fi
 
-    gh api "$api_url" \
+    _gh_api "$repo" api "$api_url" \
         --jq '.[] | select(.pull_request == null) | {
             id: .id,
             number: .number,
@@ -485,7 +485,7 @@ fetch_issue_comments() {
         api_url="${api_url}&since=${since}"
     fi
 
-    gh api "$api_url" \
+    _gh_api "$repo" api "$api_url" \
         --jq '.[] | {
             id: .id,
             issue_number: (.issue_url | split("/") | last | tonumber),
@@ -509,7 +509,7 @@ fetch_prs() {
     # 取得後に created_at でフィルタリングする
     # 注: updated_at は考慮していないが、既存PRへの更新（コメント追加等）は
     #     fetch_pr_comments() で別途取得するため問題ない
-    gh api "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" \
+    _gh_api "$repo" api "/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30" \
         --jq --arg since "${since:-1970-01-01T00:00:00Z}" '.[] | select(.created_at >= $since) | {
             id: .id,
             number: .number,
@@ -541,7 +541,7 @@ fetch_pr_comments() {
         api_url="${api_url}&since=${since}"
     fi
 
-    gh api "$api_url" \
+    _gh_api "$repo" api "$api_url" \
         --jq '.[] | {
             id: .id,
             pr_number: (.pull_request_url | split("/") | last | tonumber),
@@ -568,13 +568,13 @@ fetch_pr_reviews() {
 
     # オープンなPRを取得してレビューをチェック
     local open_prs
-    open_prs=$(gh api "/repos/${repo}/pulls?state=open&per_page=30" --jq '.[].number' 2>/dev/null || echo "")
+    open_prs=$(_gh_api "$repo" api "/repos/${repo}/pulls?state=open&per_page=30" --jq '.[].number' 2>/dev/null || echo "")
 
     [[ -z "$open_prs" ]] && return
 
     for pr_number in $open_prs; do
         local reviews_json
-        reviews_json=$(gh api "/repos/${repo}/pulls/${pr_number}/reviews" 2>/dev/null || echo "[]")
+        reviews_json=$(_gh_api "$repo" api "/repos/${repo}/pulls/${pr_number}/reviews" 2>/dev/null || echo "[]")
         # bodyが空でも取得（コード行コメントのみのレビューも検知するため）
         jq -c --arg since "$since" --arg pr_number "$pr_number" \
             '.[] | select(.submitted_at >= $since) | {
@@ -596,7 +596,7 @@ fetch_pr_review_comments() {
     local pr_number="$2"
     local review_id="$3"
 
-    gh api "/repos/${repo}/pulls/${pr_number}/reviews/${review_id}/comments" \
+    _gh_api "$repo" api "/repos/${repo}/pulls/${pr_number}/reviews/${review_id}/comments" \
         --jq '.[] | .body' 2>/dev/null | tr '\n' ' ' || echo ""
 }
 
@@ -762,12 +762,12 @@ create_task_message() {
     local issue_body=""
     if [[ "$event_type" == "issue_comment" ]] && [[ "$issue_number" != "0" ]]; then
         local issue_info
-        issue_info=$(gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "{}")
+        issue_info=$(_gh_api "$repo" api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "{}")
         issue_title=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.title // ""')" 256)
         issue_body=$(_sanitize_external_input "$(echo "$issue_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     elif [[ "$event_type" =~ ^pr_(comment|review)$ ]] && [[ "$issue_number" != "0" ]]; then
         local pr_info
-        pr_info=$(gh api "/repos/${repo}/pulls/${issue_number}" 2>/dev/null || echo "{}")
+        pr_info=$(_gh_api "$repo" api "/repos/${repo}/pulls/${issue_number}" 2>/dev/null || echo "{}")
         issue_title=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.title // ""')" 256)
         issue_body=$(_sanitize_external_input "$(echo "$pr_info" | jq -r '.body // ""' | head -c 1000)" 10000)
     else

@@ -89,7 +89,7 @@ get_issue_info() {
     local repo="$1"
     local issue_number="$2"
 
-    gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null
+    _gh_api "$repo" api "/repos/${repo}/issues/${issue_number}" 2>/dev/null
 }
 
 # =============================================================================
@@ -193,13 +193,15 @@ create_pull_request() {
         draft_flag="--draft"
     fi
 
-    # トークン設定（キャッシュ付きBot Token取得、期限切れなら自動更新）
-    local bot_token=""
-    if [[ "$use_bot" == "true" ]]; then
-        bot_token=$(get_cached_bot_token "$repo") || true
-        if [[ -z "$bot_token" ]]; then
-            log_warn "Bot Token取得失敗。通常のトークンで作成します。"
-        fi
+    # 認証トークン設定（GitHub App > PAT）
+    local auth_token=""
+    auth_token=$(get_auth_token "$repo") || true
+    if [[ -z "$auth_token" ]]; then
+        _print_auth_error "$repo"
+        return 1
+    fi
+    if [[ "$use_bot" == "true" ]] && [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
+        log_warn "GitHub App Token取得失敗のため、PATでPRを作成します。"
     fi
 
     # PR作成
@@ -215,14 +217,7 @@ create_pull_request() {
         gh_args+=(--draft)
     fi
 
-    if [[ -n "$bot_token" ]]; then
-        if ! pr_url=$(GH_TOKEN="$bot_token" gh pr create "${gh_args[@]}"); then
-            log_warn "Bot TokenでのPR作成失敗（期限切れの可能性）。通常のトークンでリトライします。"
-            pr_url=$(env -u GH_TOKEN gh pr create "${gh_args[@]}")
-        fi
-    else
-        pr_url=$(env -u GH_TOKEN gh pr create "${gh_args[@]}")
-    fi
+    pr_url=$(GH_TOKEN="$auth_token" gh pr create "${gh_args[@]}")
 
     echo "$pr_url"
 }
@@ -312,7 +307,13 @@ main() {
         ISSUE_NUMBER="$issue_input"
         if [[ -z "$repo" ]]; then
             # リポジトリを推測
-            repo=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
+            local repo_token=""
+            repo_token=$(get_auth_token "") || true
+            if [[ -z "$repo_token" ]]; then
+                _print_auth_error ""
+                exit 1
+            fi
+            repo=$(GH_TOKEN="$repo_token" gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
             if [[ -z "$repo" ]]; then
                 log_error "リポジトリを指定してください: --repo owner/repo"
                 exit 1

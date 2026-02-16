@@ -199,29 +199,16 @@ setup_repo() {
             git -C "$repo_path" remote set-url origin "https://github.com/${repo}.git"
         else
             log_info "リポジトリをclone中: $repo"
-            # privateリポジトリ対応：GitHub App Tokenを使用
-            local bot_token=""
-            local _token_err _token_rc=0
-            _token_err=$(mktemp)
-            # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
-            # --repo オプションでリポジトリを指定（Organization対応）
-            if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-                bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
-            else
-                bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
+            local auth_token=""
+            auth_token=$(get_auth_token "$repo") || true
+            if [[ -z "$auth_token" ]]; then
+                _print_auth_error "$repo"
+                return 1
             fi
-            if [[ $_token_rc -ne 0 ]]; then
-                log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
-                [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
-                bot_token=""
+            if [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
+                log_warn "GitHub App Token取得失敗のため、PATでcloneします。"
             fi
-            rm -f "$_token_err"
-            if [[ -n "$bot_token" ]]; then
-                log_info "GitHub App Token を使用してclone"
-                GH_TOKEN="$bot_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
-            else
-                gh repo clone "$repo" "$repo_path" -- --branch "$branch" || git clone "https://github.com/${repo}.git" "$repo_path" --branch "$branch"
-            fi
+            GH_TOKEN="$auth_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
         fi
         cd "$repo_path"
     fi
