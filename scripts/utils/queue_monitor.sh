@@ -361,11 +361,11 @@ _report_progress() {
     formatted=$(_format_progress_update "$summary" "$tasks_completed" "$tasks_total" "$issue_id" "$msg_repo")
     _persist_progress_update "$formatted"
 
-    local summary_line
     local summary_line_text
     summary_line_text=$(printf '%s' "${summary:-N/A}" | tr '\n' ' ')
-    summary_line="progress_update repo=${msg_repo:-N/A} issue=${issue_id:-?} tasks=${tasks_completed:-?}/${tasks_total:-?} summary=${summary_line_text}"
-    _emit_progress_update "$formatted" "$summary_line"
+    local progress_msg
+    progress_msg=$(format_progress_message "${summary:-working}" "${tasks_completed:-0}" "${summary_line_text}")
+    _emit_progress_update "$formatted" "$progress_msg"
 
     local cache_dir
     cache_dir=$(_get_report_cache_dir)

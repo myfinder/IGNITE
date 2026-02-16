@@ -96,3 +96,34 @@ get_path_without_sqlite3() {
 
     echo "$new_path"
 }
+
+# =============================================================================
+# PTY ヘルパー（TTY 環境のシミュレーション）
+# =============================================================================
+
+# run_with_pty <command>
+# PTY 経由でコマンドを実行し、TTY 接続時の挙動をテストする
+run_with_pty() {
+    local cmd="$1"
+    python3 - "$cmd" <<'PY'
+import os, pty, subprocess, sys
+cmd = sys.argv[1]
+env = os.environ.copy()
+master, slave = pty.openpty()
+proc = subprocess.Popen(cmd, shell=True, stdout=slave, stderr=slave, env=env)
+os.close(slave)
+chunks = []
+try:
+    while True:
+        data = os.read(master, 4096)
+        if not data:
+            break
+        chunks.append(data)
+except OSError:
+    pass
+os.close(master)
+proc.wait()
+sys.stdout.buffer.write(b"".join(chunks))
+sys.exit(proc.returncode)
+PY
+}

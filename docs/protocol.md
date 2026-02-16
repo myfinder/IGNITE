@@ -379,6 +379,7 @@ CoordinatorからLeaderへの進捗報告。
 **ボディ:**
 ```yaml
 repository: "owner/repo"
+issue: 123
 total_tasks: 3
 completed: 1
 in_progress: 2
@@ -392,6 +393,7 @@ summary: |
 - `summary`
 
 **任意フィールド:**
+- `issue` - 対象 Issue 番号
 - `stage` - 進捗ステージ名（例: `planning` / `implementation` / `review`）
 - `percent` - 0-100 の整数進捗率
 - `message` - 1行の短い進捗メッセージ

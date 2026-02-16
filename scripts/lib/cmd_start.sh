@@ -117,10 +117,7 @@ cmd_start() {
         worker_count=0
     fi
 
-    # エラートラップ（非TTY/NO_COLOR時はカラー無効化）
-    if [[ -n "${NO_COLOR:-}" ]] || ! [[ -t 1 ]]; then
-        GREEN='' BLUE='' YELLOW='' RED='' CYAN='' BOLD='' NC=''
-    fi
+    # エラートラップ
     trap 'print_error "エラーが発生しました (line $LINENO)"' ERR
 
     print_header "IGNITE システム起動"

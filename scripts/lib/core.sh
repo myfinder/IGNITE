@@ -88,7 +88,6 @@ log_error()   { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[${2:-ERROR}]${NC}
 # 形式: stage=<stage> percent=<0-100> message=<message>
 PROGRESS_STAGE_DEFAULT="working"
 PROGRESS_PERCENT_DEFAULT="0"
-PROGRESS_FORMAT_FIELDS=("stage" "percent" "message")
 
 # format_progress_message <stage> <percent> <message>
 # stdout: stage=<stage> percent=<percent> message=<message>
