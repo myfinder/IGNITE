@@ -84,6 +84,21 @@ log_success() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${GREEN}[${2:-OK}]${NC} 
 log_warn()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${YELLOW}[${2:-WARN}]${NC} $1" >&2; }
 log_error()   { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${RED}[${2:-ERROR}]${NC} $1" >&2; }
 
+# 進捗表示の共通フォーマット
+# 形式: stage=<stage> percent=<0-100> message=<message>
+PROGRESS_STAGE_DEFAULT="working"
+PROGRESS_PERCENT_DEFAULT="0"
+PROGRESS_FORMAT_FIELDS=("stage" "percent" "message")
+
+# format_progress_message <stage> <percent> <message>
+# stdout: stage=<stage> percent=<percent> message=<message>
+format_progress_message() {
+    local stage="${1:-$PROGRESS_STAGE_DEFAULT}"
+    local percent="${2:-$PROGRESS_PERCENT_DEFAULT}"
+    local message="${3:-}"
+    printf 'stage=%s percent=%s message=%s\n' "$stage" "$percent" "$message"
+}
+
 # sed_inplace - GNU/BSD 両対応の sed -i ラッパー（mktemp方式）
 # Usage: sed_inplace "pattern" "file"
 sed_inplace() {

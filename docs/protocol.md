@@ -387,6 +387,30 @@ summary: |
   進捗の要約
 ```
 
+**必須フィールド:**
+- `repository`
+- `summary`
+
+**任意フィールド:**
+- `stage` - 進捗ステージ名（例: `planning` / `implementation` / `review`）
+- `percent` - 0-100 の整数進捗率
+- `message` - 1行の短い進捗メッセージ
+- `total_tasks` / `completed` / `in_progress` / `pending`
+- `final` - 最終サマリの場合は `true`
+
+**表示フォーマット（共通）:**
+- `stage=<stage> percent=<percent> message=<message>`
+- `core.sh` の `format_progress_message()` を使用
+
+**更新頻度の目安:**
+- 最小間隔: 2秒
+- バースト抑制: 10秒あたり最大5回
+- 最終サマリは `final: true` を付与し、通常の更新と分離
+
+**表示劣化のルール:**
+- `NO_COLOR` または `TERM=dumb` の場合は色や装飾を使わず、
+  1行の共通フォーマットのみを出力する
+
 ## ファイル命名規則
 
 メッセージファイルは以下の命名規則に従います:
