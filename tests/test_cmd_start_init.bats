@@ -97,13 +97,13 @@ teardown() {
     [[ "$content" == *"dry_run: true"* ]]
 }
 
-@test "dry-run: tmux/Claude起動がスキップされる（[DRY-RUN]メッセージ確認）" {
+@test "dry-run: tmux/AI CLI起動がスキップされる（[DRY-RUN]メッセージ確認）" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"[DRY-RUN] 初期化検証完了"* ]]
     [[ "$output" == *"Phase 6: tmuxセッション作成"* ]]
-    [[ "$output" == *"Phase 7: Claude CLI起動"* ]]
+    [[ "$output" == *"Phase 7: AI CLI起動"* ]]
 
     # dry-runではtmuxセッション名が出力に含まれないこと確認
     [[ "$output" != *"tmuxセッションを作成中"* ]]
