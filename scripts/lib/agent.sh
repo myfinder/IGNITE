@@ -54,7 +54,7 @@ get_watcher_auto_start() {
 }
 
 # エージェント起動関数（最大3回リトライ）
-start_agent() {
+start_agent_in_pane() {
     local role="$1"      # strategist, architect, etc.
     local name="$2"      # キャラクター名（characters.yaml で定義）
     local pane="$3"      # ペイン番号
@@ -65,9 +65,6 @@ start_agent() {
     while [[ $retry -lt $max_retries ]]; do
         print_info "${name} を起動中... (試行 $((retry+1))/$max_retries)"
 
-        # ペイン作成
-        tmux split-window -t "$SESSION_NAME:$TMUX_WINDOW_NAME" -h
-        tmux select-layout -t "$SESSION_NAME:$TMUX_WINDOW_NAME" tiled
         tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "${name} (${role^})"
 
         # ロール別の opencode.json を生成（OpenCode の場合、各エージェント固有の instructions を設定）
@@ -120,7 +117,7 @@ start_agent() {
 }
 
 # IGNITIANS 起動関数
-start_ignitian() {
+start_ignitian_in_pane() {
     local id="$1"        # IGNITIAN番号 (1, 2, 3, ...)
     local pane="$2"      # ペイン番号
     local _gh_export="${3:-}"  # GH_TOKEN export コマンド（cmd_start.sh から渡される）
@@ -133,9 +130,6 @@ start_ignitian() {
     while [[ $retry -lt $max_retries ]]; do
         print_info "IGNITIAN-${id} を起動中... (試行 $((retry+1))/$max_retries)"
 
-        # ペイン作成
-        tmux split-window -t "$SESSION_NAME:$TMUX_WINDOW_NAME" -h
-        tmux select-layout -t "$SESSION_NAME:$TMUX_WINDOW_NAME" tiled
         tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "IGNITIAN-${id}"
 
         # IGNITIAN 用の opencode.json を生成（各 IGNITIAN で共通の instructions を使用）
@@ -186,3 +180,4 @@ start_ignitian() {
     print_error "IGNITIAN-${id} 起動に失敗しました（${max_retries}回試行）"
     return 1
 }
+
