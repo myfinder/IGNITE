@@ -296,7 +296,7 @@ EOF
         echo ""
         echo "スキップ項目:"
         echo "  Phase 6: tmuxセッション作成"
-        echo "  Phase 7: Claude CLI起動"
+        echo "  Phase 7: AI CLI起動"
         echo "  Phase 9: Watcher/Monitor起動"
         echo ""
         # NOTE: Phase 2 self-hosted runner完全統合テストは別Issue（#134完了後）で対応予定
