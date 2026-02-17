@@ -1,11 +1,11 @@
 #!/bin/bash
 # GitHub App Token 取得スクリプト
-# gh-token拡張を使用してInstallation Access Tokenを生成します
+# curl + JWT でInstallation Access Tokenを生成します
 #
 # Exit Codes (sysexits.h 準拠):
 #   0              成功
 #   64 EX_USAGE    引数エラー（--repo 未指定等）
-#   69 EX_UNAVAILABLE  gh CLI / gh-token 拡張が未インストール
+#   69 EX_UNAVAILABLE  必須コマンド未インストール
 #   73 EX_CANTCREAT    JWT 生成失敗 / Token 生成失敗
 #   75 EX_TEMPFAIL     一時的エラー（API rate limit, ネットワーク）
 #   77 EX_NOPERM       権限エラー（App 未インストール, Installation ID 取得失敗）
@@ -53,17 +53,16 @@ error_with_action() {
 check_prerequisites() {
     local has_error=false
 
-    # gh CLI チェック
-    if ! command -v gh &> /dev/null; then
-        error "gh CLI がインストールされていません"
-        echo "  インストール: https://cli.github.com/" >&2
+    if ! command -v curl &> /dev/null; then
+        error "curl がインストールされていません"
         has_error=true
     fi
-
-    # gh-token 拡張チェック
-    if ! gh extension list 2>/dev/null | grep -q "gh-token"; then
-        error "gh-token 拡張がインストールされていません"
-        echo "  インストール: gh extension install Link-/gh-token" >&2
+    if ! command -v openssl &> /dev/null; then
+        error "openssl がインストールされていません"
+        has_error=true
+    fi
+    if ! command -v python3 &> /dev/null; then
+        error "python3 がインストールされていません"
         has_error=true
     fi
 
@@ -119,6 +118,79 @@ load_config() {
     fi
 }
 
+_normalize_host() {
+    local host="$1"
+    host="${host#https://}"
+    host="${host#http://}"
+    echo "$host"
+}
+
+get_api_base() {
+    if [[ -n "${GITHUB_API_URL:-}" ]]; then
+        echo "${GITHUB_API_URL%/}"
+        return 0
+    fi
+    if [[ -n "${GITHUB_API_BASE:-}" ]]; then
+        echo "${GITHUB_API_BASE%/}"
+        return 0
+    fi
+    if [[ -n "${GITHUB_HOSTNAME:-}" ]]; then
+        echo "https://$( _normalize_host "${GITHUB_HOSTNAME}" )/api/v3"
+        return 0
+    fi
+    echo "https://api.github.com"
+}
+
+_json_get() {
+    local expr="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -r "$expr"
+        return
+    fi
+    warn "jq が未インストールです。pythonで代替パースします。"
+    python3 - <<PY
+import json,sys
+data=json.load(sys.stdin)
+expr="""$expr"""
+def get(obj, path):
+    cur=obj
+    for part in path.strip('.').split('.'):
+        if part.endswith(']') and '[' in part:
+            key, idx = part[:-1].split('[')
+            if key:
+                cur=cur.get(key, []) if isinstance(cur, dict) else []
+            cur=cur[int(idx)] if isinstance(cur, list) and len(cur)>int(idx) else None
+        else:
+            cur=cur.get(part) if isinstance(cur, dict) else None
+        if cur is None:
+            return None
+    return cur
+value=get(data, expr)
+print("") if value is None else print(value)
+PY
+}
+
+_b64url() {
+    openssl base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+build_jwt() {
+    local now
+    now=$(date +%s)
+    local iat=$((now - 60))
+    local exp=$((now + 540))
+
+    local header
+    header=$(printf '{"alg":"RS256","typ":"JWT"}' | _b64url)
+    local payload
+    payload=$(printf '{"iat":%s,"exp":%s,"iss":%s}' "$iat" "$exp" "$APP_ID" | _b64url)
+
+    local unsigned="${header}.${payload}"
+    local signature
+    signature=$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" | _b64url)
+    printf '%s.%s' "$unsigned" "$signature"
+}
+
 # =============================================================================
 # リポジトリからInstallation IDを取得
 # =============================================================================
@@ -130,12 +202,7 @@ get_installation_id_for_repo() {
     local api_stderr
     local http_status
 
-    # JWTトークンを生成（App認証用）
-    # --jwt オプションでJWTを直接取得（--token-onlyはJWTモードでは使用不可）
-    jwt_token=$(gh token generate \
-        --app-id "$APP_ID" \
-        --key "$PRIVATE_KEY_PATH" \
-        --jwt 2>/dev/null) || true
+    jwt_token=$(build_jwt) || true
 
     if [[ -z "$jwt_token" ]]; then
         error "JWTトークンの生成に失敗しました"
@@ -145,21 +212,26 @@ get_installation_id_for_repo() {
     # リポジトリのインストール情報を取得
     # JWT認証にはBearerヘッダーが必要（GH_TOKENはtokenタイプで送信されるため使用不可）
     # stderrをキャプチャしてHTTPステータスを判定
-    api_stderr=$(mktemp)
-    installation_id=$(gh api "/repos/${repo}/installation" \
+    local api_base
+    api_base=$(get_api_base)
+    local headers_tmp
+    headers_tmp=$(mktemp)
+    local body_tmp
+    body_tmp=$(mktemp)
+    curl -sS -D "$headers_tmp" -o "$body_tmp" \
         -H "Authorization: Bearer $jwt_token" \
-        --jq '.id' 2>"$api_stderr") || true
+        -H "Accept: application/vnd.github+json" \
+        "${api_base}/repos/${repo}/installation" || true
 
     local api_err_content
-    api_err_content=$(cat "$api_stderr" 2>/dev/null || true)
-    rm -f "$api_stderr"
+    api_err_content=$(cat "$body_tmp" 2>/dev/null || true)
+
+    local http_status
+    http_status=$(awk 'NR==1 {print $2}' "$headers_tmp")
+
+    installation_id=$(printf '%s' "$api_err_content" | _json_get '.id')
 
     if [[ -z "$installation_id" ]] || [[ "$installation_id" == "null" ]]; then
-        # HTTPステータスコードでexit codeを振り分け
-        http_status=""
-        if [[ "$api_err_content" =~ HTTP\ ([0-9]+) ]]; then
-            http_status="${BASH_REMATCH[1]}"
-        fi
 
         case "$http_status" in
             401)
@@ -187,6 +259,7 @@ get_installation_id_for_repo() {
         esac
     fi
 
+    rm -f "$headers_tmp" "$body_tmp"
     echo "$installation_id"
 }
 
@@ -198,12 +271,23 @@ generate_token() {
     local result
     local token
 
-    # gh-token 拡張でトークン生成
-    result=$(gh token generate \
-        --app-id "$APP_ID" \
-        --installation-id "$INSTALLATION_ID" \
-        --key "$PRIVATE_KEY_PATH" \
-        2>/dev/null) || true
+    local api_base
+    api_base=$(get_api_base)
+    local jwt_token
+    jwt_token=$(build_jwt) || true
+
+    local headers_tmp
+    headers_tmp=$(mktemp)
+    local body_tmp
+    body_tmp=$(mktemp)
+
+    curl -sS -D "$headers_tmp" -o "$body_tmp" \
+        -H "Authorization: Bearer $jwt_token" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Content-Type: application/json" \
+        -X POST "${api_base}/app/installations/${INSTALLATION_ID}/access_tokens" || true
+
+    result=$(cat "$body_tmp" 2>/dev/null || true)
 
     if [[ -z "$result" ]]; then
         error_with_action \
@@ -213,24 +297,15 @@ generate_token() {
     fi
 
     # JSONからトークン値を抽出
-    if command -v jq &> /dev/null; then
-        # jq がある場合: 正確な JSON パース
-        token=$(echo "$result" | jq -r '.token // empty' 2>/dev/null)
-        if [[ -n "$token" ]]; then
-            echo "$token"
-            return
-        fi
-    else
-        # jq フォールバック: grep -o でトークン抽出
-        warn "jq が未インストールです。grep でトークンを抽出します。"
-        token=$(echo "$result" | grep -oE 'ghs_[A-Za-z0-9_]+' | head -1)
-        if [[ -n "$token" ]]; then
-            echo "$token"
-            return
-        fi
+    token=$(printf '%s' "$result" | _json_get '.token')
+    if [[ -n "$token" ]]; then
+        rm -f "$headers_tmp" "$body_tmp"
+        echo "$token"
+        return
     fi
 
     # JSON でない場合（ghs_ プレフィックスの生トークン）はそのまま出力
+    rm -f "$headers_tmp" "$body_tmp"
     echo "$result"
 }
 
@@ -253,11 +328,13 @@ GitHub App Token 取得スクリプト
 
 環境変数:
   IGNITE_GITHUB_CONFIG    設定ファイルのパス（デフォルト: config/github-app.yaml）
+  GITHUB_API_URL          GitHub API Base URL（Enterprise用）
+  GITHUB_HOSTNAME         GitHub Enterprise ホスト名
 
 Exit Codes (sysexits.h 準拠):
   0   成功
   64  引数エラー（--repo 未指定等）
-  69  gh CLI / gh-token 拡張が未インストール
+  69  必須コマンド未インストール（curl/openssl/python3）
   73  JWT 生成失敗 / Token 生成失敗
   75  一時的エラー（API rate limit）
   77  権限エラー（App 未インストール等）
@@ -271,8 +348,9 @@ Exit Codes (sysexits.h 準拠):
   # トークンを取得
   TOKEN=$(./scripts/utils/get_github_app_token.sh --repo myorg/myrepo)
 
-  # Bot名義でIssueにコメント
-  GH_TOKEN="$TOKEN" gh issue comment 1 --repo myorg/myrepo --body "Hello"
+  # API 呼び出しに使用
+  GITHUB_TOKEN="$TOKEN" curl -H "Authorization: Bearer $TOKEN" \
+    "https://api.github.com/repos/myorg/myrepo/issues/1"
 
   # 前提条件のチェックのみ
   ./scripts/utils/get_github_app_token.sh --check
@@ -296,7 +374,7 @@ main() {
             -c|--check)
                 check_prerequisites
                 load_config
-                echo "前提条件OK: gh CLI, gh-token拡張, 設定ファイル" >&2
+                echo "前提条件OK: curl/openssl/python3, 設定ファイル" >&2
                 exit 0
                 ;;
             -r|--repo)

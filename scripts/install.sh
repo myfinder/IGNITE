@@ -107,10 +107,10 @@ check_dependencies() {
     fi
 
     # プロバイダーに応じた必須コマンドリスト
-    local required_cmds="tmux gh"
+    local required_cmds="tmux"
     case "$cli_provider" in
-        opencode) required_cmds="tmux opencode gh" ;;
-        *)        required_cmds="tmux opencode gh" ;;
+        opencode) required_cmds="tmux opencode" ;;
+        *)        required_cmds="tmux opencode" ;;
     esac
 
     for cmd in $required_cmds; do
@@ -136,9 +136,7 @@ check_dependencies() {
                 opencode)
                     echo "  - opencode: https://opencode.ai/"
                     ;;
-                gh)
-                    echo "  - gh: https://cli.github.com/"
-                    ;;
+                *) ;;
             esac
         done
         return 1

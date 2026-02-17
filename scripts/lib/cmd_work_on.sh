@@ -2,6 +2,10 @@
 # lib/cmd_work_on.sh - work-onコマンド
 [[ -n "${__LIB_CMD_WORK_ON_LOADED:-}" ]] && return; __LIB_CMD_WORK_ON_LOADED=1
 
+# GitHub API ヘルパーの読み込み（gh CLI 撤廃対応）
+_CMD_WORK_ON_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_CMD_WORK_ON_SCRIPT_DIR}/../utils/github_helpers.sh"
+
 # =============================================================================
 # work-on コマンド - Issue番号を指定して実装開始
 # =============================================================================
@@ -70,7 +74,7 @@ cmd_work_on() {
         issue_number="$issue_input"
         if [[ -z "$repo" ]]; then
             # リポジトリを推測
-            repo=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
+            repo=$(_get_repo_from_remote 2>/dev/null || echo "")
             if [[ -z "$repo" ]]; then
                 print_error "リポジトリを指定してください: --repo owner/repo"
                 exit 1
@@ -97,7 +101,7 @@ cmd_work_on() {
     # Issue情報を取得
     print_info "Issue情報を取得中..."
     local issue_info
-    issue_info=$(gh api "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "")
+    issue_info=$(github_api_get "$repo" "/repos/${repo}/issues/${issue_number}" 2>/dev/null || echo "")
 
     if [[ -z "$issue_info" ]] || [[ "$issue_info" == "null" ]]; then
         print_error "Issue #${issue_number} が見つかりません"

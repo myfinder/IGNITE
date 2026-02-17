@@ -293,10 +293,10 @@ cli_get_env_vars() {
 cli_get_required_commands() {
     case "$CLI_PROVIDER" in
         claude)
-            echo "tmux claude gh"
+            echo "tmux claude"
             ;;
         opencode)
-            echo "tmux opencode gh"
+            echo "tmux opencode"
             ;;
     esac
 }

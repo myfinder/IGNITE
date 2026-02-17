@@ -166,20 +166,13 @@ _is_duplicate_comment() {
 
     # 既存コメントをJSON配列で一括取得
     local comments_json=""
-    if [[ "$use_bot" == "true" ]]; then
-        local bot_token
-        bot_token=$(get_bot_token "$repo" 2>/dev/null) || true
-        if [[ -n "$bot_token" ]]; then
-            comments_json=$(GH_TOKEN="$bot_token" gh api \
-                "/repos/${repo}/issues/${issue_number}/comments" \
-                --paginate 2>/dev/null) || true
-        fi
+    local auth_token
+    auth_token=$(get_auth_token "$repo") || true
+    if [[ -z "$auth_token" ]]; then
+        _print_auth_error "$repo"
+        return 1
     fi
-    if [[ -z "$comments_json" ]]; then
-        comments_json=$(env -u GH_TOKEN gh api \
-            "/repos/${repo}/issues/${issue_number}/comments" \
-            --paginate 2>/dev/null) || true
-    fi
+    comments_json=$(github_api_paginate "$repo" "/repos/${repo}/issues/${issue_number}/comments" 2>/dev/null) || true
 
     if [[ -z "$comments_json" ]]; then
         log_warn "コメント一覧取得失敗。重複チェックをスキップして投稿を続行します。"
@@ -187,10 +180,9 @@ _is_duplicate_comment() {
     fi
 
     # jqで各コメントbodyをtrimして比較
-    # --slurp: gh api --paginateが複数ページ返す場合の連結JSON配列を単一配列に統合
     local match
-    match=$(printf '%s' "$comments_json" | jq --slurp --arg new_body "$trimmed_body" '
-        [.[][] | .body | gsub("^\\s+|\\s+$"; "")] | any(. == $new_body)
+    match=$(printf '%s' "$comments_json" | jq --arg new_body "$trimmed_body" '
+        [.[] | .body | gsub("^\\s+|\\s+$"; "")] | any(. == $new_body)
     ' 2>/dev/null) || true
 
     if [[ "$match" == "true" ]]; then
@@ -211,24 +203,21 @@ post_comment() {
         return 0
     fi
 
-    if [[ "$use_bot" == "true" ]]; then
-        # キャッシュ付きBot Token取得（期限切れなら自動更新）
-        local bot_token
-        bot_token=$(get_bot_token "$repo")
-        if [[ -n "$bot_token" ]]; then
-            log_info "Bot名義でコメントを投稿中... (REST API)"
-            if GH_TOKEN="$bot_token" gh api "/repos/${repo}/issues/${issue_number}/comments" \
-                -f body="$body" --silent 2>/dev/null; then
-                return 0
-            fi
-            log_warn "Bot Tokenでの投稿失敗。通常のトークンで投稿します。"
-        else
-            log_warn "Bot Token取得失敗。通常のトークンで投稿します。"
-        fi
+    local auth_token
+    auth_token=$(get_auth_token "$repo") || true
+    if [[ -z "$auth_token" ]]; then
+        _print_auth_error "$repo"
+        return 1
+    fi
+
+    if [[ "$use_bot" == "true" ]] && [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
+        log_warn "GitHub App Token取得失敗のため、PATで投稿します。"
     fi
 
     log_info "コメントを投稿中..."
-    env -u GH_TOKEN gh api "/repos/${repo}/issues/${issue_number}/comments" -f body="$body" --silent
+    local json_body
+    json_body=$(jq -n --arg body "$body" '{"body": $body}')
+    github_api_post "$repo" "/repos/${repo}/issues/${issue_number}/comments" "$json_body" > /dev/null
 }
 
 # =============================================================================
@@ -301,9 +290,9 @@ main() {
         exit 1
     fi
 
-    # リポジトリ推測
+    # リポジトリ推測（git remote から検出）
     if [[ -z "$repo" ]]; then
-        repo=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
+        repo=$(_get_repo_from_remote 2>/dev/null || echo "")
         if [[ -z "$repo" ]]; then
             log_error "リポジトリを指定してください: --repo owner/repo"
             exit 1

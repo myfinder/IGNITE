@@ -88,7 +88,17 @@ EOF
 # リポジトリのデフォルトブランチを取得
 get_default_branch() {
     local repo="$1"
-    gh api "/repos/${repo}" --jq '.default_branch' 2>/dev/null || echo "main"
+    local response
+    response=$(github_api_get "$repo" "/repos/${repo}" 2>/dev/null) || true
+    if [[ -n "$response" ]]; then
+        local branch
+        branch=$(printf '%s' "$response" | _json_get '.default_branch')
+        if [[ -n "$branch" && "$branch" != "null" ]]; then
+            echo "$branch"
+            return 0
+        fi
+    fi
+    echo "main"
 }
 
 # 設定ファイルからベースブランチを取得（なければデフォルトブランチ）
@@ -199,29 +209,23 @@ setup_repo() {
             git -C "$repo_path" remote set-url origin "https://github.com/${repo}.git"
         else
             log_info "リポジトリをclone中: $repo"
-            # privateリポジトリ対応：GitHub App Tokenを使用
-            local bot_token=""
-            local _token_err _token_rc=0
-            _token_err=$(mktemp)
-            # IGNITE_CONFIG_DIR が設定されていれば、github-app.yaml のパスを渡す
-            # --repo オプションでリポジトリを指定（Organization対応）
-            if [[ -n "${IGNITE_CONFIG_DIR:-}" ]]; then
-                bot_token=$(IGNITE_GITHUB_CONFIG="${IGNITE_CONFIG_DIR}/github-app.yaml" "${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
-            else
-                bot_token=$("${SCRIPT_DIR}/get_github_app_token.sh" --repo "$repo" 2>>"$_token_err") || _token_rc=$?
+            local auth_token=""
+            auth_token=$(get_auth_token "$repo") || true
+            if [[ -z "$auth_token" ]]; then
+                _print_auth_error "$repo"
+                return 1
             fi
-            if [[ $_token_rc -ne 0 ]]; then
-                log_warn "Bot Token取得失敗 (exit_code=$_token_rc)"
-                [[ -s "$_token_err" ]] && log_warn "$(cat "$_token_err")"
-                bot_token=""
+            if [[ "$AUTH_TOKEN_SOURCE" == "pat" ]]; then
+                log_warn "GitHub App Token取得失敗のため、PATでcloneします。"
             fi
-            rm -f "$_token_err"
-            if [[ -n "$bot_token" ]]; then
-                log_info "GitHub App Token を使用してclone"
-                GH_TOKEN="$bot_token" gh repo clone "$repo" "$repo_path" -- --branch "$branch"
-            else
-                gh repo clone "$repo" "$repo_path" -- --branch "$branch" || git clone "https://github.com/${repo}.git" "$repo_path" --branch "$branch"
-            fi
+            local clone_url
+            clone_url="$(get_github_base_url)/${repo}.git"
+            local basic
+            basic=$(_build_basic_auth "$auth_token")
+            local host
+            host=$(get_github_hostname)
+            git -c "http.https://${host}/.extraHeader=Authorization: Basic ${basic}" \
+                clone --branch "$branch" "$clone_url" "$repo_path"
         fi
         cd "$repo_path"
     fi
