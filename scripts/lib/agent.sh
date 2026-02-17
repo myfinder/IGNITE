@@ -95,7 +95,7 @@ _start_agent_headless() {
     fi
 
     # ヘルスチェック待機
-    cli_wait_server_ready "$port" 30 || return 1
+    cli_wait_server_ready "$port" "$(get_delay server_ready 60)" || return 1
 
     # セッション作成
     local session_id
@@ -125,8 +125,8 @@ _start_ignitian_headless() {
     cli_setup_project_config "$WORKSPACE_DIR" "$role" \
         "$IGNITE_CHARACTERS_DIR/ignitian.md" "$IGNITE_INSTRUCTIONS_DIR/ignitian.md"
 
-    local env_str="export IGNITE_WORKER_ID=${id} && "
-    [[ -n "$extra_env" ]] && env_str="${extra_env}${env_str}"
+    local env_str="export IGNITE_WORKER_ID=${id}"
+    [[ -n "$extra_env" ]] && env_str="${extra_env%%+([ ])&&*} ${env_str}"
 
     cli_start_agent_server "$WORKSPACE_DIR" "$role" "$pane_idx" "$env_str" || return 1
 
@@ -134,7 +134,7 @@ _start_ignitian_headless() {
     port=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_port_${pane_idx}" 2>/dev/null)
     [[ -z "$port" ]] && return 1
 
-    cli_wait_server_ready "$port" 30 || return 1
+    cli_wait_server_ready "$port" "$(get_delay server_ready 60)" || return 1
 
     local session_id
     session_id=$(cli_create_session "$port") || return 1
@@ -163,14 +163,19 @@ _kill_agent_process() {
         local pid
         pid=$(cat "$pid_file" 2>/dev/null || true)
 
-        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode serve"; then
+        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+            # 子プロセス（opencode バイナリ）も含めてプロセスツリーごと停止
+            pkill -P "$pid" 2>/dev/null || true
             kill "$pid" 2>/dev/null || true
             local i
             for i in {1..6}; do
                 kill -0 "$pid" 2>/dev/null || break
                 sleep 0.5
             done
-            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+            if kill -0 "$pid" 2>/dev/null; then
+                pkill -9 -P "$pid" 2>/dev/null || true
+                kill -9 "$pid" 2>/dev/null || true
+            fi
         fi
 
         cli_cleanup_agent_state "$pane_idx"

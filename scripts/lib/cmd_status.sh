@@ -27,10 +27,10 @@ cmd_status() {
         esac
     done
 
-    # セッション名とワークスペースを設定
-    setup_session_name
+    # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    setup_session_name
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1

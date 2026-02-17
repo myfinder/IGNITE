@@ -374,6 +374,11 @@ cli_start_agent_server() {
 
     local config_name="opencode_${role}.json"
 
+    # 前回のログを退避（古い "listening on" 行でポート誤検出を防止）
+    if [[ -s "$log_file" ]]; then
+        mv "$log_file" "${log_file%.log}_prev.log"
+    fi
+
     # opencode serve をバックグラウンド起動
     (
         cd "$workspace_dir" || exit 1

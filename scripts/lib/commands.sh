@@ -17,14 +17,22 @@ cmd_activate() {
                 fi
                 shift 2
                 ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help activate; exit 0 ;;
             *) print_error "Unknown option: $1"; cmd_help activate; exit 1 ;;
         esac
     done
 
-    # セッション名を設定
+    # ワークスペース解決 → 設定ロード → セッション名解決
+    setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
     setup_session_name
-    setup_workspace_config ""
 
     if ! session_exists; then
         print_error "セッション '$SESSION_NAME' が見つかりません"
@@ -105,10 +113,10 @@ cmd_notify() {
         esac
     done
 
-    # セッション名とワークスペースを設定
-    setup_session_name
+    # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    setup_session_name
 
     if [[ -z "$target" ]] || [[ -z "$message" ]]; then
         print_error "ターゲットとメッセージを指定してください"
@@ -213,6 +221,13 @@ cmd_attach() {
                 fi
                 shift 2
                 ;;
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
             -h|--help) cmd_help attach; exit 0 ;;
             -*)
                 print_error "Unknown option: $1"; cmd_help attach; exit 1
@@ -224,9 +239,10 @@ cmd_attach() {
         esac
     done
 
-    # セッション名を設定
+    # ワークスペース解決 → 設定ロード → セッション名解決
+    setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
     setup_session_name
-    setup_workspace_config ""
 
     if ! session_exists; then
         print_error "セッション '$SESSION_NAME' が見つかりません"
@@ -387,10 +403,10 @@ cmd_clean() {
         esac
     done
 
-    # セッション名とワークスペースを設定
-    setup_session_name
+    # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    setup_session_name
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -462,6 +478,25 @@ cmd_clean() {
 # =============================================================================
 
 cmd_list() {
+    # オプション解析
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                WORKSPACE_DIR="$2"
+                if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                    WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
+                fi
+                shift 2
+                ;;
+            -h|--help) cmd_help list; exit 0 ;;
+            *) print_error "Unknown option: $1"; cmd_help list; exit 1 ;;
+        esac
+    done
+
+    # ワークスペース解決 → 設定ロード
+    setup_workspace
+    setup_workspace_config "$WORKSPACE_DIR"
+
     print_header "IGNITEセッション一覧"
     echo ""
 
@@ -567,10 +602,10 @@ cmd_watcher() {
     local action="${1:-}"
     shift 2>/dev/null || true
 
-    # ワークスペース解決（PIDファイル参照に必要）
-    setup_session_name
+    # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    setup_session_name
 
     case "$action" in
         start)
