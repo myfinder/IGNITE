@@ -31,7 +31,7 @@ jobs:
           loginctl enable-linger "$(whoami)" || true
 
       - name: Run Bats tests
-        run: bats tests/
+        run: bats --jobs "$(($(nproc) * 8))" tests/
 
   shellcheck:
     name: ShellCheck

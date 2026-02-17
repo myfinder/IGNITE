@@ -34,14 +34,15 @@ docs/                 # ドキュメント
 ### テスト
 
 ```bash
-# 全テスト実行
-bats tests/
+# 全テスト実行（並列）
+bats --jobs "$(($(nproc) * 8))" tests/
 
 # 特定テストファイル
 bats tests/test_cmd_start_init.bats
 ```
 
-PR を出す前に必ず `bats tests/` を実行してください。
+PR を出す前に必ず `bats --jobs "$(($(nproc) * 8))" tests/` を実行してください。
+並列実行には GNU parallel が必要です（`apt install parallel` / `brew install parallel`）。
 
 ### 動作確認
 
