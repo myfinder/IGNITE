@@ -147,6 +147,7 @@ cmd_stop() {
 
     # セッション情報ファイルを削除
     rm -f "$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"
+    rm -f "$IGNITE_RUNTIME_DIR/ignite-daemon.pid"
 
     print_success "IGNITE システムを停止しました"
 }

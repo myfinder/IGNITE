@@ -380,11 +380,11 @@ EOF
 # cli_get_required_commands
 # =============================================================================
 
-@test "cli_get_required_commands: opencode（デフォルト）は 'tmux opencode'" {
+@test "cli_get_required_commands: opencode（デフォルト）は 'opencode curl jq'" {
     cli_load_config
     local cmds
     cmds=$(cli_get_required_commands)
-    [[ "$cmds" == "tmux opencode" ]]
+    [[ "$cmds" == "opencode curl jq" ]]
 }
 
 @test "cli_get_required_commands: claude は 'tmux claude'" {
@@ -401,7 +401,7 @@ EOF
     [[ "$cmds" == "tmux claude" ]]
 }
 
-@test "cli_get_required_commands: opencode は 'tmux opencode'" {
+@test "cli_get_required_commands: opencode は 'opencode curl jq'" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -410,5 +410,5 @@ EOF
     cli_load_config
     local cmds
     cmds=$(cli_get_required_commands)
-    [[ "$cmds" == "tmux opencode" ]]
+    [[ "$cmds" == "opencode curl jq" ]]
 }

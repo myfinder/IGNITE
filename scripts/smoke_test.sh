@@ -334,11 +334,33 @@ phase_start_stop() {
         return
     fi
 
+    # API Key の有無を確認（なければ実起動テストをスキップ）
+    local has_api_key=false
+    local env_file="$SMOKE_DIR/workspace/.ignite/.env"
+    if [[ -f "$env_file" ]]; then
+        if grep -qE '^(OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY)=.+' "$env_file" 2>/dev/null; then
+            has_api_key=true
+        fi
+    fi
+    # 環境変数からも確認
+    if [[ -n "${OPENAI_API_KEY:-}" ]] || [[ -n "${ANTHROPIC_API_KEY:-}" ]] || [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+        has_api_key=true
+    fi
+
+    if [[ "$has_api_key" != true ]]; then
+        print_warning "No API key found, skipping start/stop tests (set API key in .env or environment)"
+        return
+    fi
+
     # headless モード判定（cli_provider.sh を source）
     local cli_provider_sh="$SMOKE_DIR/home/.local/share/ignite/scripts/lib/cli_provider.sh"
     if [[ -f "$cli_provider_sh" ]]; then
-        # core.sh のガード変数を設定して source エラーを回避
+        # cli_provider.sh が依存する変数・関数を最小限スタブ化
         __LIB_CORE_LOADED=1
+        IGNITE_CONFIG_DIR="${SMOKE_DIR}/workspace/.ignite"
+        DEFAULT_MODEL="${DEFAULT_MODEL:-sonnet}"
+        command -v get_config &>/dev/null || get_config() { echo "${3:-}"; }
+        # shellcheck source=/dev/null
         source "$cli_provider_sh" 2>/dev/null || true
         cli_load_config 2>/dev/null || true
         if cli_is_headless_mode 2>/dev/null; then
@@ -348,7 +370,7 @@ phase_start_stop() {
 
     # ignite start（デーモンモードで起動）
     local start_ok=false
-    if "$SMOKE_DIR/home/.local/bin/ignite" start --daemon -w "$SMOKE_DIR/workspace" >/dev/null 2>&1; then
+    if timeout 120 "$SMOKE_DIR/home/.local/bin/ignite" start --daemon -w "$SMOKE_DIR/workspace" >/dev/null 2>&1; then
         start_ok=true
         PASS_COUNT=$((PASS_COUNT + 1))
         print_success "PASS: ignite start --daemon exits successfully"
@@ -433,25 +455,27 @@ phase_start_stop() {
             assert_not_contains "no crashed agents in status" "$status_output" "crashed"
         fi
 
-        # ignite stop -y
-        if [[ -n "${session_name:-}" ]]; then
-            assert "ignite stop -y exits successfully" \
-                "$SMOKE_DIR/home/.local/bin/ignite" stop -y -s "$session_name" -w "$SMOKE_DIR/workspace"
-        else
-            assert "ignite stop -y exits successfully" \
-                "$SMOKE_DIR/home/.local/bin/ignite" stop -y -w "$SMOKE_DIR/workspace"
-        fi
+        # ignite stop -y（start が成功した場合のみ）
+        if [[ "$start_ok" == true ]]; then
+            if [[ -n "${session_name:-}" ]]; then
+                assert "ignite stop -y exits successfully" \
+                    timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -s "$session_name" -w "$SMOKE_DIR/workspace"
+            else
+                assert "ignite stop -y exits successfully" \
+                    timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -w "$SMOKE_DIR/workspace"
+            fi
 
-        # PID ファイルが消えたことを確認
-        local remaining_pids
-        remaining_pids=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
-        if [[ "$remaining_pids" -eq 0 ]]; then
-            PASS_COUNT=$((PASS_COUNT + 1))
-            print_success "PASS: PID files cleaned up after stop"
-        else
-            FAIL_COUNT=$((FAIL_COUNT + 1))
-            FAILED_TESTS+=("PID files cleaned up after stop")
-            print_error "FAIL: $remaining_pids PID files still exist after stop"
+            # PID ファイルが消えたことを確認
+            local remaining_pids
+            remaining_pids=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
+            if [[ "$remaining_pids" -eq 0 ]]; then
+                PASS_COUNT=$((PASS_COUNT + 1))
+                print_success "PASS: PID files cleaned up after stop"
+            else
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                FAILED_TESTS+=("PID files cleaned up after stop")
+                print_error "FAIL: $remaining_pids PID files still exist after stop"
+            fi
         fi
     else
         # ── TUI モード (claude): tmux セッションで検証 ──
