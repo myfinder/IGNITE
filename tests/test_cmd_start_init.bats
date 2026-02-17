@@ -16,16 +16,11 @@ setup() {
 
     # 最小限の system.yaml を作成
     cat > "$TEST_WORKSPACE/.ignite/system.yaml" <<'YAML'
-tmux:
-  window_name: ignite
 delays:
   process_cleanup: 0
-  session_create: 0
   leader_startup: 0
-  claude_startup: 0
+  server_ready: 0
   leader_init: 0
-  permission_accept: 0
-  prompt_send: 0
   agent_stabilize: 0
   agent_retry_wait: 0
 defaults:
@@ -97,16 +92,13 @@ teardown() {
     [[ "$content" == *"dry_run: true"* ]]
 }
 
-@test "dry-run: tmux/AI CLI起動がスキップされる（[DRY-RUN]メッセージ確認）" {
+@test "dry-run: エージェントサーバー起動がスキップされる（[DRY-RUN]メッセージ確認）" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"[DRY-RUN] 初期化検証完了"* ]]
-    [[ "$output" == *"Phase 6: tmuxセッション作成"* ]]
+    [[ "$output" == *"Phase 6: エージェントサーバー起動"* ]]
     [[ "$output" == *"Phase 7: AI CLI起動"* ]]
-
-    # dry-runではtmuxセッション名が出力に含まれないこと確認
-    [[ "$output" != *"tmuxセッションを作成中"* ]]
 }
 
 @test "dry-run: 通常(PTY) はカラー出力が含まれる" {
@@ -174,4 +166,72 @@ teardown() {
 
     [ "$status" -ne 0 ]
     [[ "$output" == *".ignite/"* ]]
+}
+
+# =============================================================================
+# _reap_jobs の set -e 対応テスト
+# =============================================================================
+
+@test "_reap_jobs: set -e 下で非零ジョブを正しくカウントする" {
+    # _reap_jobs 関数を含むスクリプトを set -e で実行し、
+    # 非零終了のジョブがあっても exit しないことを確認
+    run bash -c '
+        set -e
+        _job_pids=()
+        declare -A _job_label=()
+        declare -A _job_start=()
+        _job_success=0
+        _job_failed=0
+
+        _reap_jobs() {
+            local -a remaining=()
+            for pid in "${_job_pids[@]}"; do
+                if kill -0 "$pid" 2>/dev/null; then
+                    remaining+=("$pid")
+                else
+                    wait "$pid" && local rc=0 || local rc=$?
+                    if [[ $rc -eq 0 ]]; then
+                        _job_success=$(( _job_success + 1 ))
+                    else
+                        _job_failed=$(( _job_failed + 1 ))
+                    fi
+                fi
+            done
+            _job_pids=("${remaining[@]}")
+        }
+
+        # 成功するジョブ
+        true &
+        _job_pids+=($!)
+        _job_label[$!]="success_job"
+        _job_start[$!]=$(date +%s)
+
+        # 失敗するジョブ
+        false &
+        _job_pids+=($!)
+        _job_label[$!]="failure_job"
+        _job_start[$!]=$(date +%s)
+
+        sleep 0.5
+        _reap_jobs
+
+        echo "success=$_job_success failed=$_job_failed"
+        [[ $_job_success -eq 1 ]] || exit 10
+        [[ $_job_failed -eq 1 ]] || exit 11
+    '
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"success=1 failed=1"* ]]
+}
+
+@test "dry-run: runtime.yaml に startup_status フィールドが含まれる" {
+    run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
+
+    local runtime_dir="$TEST_WORKSPACE/.ignite"
+    [ "$status" -eq 0 ]
+    [ -f "$runtime_dir/runtime.yaml" ]
+
+    local content
+    content=$(cat "$runtime_dir/runtime.yaml")
+    [[ "$content" == *"startup_status:"* ]]
 }

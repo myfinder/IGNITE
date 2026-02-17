@@ -4,7 +4,7 @@ IGNITE プロジェクトの AI エージェント向けガイドです。
 
 ## プロジェクト概要
 
-IGNITE は bash ベースのマルチエージェントオーケストレーションシステムです。tmux + AI CLI (OpenCode/Claude) + systemd で構成されます。
+IGNITE は bash ベースのマルチエージェントオーケストレーションシステムです。OpenCode (ヘッドレスモード) + systemd で構成されます。
 
 ## リポジトリ構成
 
@@ -27,9 +27,8 @@ docs/                 # ドキュメント
 
 ### 依存関係
 
-- **必須**: tmux, opencode (または claude)
+- **必須**: opencode, curl, jq
 - **任意**: yq (v4.30+), sqlite3, python3
-- **不要（撤廃済み）**: gh CLI — GitHub API 呼び出しは `scripts/utils/github_helpers.sh` の関数を使用
 
 ### テスト
 
@@ -85,7 +84,6 @@ systemd サービスの起動テストや queue_monitor のプログレス表示
 
 ## 重要な注意事項
 
-- デフォルト CLI プロバイダーは **OpenCode** です（`config/system.yaml` の `cli.provider`）
+- CLI プロバイダーは **OpenCode ヘッドレスモード** 専用です（`opencode serve` で HTTP API 経由で管理）
 - 設定ファイルの読み込みは `scripts/lib/yaml_utils.sh` の関数を使用してください
 - セキュリティ: ユーザー入力は必ず `sanitize_*` 関数でサニタイズすること
-- **gh CLI は使用禁止**: GitHub API 操作は `github_helpers.sh` の `github_api_get`/`github_api_post`/`github_api_request`/`github_api_paginate` を使用すること

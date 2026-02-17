@@ -26,15 +26,15 @@ flowchart TB
 
     subgraph IGNITE["IGNITE Process"]
         Start["ignite start --daemon"]
-        Tmux["tmux Session"]
+        Agents["Agent Servers"]
         Leader["Leader"]
         SubLeaders["Sub-Leaders"]
         IGNITIANs["IGNITIANs"]
 
-        Start -->|"Write PID file<br/>exit 0"| Tmux
-        Tmux --> Leader
-        Tmux --> SubLeaders
-        Tmux --> IGNITIANs
+        Start -->|"Write PID file<br/>exit 0"| Agents
+        Agents --> Leader
+        Agents --> SubLeaders
+        Agents --> IGNITIANs
     end
 
     subgraph Config["Configuration"]
@@ -46,7 +46,7 @@ flowchart TB
     systemd -->|"journalctl"| Watcher
 
     style Unit fill:#4ecdc4,color:#fff
-    style Tmux fill:#ff6b6b,color:#fff
+    style Agents fill:#ff6b6b,color:#fff
     style EnvFile fill:#ffeaa7,color:#333
 ```
 
@@ -55,7 +55,6 @@ flowchart TB
 | Requirement | Minimum Version | Check Command |
 |-------------|----------------|---------------|
 | systemd | 246+ | `systemctl --version` |
-| tmux | 3.0+ | `tmux -V` |
 | bash | 5.0+ | `bash --version` |
 | loginctl | — | `loginctl --version` |
 
@@ -398,9 +397,9 @@ ignite service help
 | Aspect | Normal Mode | Daemon Mode (`--daemon`) |
 |--------|------------|------------------------|
 | Command | `ignite start` | `ignite start --daemon` |
-| tmux session | Created | Created |
+| Agent servers | Started | Started |
 | Post-startup behavior | Shows attach prompt | Writes PID file → `exit 0` |
-| Process lifetime | Maintained until tmux detach | Exits immediately (tmux persists) |
+| Process lifetime | Maintained until user action | Exits immediately (agent servers persist) |
 | systemd integration | Not possible | Works with `Type=oneshot` + `RemainAfterExit=yes` |
 | PID file | None | `<workspace>/ignite-daemon.pid` |
 
@@ -408,11 +407,11 @@ ignite service help
 
 When `--daemon` is specified, the `ignite start` process behaves as follows:
 
-1. Creates tmux session and starts agents
+1. Starts agent servers
 2. Writes its own PID to `<workspace>/ignite-daemon.pid`
 3. Exits with `exit 0`
 
-With `Type=oneshot` + `RemainAfterExit=yes`, systemd transitions the service to `active (exited)` state upon `exit 0`. The tmux session continues running in the background.
+With `Type=oneshot` + `RemainAfterExit=yes`, systemd transitions the service to `active (exited)` state upon `exit 0`. The agent servers continue running in the background.
 
 ### Implicitly Enabled Options
 
@@ -432,8 +431,8 @@ ignite start --daemon -s my-project -w ~/workspace/my-project
 # Check PID file
 cat ~/workspace/my-project/ignite-daemon.pid
 
-# Verify process (tmux session)
-tmux list-sessions | grep my-project
+# Verify process (agent servers)
+ignite status
 ```
 
 ---
@@ -570,22 +569,19 @@ systemctl --user daemon-reload
 
 ---
 
-### tmux Session Persists After Stop
+### Agent Processes Persist After Stop
 
-**Symptom:** tmux session remains after `ignite service stop`
+**Symptom:** Agent processes remain after `ignite service stop`
 
-**Cause:** systemd stop only terminates the PID process; tmux is an independent process
+**Cause:** systemd stop only terminates the PID process; agent servers are independent processes
 
 **Solution:**
 
 ```bash
-# Check remaining sessions
-tmux list-sessions | grep ignite
+# Check remaining processes
+ignite status
 
-# Manual cleanup
-tmux kill-session -t <session-name>
-
-# Or use ignite stop
+# Use ignite stop for cleanup
 ignite stop -s <session-name>
 ```
 

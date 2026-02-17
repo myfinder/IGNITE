@@ -1,49 +1,44 @@
 # CLI プロバイダー設定
-# provider: opencode（デフォルト）または claude
-# model: 使用するモデル名（プロバイダーにより形式が異なる）
-#
-# Claude Code の場合:
-#   cli:
-#     provider: claude
-#     model: claude-opus-4-6
+# opencode ヘッドレスモード専用
+# model: 使用するモデル名
 #
 # OpenCode の場合（デフォルト）:
 #   cli:
-#     provider: opencode
 #     model: anthropic/claude-sonnet-4-5-20250929
 #
 # Ollama（ローカルLLM）の場合:
 #   事前に ollama serve を起動し、モデルを pull しておくこと
 #   API Key は不要。OLLAMA_API_URL で接続先を変更可能（デフォルト: http://localhost:11434/v1）
 #   cli:
-#     provider: opencode
 #     model: ollama/qwen3-coder:30b
 
 cli:
   provider: opencode
   model: openai/gpt-5.2-codex
 
-tmux:
-  window_name: ignite
-
 # 起動タイミング制御の遅延値（get_delay() で読み取り）
 delays:
   # --- ユーザー調整推奨（環境依存） ---
   leader_startup: 3        # Leader/Agent起動待機（秒）
-  cli_startup: 8           # CLI起動完了待機（秒）
   leader_init: 10          # Leader初期化待機（秒）
   agent_stabilize: 2       # エージェント安定化待機（秒）
   agent_retry_wait: 2      # エージェントリトライ待機（秒）
+  server_ready: 60         # opencode serve ヘルスチェックタイムアウト（秒）
   # --- 通常変更不要（システム固有） ---
   process_cleanup: 1       # 旧プロセス停止後の待機（秒）
-  session_create: 0.5      # tmuxセッション作成後の待機（秒）
-  permission_accept: 0.5   # 権限承諾後の待機（秒）
-  prompt_send: 0.3         # プロンプト送信後の待機（秒）
 
 defaults:
   message_priority: normal
   task_timeout: 300  # seconds
   worker_count: 3    # IGNITIANs並列数
+
+health:
+  check_interval: 60       # ヘルスチェック間隔（秒）
+  recovery_enabled: true   # 自動リカバリの有効/無効
+  recovery_max_attempts: 2 # 起動時リカバリの最大試行回数
+  recovery_wait: 15        # リカバリ試行前の待機（秒）
+  max_restart: 3           # queue_monitor のランタイム再起動上限
+  init_timeout: 300        # 初期化未完了のタイムアウト（秒、デフォルト5分）
 
 insights:
   contribute_upstream: true  # false にすると IGNITE 本体リポへの改善 Issue 起票をスキップ

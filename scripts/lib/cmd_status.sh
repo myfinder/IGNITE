@@ -27,10 +27,10 @@ cmd_status() {
         esac
     done
 
-    # セッション名とワークスペースを設定
-    setup_session_name
+    # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    setup_session_name
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -42,18 +42,21 @@ cmd_status() {
     echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo ""
 
-    # tmuxセッション確認
+    # セッション確認
     local has_session=false
     if session_exists; then
         has_session=true
-        print_success "tmuxセッション: 実行中"
 
-        # ペイン数確認
-        local pane_count
-        pane_count=$(tmux list-panes -t "$SESSION_NAME" 2>/dev/null | wc -l)
-        echo -e "${BLUE}  ペイン数: ${pane_count}${NC}"
+        print_success "セッション: 実行中 (ヘッドレス)"
 
-        # エージェント状態（3層ヘルスチェック）
+        # エージェント数確認
+        local agent_count=0
+        for _pf in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
+            [[ -f "$_pf" ]] && agent_count=$((agent_count + 1))
+        done
+        echo -e "${BLUE}  エージェント数: ${agent_count}${NC}"
+
+        # エージェント状態（PID + HTTP ヘルスチェック）
         echo ""
         print_header "エージェント状態"
         echo ""
@@ -64,10 +67,12 @@ cmd_status() {
             IFS=':' read -r _pane_idx _agent_name _status <<< "$_health_line"
             local _formatted
             _formatted=$(format_health_status "$_status")
-            echo -e "  ${_formatted} pane ${_pane_idx}: ${_agent_name}"
-        done < <(get_all_agents_health "$SESSION_NAME:$TMUX_WINDOW_NAME")
+            local _port
+            _port=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_port_${_pane_idx}" 2>/dev/null || echo "-")
+            echo -e "  ${_formatted} idx ${_pane_idx}: ${_agent_name} (port: ${_port})"
+        done < <(get_all_agents_health "$SESSION_NAME")
     else
-        print_error "tmuxセッション: 停止"
+        print_error "セッション: 停止"
     fi
 
     echo ""
@@ -174,6 +179,7 @@ cmd_status() {
 
     print_header "コマンド"
     echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat $IGNITE_RUNTIME_DIR/dashboard.md${NC}"
-    echo -e "  tmuxアタッチ: ${YELLOW}./scripts/ignite attach -s $SESSION_NAME${NC}"
+    echo -e "  エージェント接続: ${YELLOW}./scripts/ignite attach -s $SESSION_NAME${NC}"
+    echo -e "  ログ確認: ${YELLOW}./scripts/ignite logs -f${NC}"
     echo -e "  システム停止: ${YELLOW}./scripts/ignite stop -s $SESSION_NAME${NC}"
 }

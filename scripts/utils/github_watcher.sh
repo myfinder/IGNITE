@@ -9,10 +9,12 @@ set -u
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
+source "${SCRIPT_DIR}/../lib/cli_provider.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # WORKSPACE_DIR が未設定の場合、IGNITE_WORKSPACE_DIR からフォールバック
 WORKSPACE_DIR="${WORKSPACE_DIR:-${IGNITE_WORKSPACE_DIR:-}}"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
+cli_load_config 2>/dev/null || true
 
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
@@ -1209,10 +1211,12 @@ run_daemon() {
     local refresh_counter=0
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-        # tmuxセッション生存チェック（環境変数が設定されている場合のみ）
-        if [[ -n "${IGNITE_TMUX_SESSION:-}" ]]; then
-            if ! tmux has-session -t "$IGNITE_TMUX_SESSION" 2>/dev/null; then
-                log_warn "tmux セッションが消滅しました。Watcherを終了します"
+        # セッション/プロセス生存チェック（環境変数が設定されている場合のみ）
+        if [[ -n "${IGNITE_SESSION:-}" ]]; then
+            local leader_pid
+            leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
+            if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+                log_warn "Leader プロセスが終了しました。Watcherを終了します"
                 exit 0
             fi
         fi

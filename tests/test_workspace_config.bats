@@ -13,18 +13,13 @@ setup() {
 
     # テンプレート system.yaml
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'YAML'
-tmux:
-  window_name: ignite
 delays:
   leader_startup: 3
-  claude_startup: 8
+  server_ready: 8
   leader_init: 10
   agent_stabilize: 2
   agent_retry_wait: 3
   process_cleanup: 1
-  session_create: 1
-  permission_accept: 1
-  prompt_send: 1
 defaults:
   message_priority: normal
   task_timeout: 300
@@ -76,18 +71,13 @@ teardown() {
     local ws_ignite="$TEST_TEMP_DIR/workspace/.ignite"
     mkdir -p "$ws_ignite"
     cat > "$ws_ignite/system.yaml" <<'YAML'
-tmux:
-  window_name: ws-ignite
 delays:
   leader_startup: 5
-  claude_startup: 10
+  server_ready: 10
   leader_init: 12
   agent_stabilize: 3
   agent_retry_wait: 4
   process_cleanup: 2
-  session_create: 2
-  permission_accept: 2
-  prompt_send: 2
 defaults:
   message_priority: high
   task_timeout: 600
@@ -105,9 +95,6 @@ YAML
     touch "$ws_ignite/system.yaml"
     setup_workspace_config "$TEST_TEMP_DIR/workspace" 2>/dev/null
 
-    # IGNITE_CONFIG_DIRは.ignite/に切り替わっている → pricing.yamlは無い
-    run resolve_config "pricing.yaml"
-    [[ "$status" -eq 1 ]]
 }
 
 @test "TC-4: resolve_config - github-app.yamlも同一ロジック（特別扱いなし）" {
@@ -150,18 +137,13 @@ YAML
     local ws_ignite="$TEST_TEMP_DIR/workspace/.ignite"
     mkdir -p "$ws_ignite"
     cat > "$ws_ignite/system.yaml" <<'YAML'
-tmux:
-  window_name: ignite
 delays:
   leader_startup: 3
-  claude_startup: 8
+  server_ready: 8
   leader_init: 10
   agent_stabilize: 2
   agent_retry_wait: 3
   process_cleanup: 1
-  session_create: 1
-  permission_accept: 1
-  prompt_send: 1
 defaults:
   message_priority: normal
   task_timeout: 300
@@ -355,7 +337,7 @@ YAML
     mkdir -p "$legacy_dir" "$dest_dir"
 
     # 移行元にファイルを配置
-    echo "tmux: {window_name: ignite}" > "$legacy_dir/system.yaml"
+    echo "delays: {leader_startup: 3}" > "$legacy_dir/system.yaml"
     echo "github_app: {app_id: 12345}" > "$legacy_dir/github-app.yaml"
 
     # 非対話で移行実行

@@ -236,14 +236,11 @@ validate_system_yaml() {
 
     echo "[INFO] 検証中: $(basename "$file")" >&2
 
-    # tmux セクション
-    validate_required "$file" ".tmux.window_name"
-
-    # delays セクション (9)
+    # delays セクション
     local delay_keys=(
-        leader_startup cli_startup leader_init
+        leader_startup leader_init
         agent_stabilize agent_retry_wait process_cleanup
-        session_create permission_accept prompt_send
+        server_ready
     )
     for key in "${delay_keys[@]}"; do
         validate_required "$file" ".delays.${key}"

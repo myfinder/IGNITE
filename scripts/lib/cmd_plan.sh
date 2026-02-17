@@ -110,5 +110,5 @@ context: \"${escaped_context}\""
     echo "次のステップ:"
     echo -e "  1. ダッシュボード確認: ${YELLOW}./scripts/ignite status${NC}"
     echo -e "  2. ログ確認: ${YELLOW}./scripts/ignite logs${NC}"
-    echo -e "  3. tmuxセッション表示: ${YELLOW}./scripts/ignite attach${NC}"
+    echo -e "  3. セッション接続: ${YELLOW}./scripts/ignite attach${NC}"
 }

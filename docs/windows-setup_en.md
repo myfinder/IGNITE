@@ -66,7 +66,7 @@ Open your WSL2 Ubuntu terminal and run:
 sudo apt update && sudo apt upgrade -y
 
 # Install required tools
-sudo apt install -y tmux git jq curl
+sudo apt install -y git jq curl
 
 # Install GitHub CLI
 # See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
@@ -90,7 +90,6 @@ gh auth login
 Verify installations:
 
 ```bash
-tmux -V          # tmux 3.x+
 git --version    # git 2.x+
 gh --version     # gh 2.x+
 jq --version     # jq 1.6+
@@ -175,15 +174,15 @@ This opens VS Code on Windows, connected to the WSL2 file system. You get:
 
 ## 8. Windows Terminal Configuration
 
-[Windows Terminal](https://aka.ms/terminal) provides the best experience for IGNITE's tmux sessions.
+[Windows Terminal](https://aka.ms/terminal) provides a suitable environment for running IGNITE.
 
 **Recommended settings** (Settings > Ubuntu profile):
 
 | Setting | Recommended Value | Reason |
 |---------|-------------------|--------|
-| Font | Cascadia Code NF / Hack Nerd Font | Supports special characters in tmux status bar |
-| Font size | 10-12 | Fits more panes on screen |
-| Color scheme | One Half Dark / Tango Dark | Good contrast for tmux panes |
+| Font | Cascadia Code NF / Hack Nerd Font | Supports special characters |
+| Font size | 10-12 | Better use of screen space |
+| Color scheme | One Half Dark / Tango Dark | Good contrast |
 | Scrollback | 10000+ | Preserve agent output history |
 
 **Useful shortcuts**:
@@ -220,18 +219,6 @@ wsl --set-default-version 2
 ```powershell
 wsl --shutdown
 ```
-
-### tmux display issues
-
-**Symptom**: Characters display incorrectly in tmux.
-
-**Solution**:
-1. Install a Nerd Font (e.g., [Hack Nerd Font](https://www.nerdfonts.com/))
-2. Set it as the font in Windows Terminal
-3. Add to `~/.tmux.conf` if needed:
-   ```bash
-   set -g default-terminal "tmux-256color"
-   ```
 
 ### Slow file operations
 

@@ -90,7 +90,6 @@ queue/
 logs/
 state/
 context/
-costs/
 archive/
 repos/
 tmp/
@@ -116,7 +115,6 @@ GITIGNORE
             # 通常: 全設定ファイルをコピー
             _copy_config_template "system.yaml" "$ignite_dir"
             _copy_config_template "characters.yaml" "$ignite_dir"
-            _copy_config_template "pricing.yaml" "$ignite_dir"
 
             # github-watcher.yaml / github-app.yaml は .example からコピー
             _copy_example_config "github-watcher.yaml" "$ignite_dir"
@@ -165,7 +163,6 @@ ENVEOF
     echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
         echo "      ├── characters.yaml"
-        echo "      ├── pricing.yaml"
         echo "      ├── github-watcher.yaml.example"
         echo "      ├── github-app.yaml.example"
     fi

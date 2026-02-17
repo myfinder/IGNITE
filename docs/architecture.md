@@ -163,10 +163,9 @@ ignite/
 │   ├── lib/              # コアライブラリ
 │   │   ├── core.sh       # 定数・カラー・出力ヘルパー
 │   │   ├── agent.sh      # エージェント起動・管理
-│   │   ├── session.sh    # tmuxセッション管理
+│   │   ├── session.sh    # セッション管理
 │   │   ├── commands.sh   # コマンドルーター
 │   │   ├── cmd_*.sh      # 各サブコマンド実装
-│   │   ├── cost_utils.sh # コスト計算
 │   │   ├── dlq_handler.sh    # デッドレターキュー処理
 │   │   └── retry_handler.sh  # リトライ処理
 │   └── utils/            # ユーティリティ
@@ -205,25 +204,23 @@ ignite/
 
 ## 実行環境
 
-### tmuxセッション構成
+### エージェントサーバー構成
 
-Session `ignite-session` の単一ウィンドウ内に、全ペインが `tiled` レイアウト（均等タイル配置）で並びます。
+各エージェントは `opencode serve` によるヘッドレスサーバーとして起動し、HTTP API 経由で制御されます。
 
-**ペイン番号の割り当て:**
+**エージェントの割り当て:**
 
-| ペイン | エージェント | 備考 |
-|--------|-------------|------|
-| 0 | Leader (伊羽ユイ) | 最初のペイン |
-| 1 | Strategist (義賀リオ) | Sub-Leaders |
-| 2 | Architect (祢音ナナ) | Sub-Leaders |
-| 3 | Evaluator (衣結ノア) | Sub-Leaders |
-| 4 | Coordinator (通瀬アイナ) | Sub-Leaders |
-| 5 | Innovator (恵那ツムギ) | Sub-Leaders |
-| 6 | IGNITIAN-1 | `5 + N` で算出 |
-| 7 | IGNITIAN-2 | |
-| ... | IGNITIAN-N | 最大32並列 |
+| エージェント | 役割 | 備考 |
+|-------------|------|------|
+| Leader (伊羽ユイ) | 全体統率 | 最初に起動 |
+| Strategist (義賀リオ) | 戦略立案 | Sub-Leaders |
+| Architect (祢音ナナ) | 設計判断 | Sub-Leaders |
+| Evaluator (衣結ノア) | 品質評価 | Sub-Leaders |
+| Coordinator (通瀬アイナ) | タスク配分 | Sub-Leaders |
+| Innovator (恵那ツムギ) | 改善提案 | Sub-Leaders |
+| IGNITIAN-1 ~ N | タスク実行 | 最大32並列 |
 
-各ペインは `tmux split-window -h` で追加後 `select-layout tiled` で均等配置されます。
+各エージェントサーバーは個別のポートで起動し、PID ベースで管理されます。
 
 ### エージェント起動
 
@@ -351,7 +348,7 @@ graph LR
 
 ### MIMEファイルキュー — メッセージング層
 
-エージェント間の非同期メッセージングを担います。`queue_monitor.sh` が10秒ポーリングでキューを監視し、tmux経由でエージェントに配信します。
+エージェント間の非同期メッセージングを担います。`queue_monitor.sh` が10秒ポーリングでキューを監視し、HTTP API 経由でエージェントに配信します。
 
 **キューディレクトリ:**
 ```
@@ -507,15 +504,15 @@ sequenceDiagram
 ignite status
 ```
 
-### tmuxセッション確認
+### セッション確認
 ```bash
-tmux attach -t ignite-session
+ignite attach
 ```
 
 ## トラブルシューティング
 
 ### エージェントが応答しない
-1. tmuxペインを確認
+1. エージェントサーバーの状態を確認
 2. ログファイルをチェック
 3. メッセージキューを確認
 4. 手動でメッセージを送信してテスト
@@ -526,6 +523,6 @@ tmux attach -t ignite-session
 3. IGNITIANSの状態を確認
 
 ### システムが起動しない
-1. tmuxがインストールされているか確認
-2. claude-codeが利用可能か確認
-3. ポート競合をチェック
+1. opencode がインストールされているか確認
+2. ポート競合をチェック
+3. ログファイルでエラーを確認

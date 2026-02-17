@@ -73,6 +73,37 @@ yaml_get_nested() {
 #   yq 必須。未インストール時は空出力 + stderr に警告。
 # =============================================================================
 
+# =============================================================================
+# yaml_get_first_repo <file>
+#   github-watcher.yaml の repositories セクションから最初のリポジトリ名を返す。
+#   yq がある場合は yq、なければ sed フォールバック。
+# =============================================================================
+
+yaml_get_first_repo() {
+    local file="$1"
+    [[ -f "$file" ]] || return 1
+
+    local repo=""
+    if [[ "$_YQ_AVAILABLE" -eq 1 ]]; then
+        repo=$(yq -r '.repositories[0].repo // ""' "$file" 2>/dev/null)
+    else
+        repo=$(sed -n '/repositories:/,/^[^ ]/{
+            /- repo:/{
+                s/.*- repo: *//
+                s/ *#.*//
+                s/["\x27]//g
+                s/ *$//
+                p; q
+            }
+        }' "$file" 2>/dev/null)
+    fi
+
+    if [[ -z "$repo" || "$repo" == "null" ]]; then
+        return 1
+    fi
+    echo "$repo"
+}
+
 yaml_get_list() {
     local file="$1"
     local dotpath="$2"

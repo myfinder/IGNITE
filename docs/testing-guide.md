@@ -8,7 +8,7 @@
 
 ```bash
 # Ubuntu/Debian (Codespace 含む)
-sudo apt install tmux bats
+sudo apt install bats
 
 # opencode
 curl -fsSL https://opencode.ai/install | bash
@@ -40,7 +40,7 @@ bats tests/test_security.bats
 
 ## 2. dry-run による起動確認
 
-実際の tmux/CLI 起動をスキップし、初期化フローを検証します。
+実際のエージェントサーバー起動をスキップし、初期化フローを検証します。
 
 ```bash
 # ワークスペース初期化

@@ -154,5 +154,5 @@ url: \"${issue_url}\""
     echo "次のステップ:"
     echo -e "  1. 進捗確認: ${YELLOW}./scripts/ignite status${NC}"
     echo -e "  2. ログ確認: ${YELLOW}./scripts/ignite logs -f${NC}"
-    echo -e "  3. tmux確認: ${YELLOW}./scripts/ignite attach${NC}"
+    echo -e "  3. セッション接続: ${YELLOW}./scripts/ignite attach${NC}"
 }

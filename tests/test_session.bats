@@ -54,49 +54,16 @@ teardown() {
 
 # --- setup_session_name ---
 
-# tmux モック作成ヘルパー
-# TMUX_MOCK_HAS_SESSION: "success" | "fail" (has-session の戻り値)
-# TMUX_MOCK_LIST_SESSIONS: 改行区切りのセッション名リスト
-_create_tmux_mock() {
-    local mock_dir="$TEST_TEMP_DIR/bin"
-    mkdir -p "$mock_dir"
-    cat > "$mock_dir/tmux" << 'MOCK'
-#!/bin/bash
-case "$1" in
-    has-session)
-        if [[ "${TMUX_MOCK_HAS_SESSION:-fail}" == "success" ]]; then
-            exit 0
-        else
-            exit 1
-        fi
-        ;;
-    list-sessions)
-        if [[ -n "${TMUX_MOCK_LIST_SESSIONS:-}" ]]; then
-            echo "$TMUX_MOCK_LIST_SESSIONS"
-        fi
-        exit 0
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-MOCK
-    chmod +x "$mock_dir/tmux"
-    export PATH="$mock_dir:$PATH"
-}
-
-@test "setup_session_name: runtime.yaml からセッション名を取得" {
+@test "setup_session_name: runtime.yaml + Leader PID 生存でセッション名を取得" {
     # ワークスペースに runtime.yaml を作成
     local ws="$TEST_TEMP_DIR/workspace"
-    mkdir -p "$ws/.ignite"
+    mkdir -p "$ws/.ignite/state"
     cat > "$ws/.ignite/runtime.yaml" << EOF
 session_name: ignite-test1234
 dry_run: false
 EOF
-
-    # tmux モック: has-session 成功
-    export TMUX_MOCK_HAS_SESSION="success"
-    _create_tmux_mock
+    # 自プロセスの PID を Leader PID として設定（必ず生存している）
+    echo "$$" > "$ws/.ignite/state/.agent_pid_0"
 
     SESSION_NAME=""
     WORKSPACE_DIR="$ws"
@@ -107,54 +74,32 @@ EOF
     [ "$WORKSPACE_DIR" = "$ws" ]
 }
 
-@test "setup_session_name: セッション1つならそのセッションを使用" {
-    # tmux モック: has-session 失敗（runtime.yaml パスをスキップ）、list-sessions は1つ
-    export TMUX_MOCK_HAS_SESSION="fail"
-    export TMUX_MOCK_LIST_SESSIONS="ignite-abcd"
-    _create_tmux_mock
-
-    SESSION_NAME=""
-    WORKSPACE_DIR=""
-
-    setup_session_name
-
-    [ "$SESSION_NAME" = "ignite-abcd" ]
-}
-
-@test "setup_session_name: 複数セッションでエラー終了" {
-    # tmux モック: list-sessions が複数返す
-    export TMUX_MOCK_HAS_SESSION="fail"
-    export TMUX_MOCK_LIST_SESSIONS=$'ignite-aaaa\nignite-bbbb'
-    _create_tmux_mock
-
-    SESSION_NAME=""
-    WORKSPACE_DIR=""
-
-    run setup_session_name
-
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"複数の IGNITE セッション"* ]]
-}
-
-@test "setup_session_name: runtime.yaml のセッションが存在しない場合フォールバック" {
+@test "setup_session_name: runtime.yaml あるが Leader PID 死亡 → 新規生成" {
     # ワークスペースに runtime.yaml を作成
     local ws="$TEST_TEMP_DIR/workspace"
-    mkdir -p "$ws/.ignite"
+    mkdir -p "$ws/.ignite/state"
     cat > "$ws/.ignite/runtime.yaml" << EOF
 session_name: ignite-dead
 dry_run: false
 EOF
-
-    # tmux モック: has-session 失敗、list-sessions は1つ
-    export TMUX_MOCK_HAS_SESSION="fail"
-    export TMUX_MOCK_LIST_SESSIONS="ignite-live"
-    _create_tmux_mock
+    # 存在しない PID を設定
+    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
 
     SESSION_NAME=""
     WORKSPACE_DIR="$ws"
 
     setup_session_name
 
-    # runtime.yaml のセッションは存在しないのでフォールバックして list-sessions の結果を使う
-    [ "$SESSION_NAME" = "ignite-live" ]
+    # Leader PID が死亡しているので新規生成される
+    [[ "$SESSION_NAME" == ignite-* ]]
+    [ "$SESSION_NAME" != "ignite-dead" ]
+}
+
+@test "setup_session_name: runtime.yaml なし → 新規生成" {
+    SESSION_NAME=""
+    WORKSPACE_DIR=""
+
+    setup_session_name
+
+    [[ "$SESSION_NAME" == ignite-* ]]
 }

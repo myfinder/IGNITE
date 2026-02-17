@@ -1,0 +1,11 @@
+# IGNITE エージェントログローテーション
+# インストール: /etc/logrotate.d/ignite にコピー
+
+/path/to/.ignite/logs/agent_*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

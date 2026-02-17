@@ -10,8 +10,10 @@ RemainAfterExit=yes
 
 EnvironmentFile=-%h/.config/ignite/env.%i
 
+# headless モード (opencode): tmux 不要、HTTP 通信で動作
+# TUI モード (claude): tmux セッション内で動作
 ExecStart=%h/.local/share/ignite/scripts/ignite start --daemon -s %i
-ExecStop=%h/.local/share/ignite/scripts/ignite stop -s %i -y
+ExecStop=%h/.local/share/ignite/scripts/ignite stop -y -s %i
 
 TimeoutStartSec=300
 TimeoutStopSec=30

@@ -8,18 +8,17 @@ IGNITE プロジェクトへの貢献に興味を持っていただきありが�
 
 以下のツールがインストールされている必要があります：
 
-- **tmux** (v3.0以上) - ターミナルマルチプレクサ
-- **claude** - Claude CLI
+- **opencode** (または **claude**) - AI CLI
 - **gh** - GitHub CLI
 - **jq** - JSONプロセッサ
 - **yq** (オプション) - YAMLプロセッサ
 
 ```bash
 # Ubuntu/Debian
-sudo apt install tmux jq
+sudo apt install jq
 
 # macOS
-brew install tmux jq yq
+brew install jq yq
 
 # GitHub CLI
 # https://cli.github.com/
@@ -199,8 +198,7 @@ PRは以下のチェックを通過する必要があります：
 
 1. **環境情報**
    - OS とバージョン
-   - tmux バージョン
-   - claude CLI バージョン
+   - opencode / claude CLI バージョン
 
 2. **再現手順**
    - 問題を再現するための具体的な手順
