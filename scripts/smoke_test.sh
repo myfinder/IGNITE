@@ -26,6 +26,7 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 PASS_COUNT=0
 FAIL_COUNT=0
 FAILED_TESTS=()
+SMOKE_SESSION_NAME=""
 
 # =============================================================================
 # Assert ヘルパー
@@ -352,6 +353,8 @@ phase_start_stop() {
         session_name=$(grep 'session_name:' "$SMOKE_DIR/workspace/.ignite/runtime.yaml" | awk '{print $2}' | tr -d '"' | head -1)
     fi
 
+    SMOKE_SESSION_NAME="${session_name:-}"
+
     if [[ -z "${session_name:-}" ]] || ! tmux has-session -t "$session_name" 2>/dev/null; then
         if [[ "$start_ok" == true ]]; then
             FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -433,13 +436,10 @@ cleanup() {
         return
     fi
 
-    # 残留 tmux セッションのクリーンアップ
-    local leftover
-    leftover=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^ignite-' || true)
-    while IFS= read -r sess; do
-        [[ -z "$sess" ]] && continue
-        tmux kill-session -t "$sess" 2>/dev/null || true
-    done <<< "$leftover"
+    # 残留 tmux セッションのクリーンアップ（自分が起動したセッションのみ）
+    if [[ -n "${SMOKE_SESSION_NAME:-}" ]]; then
+        tmux kill-session -t "$SMOKE_SESSION_NAME" 2>/dev/null || true
+    fi
 
     if [[ -n "${SMOKE_DIR:-}" ]] && [[ -d "$SMOKE_DIR" ]]; then
         rm -rf "$SMOKE_DIR"

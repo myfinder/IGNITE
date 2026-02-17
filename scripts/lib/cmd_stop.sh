@@ -56,6 +56,8 @@ cmd_stop() {
     fi
 
     # ワークスペース解決: -w 指定 > セッション情報 > デフォルト
+    # NOTE: setup_session_name() が runtime.yaml から解決した場合、
+    # WORKSPACE_DIR は既にセットされているためこのブロックはスキップされる
     if [[ -z "$WORKSPACE_DIR" ]]; then
         local session_info="$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"
         if [[ -f "$session_info" ]]; then
