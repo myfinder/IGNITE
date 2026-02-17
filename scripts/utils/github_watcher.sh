@@ -1212,16 +1212,11 @@ run_daemon() {
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
         # セッション/プロセス生存チェック（環境変数が設定されている場合のみ）
-        if [[ -n "${IGNITE_TMUX_SESSION:-}" ]]; then
-            if cli_is_headless_mode; then
-                local leader_pid
-                leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
-                    log_warn "Leader プロセスが終了しました。Watcherを終了します"
-                    exit 0
-                fi
-            elif ! tmux has-session -t "$IGNITE_TMUX_SESSION" 2>/dev/null; then
-                log_warn "tmux セッションが消滅しました。Watcherを終了します"
+        if [[ -n "${IGNITE_SESSION:-}" ]]; then
+            local leader_pid
+            leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
+            if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+                log_warn "Leader プロセスが終了しました。Watcherを終了します"
                 exit 0
             fi
         fi

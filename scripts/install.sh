@@ -96,31 +96,8 @@ check_dependencies() {
 
     local missing=()
 
-    # system.yaml から CLI プロバイダーを簡易パース
-    local cli_provider="opencode"
-    local system_yaml="$CONFIG_DIR/system.yaml"
-    if [[ -f "$system_yaml" ]]; then
-        local _prov
-        _prov=$(sed -n '/^cli:/,/^[^ ]/p' "$system_yaml" 2>/dev/null \
-            | awk -F': ' '/^  provider:/{print $2; exit}' | sed 's/ *#.*//' | tr -d '"' | tr -d "'")
-        [[ -n "$_prov" ]] && cli_provider="$_prov"
-    fi
-
-    # プロバイダーに応じた必須コマンドリスト
-    local required_cmds=""
-    case "$cli_provider" in
-        opencode)
-            # opencode (headless) → tmux 不要、curl/jq 必須
-            required_cmds="opencode curl jq"
-            ;;
-        claude)
-            # claude (TUI) → tmux 必須
-            required_cmds="tmux claude"
-            ;;
-        *)
-            required_cmds="tmux opencode"
-            ;;
-    esac
+    # 必須コマンドリスト（opencode ヘッドレス専用）
+    local required_cmds="opencode curl jq"
 
     for cmd in $required_cmds; do
         if command -v "$cmd" &> /dev/null; then
@@ -136,12 +113,6 @@ check_dependencies() {
         print_warning "以下のコマンドをインストールしてください:"
         for cmd in "${missing[@]}"; do
             case "$cmd" in
-                tmux)
-                    echo "  - tmux: sudo apt install tmux (Ubuntu) / brew install tmux (macOS)"
-                    ;;
-                claude)
-                    echo "  - claude: npm install -g @anthropic-ai/claude-code"
-                    ;;
                 opencode)
                     echo "  - opencode: https://opencode.ai/"
                     ;;

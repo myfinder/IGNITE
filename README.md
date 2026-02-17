@@ -111,8 +111,7 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 - **イベント駆動型通信**: YAMLファイルベースの非同期メッセージング
 - **並列タスク実行**: タスクの性質に応じて1-32のワーカーが並列実行
 - **キャラクター性**: 各エージェントは個性と専門性を持つ
-- **完全なローカル実行**: claude codeのフル機能をローカルPCで活用
-- **tmux統合**: 全エージェントの動作をリアルタイムで可視化
+- **完全なローカル実行**: OpenCodeのフル機能をローカルPCで活用
 - **コスト追跡**: エージェントごとのトークン消費量と費用をリアルタイムで確認
 - **エージェントメモリ永続化**: SQLiteによるセッション間の学習・決定記録保持
 - **日次レポート管理**: 作業進捗をリポジトリ別 GitHub Issues で自動追跡
@@ -140,18 +139,17 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 以下のツールがインストールされている必要があります：
 
 ```bash
-# AI Coding Agent CLI（いずれか一つ）
-opencode --version   # OpenCode（デフォルト）
-claude --version     # Claude Code（代替）
-
-# tmux
-tmux -V
-
-# gh (GitHub CLI)
-gh --version
+# AI Coding Agent CLI
+opencode --version
 
 # bash（通常は標準でインストール済み）
 bash --version
+
+# curl（通常は標準でインストール済み）
+curl --version
+
+# jq
+jq --version
 
 # yq（オプション — 未インストール時はgrep/awkフォールバックで動作）
 yq --version
@@ -177,31 +175,17 @@ IGNITE のエージェントは tool calling（ファイル読み書き、コマ
 
 CLI プロバイダーがインストールされていない場合：
 ```bash
-# OpenCode（デフォルト）
+# OpenCode
 curl -fsSL https://opencode.ai/install | bash
-
-# Claude Code（代替）
-npm install -g @anthropic-ai/claude-code
 ```
 
-tmuxがインストールされていない場合：
+curl/jqがインストールされていない場合：
 ```bash
 # Ubuntu/Debian
-sudo apt install tmux
+sudo apt install curl jq
 
 # macOS
-brew install tmux
-```
-
-ghがインストールされていない場合：
-```bash
-# 公式サイト: https://cli.github.com/
-
-# Ubuntu/Debian
-sudo apt install gh
-
-# macOS
-brew install gh
+brew install curl jq
 ```
 
 yqがインストールされていない場合（オプション）：
@@ -284,11 +268,11 @@ ignite start
 
 初回起動時は自動的に：
 - workspaceディレクトリを初期化
-- tmuxセッション `ignite-session` を作成
+- エージェントサーバーを起動
 - Leader（伊羽ユイ）を起動
 - 初期ダッシュボードを作成
 
-起動が完了すると、tmuxセッションへのアタッチを促すプロンプトが表示されます。
+起動が完了すると、エージェントのステータスが表示されます。
 
 **オプション:**
 ```bash
@@ -316,7 +300,7 @@ ignite start --agents leader
 
 ### 2. タスクを投入
 
-別のターミナル、またはtmuxセッションをデタッチ（`Ctrl+b d`）してから：
+別のターミナルから：
 
 ```bash
 ignite plan "READMEファイルを作成する"
@@ -361,13 +345,13 @@ ignite logs -f
 ignite logs -n 50
 ```
 
-#### tmuxセッションで直接確認
+#### エージェントセッションで直接確認
 
 ```bash
 ignite attach
 ```
 
-各ペインで各エージェントの動作をリアルタイムで確認できます。
+HTTP API経由で各エージェントのセッションに接続し、動作をリアルタイムで確認できます。
 
 ### 4. システム停止
 
@@ -480,7 +464,7 @@ sequenceDiagram
 
 **ポイント:**
 - メッセージはキューディレクトリにファイルとして書き出し
-- queue_monitorが検知し、tmux経由で受信側に通知
+- queue_monitorが検知し、HTTP API経由で受信側に通知
 - 受信側は処理後、ファイルを削除
 
 ### データストレージの使い分け
@@ -507,7 +491,7 @@ ignite/
 │   ├── lib/                    # コアライブラリ
 │   │   ├── core.sh             # 定数・カラー・出力ヘルパー
 │   │   ├── agent.sh            # エージェント起動・管理
-│   │   ├── session.sh          # tmuxセッション管理
+│   │   ├── session.sh          # セッション管理
 │   │   ├── commands.sh         # コマンドルーター
 │   │   ├── cmd_start.sh        # start コマンド
 │   │   ├── cmd_stop.sh         # stop コマンド
@@ -583,7 +567,7 @@ ignite/
 | `stop` | システム停止 | `ignite stop` |
 | `plan` | タスク投入 | `ignite plan "目標"` |
 | `status` | 状態確認 | `ignite status` |
-| `attach` | tmuxセッションに接続 | `ignite attach` |
+| `attach` | エージェントセッションに接続 | `ignite attach` |
 | `logs` | ログ表示 | `ignite logs` |
 | `clean` | workspaceクリア | `ignite clean` |
 | `cost` | トークン消費量・費用を表示 | `ignite cost` |
@@ -655,7 +639,7 @@ ignite start --agents leader
 | 設計判断 | Architectが担当 | Leaderが直接実行 |
 | タスク実行 | IGNITIANsが並列実行 | Leaderが直接実行 |
 | 品質評価 | Evaluatorが担当 | Leaderが直接確認 |
-| tmuxペイン数 | 6+（Sub-Leaders + IGNITIANs） | 1（Leaderのみ） |
+| エージェントプロセス数 | 6+（Sub-Leaders + IGNITIANs） | 1（Leaderのみ） |
 
 **注意事項:**
 - 複雑なタスクや大規模な変更には通常モード（協調モード）を推奨します
@@ -759,41 +743,20 @@ ignite start --with-watcher
 
 詳細な設定方法は [docs/github-watcher.md](docs/github-watcher.md) を参照してください。
 
-### tmuxセッションの操作
+### セッションの操作
 
 **基本操作:**
 
 ```bash
-# セッションにアタッチ（推奨）
+# エージェントセッションに接続
 ignite attach
 
-# または直接tmuxコマンドを使用（セッション名は起動時に指定した名前）
-tmux attach -t ignite-session
+# 特定のエージェントに接続
+ignite attach --agent leader
 
-# デタッチ（セッション内で）
-Ctrl+b d
-
-# ペイン間移動
-Ctrl+b o          # 次のペインへ
-Ctrl+b ;          # 前のペインへ
-Ctrl+b q          # ペイン番号を表示
-Ctrl+b q [番号]   # 指定番号のペインへ移動
-
-# スクロール（ログ確認）
-Ctrl+b [          # スクロールモードに入る
-↑↓ または PageUp/PageDown でスクロール
-q                 # スクロールモード終了
+# エージェントの稼働状況を確認
+ignite status
 ```
-
-**ペイン配置:**
-
-- Pane 0: Leader（伊羽ユイ）
-- Pane 1: Strategist（義賀リオ）
-- Pane 2: Architect（祢音ナナ）
-- Pane 3: Evaluator（衣結ノア）
-- Pane 4: Coordinator（通瀬アイナ）
-- Pane 5: Innovator（恵那ツムギ）
-- Pane 6以降: IGNITIANs
 
 ### ヘルプの確認
 
@@ -857,33 +820,21 @@ ignite --version
 
 ### システムが起動しない
 
-**原因1: 既存のセッションが残っている**
+**原因1: 既存のプロセスが残っている**
 
 ```bash
-# 既存セッションを確認
-tmux ls
-
 # 強制的に再起動
 ignite start -f
 ```
 
-**原因2: claudeが見つからない**
+**原因2: opencodeが見つからない**
 
 ```bash
-# claudeのパス確認
-which claude
+# opencodeのパス確認
+which opencode
 
-# インストールされていない場合は、Anthropic公式サイトからインストール
-```
-
-**原因3: tmuxがインストールされていない**
-
-```bash
-# Ubuntu/Debian
-sudo apt install tmux
-
-# macOS
-brew install tmux
+# インストールされていない場合
+curl -fsSL https://opencode.ai/install | bash
 ```
 
 ### タスクが進行しない
@@ -894,9 +845,8 @@ brew install tmux
 # ステータスでキュー状態を確認
 ignite status
 
-# メッセージがある場合、そのエージェントのペインを確認
+# メッセージがある場合、そのエージェントの状態を確認
 ignite attach
-# 該当ペインに移動してログを確認
 ```
 
 **原因2: エージェントがエラーで停止**
@@ -922,10 +872,8 @@ ignite status
 # ステータスでキュー状態を確認
 ignite status
 
-# 該当するIGNITIANのペインを確認
-ignite attach
-Ctrl+b q    # ペイン番号を確認
-Ctrl+b q 6  # IGNITIAN-1のペインへ移動
+# 該当するIGNITIANの状態を確認
+ignite attach --agent ignitian_1
 ```
 
 ### ダッシュボードが更新されない
@@ -1154,8 +1102,7 @@ IGNITEプロジェクトへの貢献を歓迎します！
 ## 🙏 謝辞
 
 - **multi-agent-shogun** - アーキテクチャの参考元
-- **OpenCode** / **Claude Code** - AI Coding Agent CLI
-- **tmux** - セッション管理ツール
+- **OpenCode** - AI Coding Agent CLI
 - **Anthropic** - Claude AI
 
 ## 📧 サポート

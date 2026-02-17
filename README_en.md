@@ -4,7 +4,7 @@
   <img src="images/ignite-logo.jpg" width="200">
 </p>
 
-**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** is a hierarchical multi-agent system utilizing the claude code CLI. A Leader, five specialized Sub-Leaders, and a variable number of IGNITIANS workers collaborate to execute complex tasks in parallel.<br>
+**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** is a hierarchical multi-agent system utilizing the OpenCode headless mode. A Leader, five specialized Sub-Leaders, and a variable number of IGNITIANS workers collaborate to execute complex tasks in parallel.<br>
 IGNITE may not be able to sing, dance, or go live streaming just yet, but they’re training hard every single day, aiming for the day they can shine on stage and put on a wonderful show for all their fans.
 
 <p align="center">
@@ -111,8 +111,8 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 - **Event-Driven Communication**: Asynchronous messaging based on YAML files
 - **Parallel Task Execution**: 1-32 workers execute in parallel depending on task nature
 - **Character Personality**: Each agent has unique personality and expertise
-- **Fully Local Execution**: Leverage full claude code capabilities on local PC
-- **tmux Integration**: Real-time visualization of all agent activities
+- **Fully Local Execution**: Leverage full OpenCode capabilities on local PC
+- **Headless Agent Servers**: Each agent runs as an independent HTTP server process
 - **Cost Tracking**: Real-time token usage and cost monitoring per agent
 - **Agent Memory Persistence**: SQLite-based retention of learning and decision records across sessions
 - **Daily Report Management**: Automatic progress tracking via per-repository GitHub Issues
@@ -140,18 +140,18 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 The following tools must be installed:
 
 ```bash
-# AI Coding Agent CLI (one of the following)
+# AI Coding Agent CLI
 opencode --version   # OpenCode (default)
-claude --version     # Claude Code (alternative)
-
-# tmux
-tmux -V
 
 # bash (usually pre-installed)
 bash --version
 
 # yq (optional — falls back to grep/awk when not installed)
 yq --version
+
+# curl / jq (for HTTP API communication)
+curl --version
+jq --version
 ```
 
 > **Local LLM**: Ollama / LM Studio / vLLM and other OpenAI-compatible servers are also supported. Set `model: ollama/qwen3-coder:30b` (or similar) in `config/system.yaml`. No API key required.
@@ -177,17 +177,8 @@ If CLI provider is not installed:
 # OpenCode (default)
 curl -fsSL https://opencode.ai/install | bash
 
-# Claude Code (alternative)
+# Claude Code (alternative — legacy support)
 npm install -g @anthropic-ai/claude-code
-```
-
-If tmux is not installed:
-```bash
-# Ubuntu/Debian
-sudo apt install tmux
-
-# macOS
-brew install tmux
 ```
 
 If yq is not installed (optional):
@@ -285,11 +276,11 @@ ignite start
 
 On first startup, the system automatically:
 - Initializes the workspace directory
-- Creates tmux session `ignite-session`
+- Starts agent servers
 - Launches Leader (Yui Iha)
 - Creates initial dashboard
 
-After startup completes, you'll be prompted to attach to the tmux session.
+After startup completes, all agent servers will be running in the background.
 
 **Options:**
 ```bash
@@ -317,7 +308,7 @@ Using `-a`/`--agents` option with `leader` starts in Leader-only solo mode. See 
 
 ### 2. Submit a Task
 
-From another terminal, or after detaching from tmux session (`Ctrl+b d`):
+From another terminal:
 
 ```bash
 ignite plan "Create a README file"
@@ -362,13 +353,13 @@ ignite logs -f
 ignite logs -n 50
 ```
 
-#### Direct tmux Session View
+#### Direct Agent Session View
 
 ```bash
 ignite attach
 ```
 
-You can monitor each agent's activity in real-time across panes.
+You can monitor each agent's activity in real-time.
 
 ### 4. Stop the System
 
@@ -481,7 +472,7 @@ sequenceDiagram
 
 **Key Points:**
 - Messages are written as files to queue directories
-- queue_monitor detects and notifies recipient via tmux
+- queue_monitor detects and notifies recipient via HTTP API
 - Recipient deletes file after handling
 
 ### Data Storage Architecture
@@ -508,7 +499,7 @@ ignite/
 │   ├── lib/                    # Core libraries
 │   │   ├── core.sh             # Constants, colors, output helpers
 │   │   ├── agent.sh            # Agent launch & management
-│   │   ├── session.sh          # tmux session management
+│   │   ├── session.sh          # Session management
 │   │   ├── commands.sh         # Command router
 │   │   ├── cmd_start.sh        # start command
 │   │   ├── cmd_stop.sh         # stop command
@@ -584,7 +575,7 @@ ignite/
 | `stop` | Stop system | `ignite stop` |
 | `plan` | Submit task | `ignite plan "goal"` |
 | `status` | Check status | `ignite status` |
-| `attach` | Connect to tmux session | `ignite attach` |
+| `attach` | Connect to agent session | `ignite attach` |
 | `logs` | View logs | `ignite logs` |
 | `clean` | Clear workspace | `ignite clean` |
 | `cost` | Show token usage and costs | `ignite cost` |
@@ -656,7 +647,7 @@ A lightweight mode where only the Leader processes tasks without launching Sub-L
 | Design Decisions | Handled by Architect | Leader executes directly |
 | Task Execution | IGNITIANs execute in parallel | Leader executes directly |
 | Quality Evaluation | Handled by Evaluator | Leader verifies directly |
-| Number of tmux panes | 6+ (Sub-Leaders + IGNITIANs) | 1 (Leader only) |
+| Number of agent processes | 6+ (Sub-Leaders + IGNITIANs) | 1 (Leader only) |
 
 **Notes:**
 - Normal mode (coordination mode) is recommended for complex tasks or large-scale changes
@@ -760,41 +751,17 @@ ignite start --with-watcher
 
 For detailed configuration, see [docs/github-watcher_en.md](docs/github-watcher_en.md).
 
-### tmux Session Operations
-
-**Basic Operations:**
+### Agent Session Operations
 
 ```bash
 # Attach to session (recommended)
 ignite attach
 
-# Or use tmux command directly (session name is the one specified at startup)
-tmux attach -t ignite-session
-
-# Detach (within session)
-Ctrl+b d
-
-# Navigate between panes
-Ctrl+b o          # Next pane
-Ctrl+b ;          # Previous pane
-Ctrl+b q          # Display pane numbers
-Ctrl+b q [number] # Go to specified pane
-
-# Scroll (log review)
-Ctrl+b [          # Enter scroll mode
-↑↓ or PageUp/PageDown to scroll
-q                 # Exit scroll mode
+# View logs
+ignite logs -f
 ```
 
-**Pane Layout:**
-
-- Pane 0: Leader (Yui Iha)
-- Pane 1: Strategist (Rio Giga)
-- Pane 2: Architect (Nana Neon)
-- Pane 3: Evaluator (Noah Iyui)
-- Pane 4: Coordinator (Aina Tsuse)
-- Pane 5: Innovator (Tsumugi Ena)
-- Pane 6+: IGNITIANs
+Each agent runs as an independent headless server process. Use `ignite status` to check which agents are running.
 
 ### Getting Help
 
@@ -861,30 +828,18 @@ Goal: Create a README file
 **Cause 1: Existing session remains**
 
 ```bash
-# Check existing sessions
-tmux ls
-
 # Force restart
 ignite start -f
 ```
 
-**Cause 2: claude not found**
+**Cause 2: opencode not found**
 
 ```bash
-# Check claude path
-which claude
+# Check opencode path
+which opencode
 
-# If not installed, install from Anthropic official site
-```
-
-**Cause 3: tmux not installed**
-
-```bash
-# Ubuntu/Debian
-sudo apt install tmux
-
-# macOS
-brew install tmux
+# If not installed
+curl -fsSL https://opencode.ai/install | bash
 ```
 
 ### Tasks Not Progressing
@@ -895,9 +850,8 @@ brew install tmux
 # Check queue status
 ignite status
 
-# If messages exist, check that agent's pane
-ignite attach
-# Navigate to the relevant pane and check logs
+# If messages exist, check the agent's logs
+ignite logs -f
 ```
 
 **Cause 2: Agent stopped due to error**
@@ -923,10 +877,8 @@ ignite status
 # Check queue status
 ignite status
 
-# Check the relevant IGNITIAN's pane
-ignite attach
-Ctrl+b q    # Check pane numbers
-Ctrl+b q 6  # Go to IGNITIAN-1's pane
+# Check IGNITIAN logs
+ignite logs -f
 ```
 
 ### Dashboard Not Updating
@@ -1156,8 +1108,7 @@ When forking, please replace character assets (`characters/`, `images/`) with yo
 ## 🙏 Acknowledgments
 
 - **multi-agent-shogun** - Architecture reference
-- **OpenCode** / **Claude Code** - AI Coding Agent CLI
-- **tmux** - Session management tool
+- **OpenCode** - AI Coding Agent CLI (headless mode)
 - **Anthropic** - Claude AI
 
 ## 📧 Support

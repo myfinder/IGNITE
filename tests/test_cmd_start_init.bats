@@ -16,16 +16,11 @@ setup() {
 
     # 最小限の system.yaml を作成
     cat > "$TEST_WORKSPACE/.ignite/system.yaml" <<'YAML'
-tmux:
-  window_name: ignite
 delays:
   process_cleanup: 0
-  session_create: 0
   leader_startup: 0
-  claude_startup: 0
+  server_ready: 0
   leader_init: 0
-  permission_accept: 0
-  prompt_send: 0
   agent_stabilize: 0
   agent_retry_wait: 0
 defaults:
@@ -97,17 +92,13 @@ teardown() {
     [[ "$content" == *"dry_run: true"* ]]
 }
 
-@test "dry-run: tmux/AI CLI起動がスキップされる（[DRY-RUN]メッセージ確認）" {
+@test "dry-run: エージェントサーバー起動がスキップされる（[DRY-RUN]メッセージ確認）" {
     run "$PROJECT_ROOT/scripts/ignite" start --dry-run --skip-validation -n -w "$TEST_WORKSPACE"
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"[DRY-RUN] 初期化検証完了"* ]]
-    # Phase 6 のメッセージはヘッドレスモード/TUIモードで異なる
-    [[ "$output" == *"Phase 6: tmuxセッション作成"* ]] || [[ "$output" == *"Phase 6: エージェントサーバー起動"* ]]
+    [[ "$output" == *"Phase 6: エージェントサーバー起動"* ]]
     [[ "$output" == *"Phase 7: AI CLI起動"* ]]
-
-    # dry-runではtmuxセッション名が出力に含まれないこと確認
-    [[ "$output" != *"tmuxセッションを作成中"* ]]
 }
 
 @test "dry-run: 通常(PTY) はカラー出力が含まれる" {

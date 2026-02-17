@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# lib/agent.sh - エージェント起動・セッション管理
+# lib/agent.sh - エージェント起動・セッション管理（ヘッドレス専用）
 [[ -n "${__LIB_AGENT_LOADED:-}" ]] && return; __LIB_AGENT_LOADED=1
 
 source "${LIB_DIR}/health_check.sh"
@@ -149,64 +149,41 @@ _start_ignitian_headless() {
 }
 
 # =============================================================================
-# エージェント停止 (ヘッドレス対応)
+# エージェント停止
 # =============================================================================
 
-# _kill_agent_process <pane_idx> [session_pane]
-# ヘッドレス: PID ファイルから停止、TUI: pane 内プロセス停止
+# _kill_agent_process <pane_idx> [session_pane (unused)]
+# PID ファイルからプロセスを停止
 _kill_agent_process() {
     local pane_idx="$1"
-    local session_pane="${2:-}"
 
-    if cli_is_headless_mode; then
-        local pid_file="$IGNITE_RUNTIME_DIR/state/.agent_pid_${pane_idx}"
-        local pid
-        pid=$(cat "$pid_file" 2>/dev/null || true)
+    local pid_file="$IGNITE_RUNTIME_DIR/state/.agent_pid_${pane_idx}"
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || true)
 
-        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
-            # 子プロセス（opencode バイナリ）も含めてプロセスツリーごと停止
-            pkill -P "$pid" 2>/dev/null || true
-            kill "$pid" 2>/dev/null || true
-            local i
-            for i in {1..6}; do
-                kill -0 "$pid" 2>/dev/null || break
-                sleep 0.5
-            done
-            if kill -0 "$pid" 2>/dev/null; then
-                pkill -9 -P "$pid" 2>/dev/null || true
-                kill -9 "$pid" 2>/dev/null || true
-            fi
-        fi
-
-        cli_cleanup_agent_state "$pane_idx"
-    else
-        # TUI モード: 既存の tmux ベースの停止
-        [[ -z "$session_pane" ]] && return 0
-        local target="${session_pane}.${pane_idx}"
-
-        tmux send-keys -t "$target" C-c 2>/dev/null || true
-        sleep 1
-
-        local pane_pid
-        pane_pid=$(tmux list-panes -t "$session_pane" \
-            -F '#{pane_index} #{pane_pid}' 2>/dev/null \
-            | awk -v idx="$pane_idx" '$1 == idx {print $2}')
-
-        if [[ -n "$pane_pid" ]]; then
-            pkill -P "$pane_pid" 2>/dev/null || true
-            sleep 1
-            if kill -0 "$pane_pid" 2>/dev/null; then
-                pkill -9 -P "$pane_pid" 2>/dev/null || true
-            fi
+    if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+        # 子プロセス（opencode バイナリ）も含めてプロセスツリーごと停止
+        pkill -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+        local i
+        for i in {1..6}; do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.5
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            pkill -9 -P "$pid" 2>/dev/null || true
+            kill -9 "$pid" 2>/dev/null || true
         fi
     fi
+
+    cli_cleanup_agent_state "$pane_idx"
 }
 
 # 後方互換: 既存コードから呼ばれる _kill_pane_process
 _kill_pane_process() {
-    local session_pane="$1"
+    local _session_pane="$1"
     local pane_idx="$2"
-    _kill_agent_process "$pane_idx" "$session_pane"
+    _kill_agent_process "$pane_idx"
 }
 
 # エージェント起動関数（最大3回リトライ）
@@ -214,53 +191,16 @@ start_agent_in_pane() {
     local role="$1"      # strategist, architect, etc.
     local name="$2"      # キャラクター名（characters.yaml で定義）
     local pane="$3"      # ペイン番号
-    local _gh_export="${4:-}"  # GH_TOKEN export コマンド（cmd_start.sh から渡される）
+    local _gh_export="${4:-}"  # 未使用（後方互換）
     local max_retries=3
     local retry=0
 
     while [[ $retry -lt $max_retries ]]; do
         print_info "${name} を起動中... (試行 $((retry+1))/$max_retries)"
 
-        if cli_is_headless_mode; then
-            if _start_agent_headless "$role" "$name" "$pane"; then
-                print_success "${name} 起動完了"
-                return 0
-            fi
-        else
-            tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "${name} (${role^})"
-
-            cli_setup_project_config "$WORKSPACE_DIR" "$role" \
-                "$IGNITE_CHARACTERS_DIR/${role}.md" "$IGNITE_INSTRUCTIONS_DIR/${role}.md"
-
-            local _launch_cmd
-            _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "" "$_gh_export" "$role")
-            tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" "$_launch_cmd" Enter
-            sleep "$(get_delay leader_startup 3)"
-
-            if cli_needs_permission_accept; then
-                tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Down
-                sleep "$(get_delay permission_accept 0.5)"
-                tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Enter
-            fi
-            sleep "$(get_delay cli_startup 8)"
-
-            local _health
-            _health=$(check_agent_health "$SESSION_NAME:$TMUX_WINDOW_NAME" "$pane" "${name} (${role^})")
-            if [[ "$_health" != "missing" ]]; then
-                local _target="$SESSION_NAME:$TMUX_WINDOW_NAME.$pane"
-                cli_wait_tui_ready "$_target"
-                if cli_needs_prompt_injection; then
-                    tmux send-keys -l -t "$_target" \
-                        "以下のファイルを読んでください: $IGNITE_CHARACTERS_DIR/${role}.md と $IGNITE_INSTRUCTIONS_DIR/${role}.md あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-                else
-                    tmux send-keys -l -t "$_target" \
-                        "あなたは${name}（${role^}）です。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-                fi
-                sleep "$(get_delay prompt_send 0.3)"
-                eval "tmux send-keys -t \"$_target\" $(cli_get_submit_keys)"
-                print_success "${name} 起動完了"
-                return 0
-            fi
+        if _start_agent_headless "$role" "$name" "$pane"; then
+            print_success "${name} 起動完了"
+            return 0
         fi
 
         print_warning "${name} 起動失敗、リトライ中..."
@@ -276,7 +216,7 @@ start_agent_in_pane() {
 start_ignitian_in_pane() {
     local id="$1"        # IGNITIAN番号 (1, 2, 3, ...)
     local pane="$2"      # ペイン番号
-    local _gh_export="${3:-}"  # GH_TOKEN export コマンド（cmd_start.sh から渡される）
+    local _gh_export="${3:-}"  # 未使用（後方互換）
     local max_retries=3
     local retry=0
 
@@ -286,46 +226,9 @@ start_ignitian_in_pane() {
     while [[ $retry -lt $max_retries ]]; do
         print_info "IGNITIAN-${id} を起動中... (試行 $((retry+1))/$max_retries)"
 
-        if cli_is_headless_mode; then
-            if _start_ignitian_headless "$id" "$pane"; then
-                print_success "IGNITIAN-${id} 起動完了"
-                return 0
-            fi
-        else
-            tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "IGNITIAN-${id}"
-
-            cli_setup_project_config "$WORKSPACE_DIR" "ignitian_${id}" \
-                "$IGNITE_CHARACTERS_DIR/ignitian.md" "$IGNITE_INSTRUCTIONS_DIR/ignitian.md"
-
-            local _launch_cmd
-            _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "export IGNITE_WORKER_ID=${id} && " "$_gh_export" "ignitian_${id}")
-            tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" "$_launch_cmd" Enter
-            sleep "$(get_delay leader_startup 3)"
-
-            if cli_needs_permission_accept; then
-                tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Down
-                sleep "$(get_delay permission_accept 0.5)"
-                tmux send-keys -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" Enter
-            fi
-            sleep "$(get_delay cli_startup 8)"
-
-            local _health
-            _health=$(check_agent_health "$SESSION_NAME:$TMUX_WINDOW_NAME" "$pane" "IGNITIAN-${id}")
-            if [[ "$_health" != "missing" ]]; then
-                local _target="$SESSION_NAME:$TMUX_WINDOW_NAME.$pane"
-                cli_wait_tui_ready "$_target"
-                if cli_needs_prompt_injection; then
-                    tmux send-keys -l -t "$_target" \
-                        "以下のファイルを読んでください: $IGNITE_CHARACTERS_DIR/ignitian.md と $IGNITE_INSTRUCTIONS_DIR/ignitian.md あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-                else
-                    tmux send-keys -l -t "$_target" \
-                        "あなたはIGNITIAN-${id}です。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-                fi
-                sleep "$(get_delay prompt_send 0.3)"
-                eval "tmux send-keys -t \"$_target\" $(cli_get_submit_keys)"
-                print_success "IGNITIAN-${id} 起動完了"
-                return 0
-            fi
+        if _start_ignitian_headless "$id" "$pane"; then
+            print_success "IGNITIAN-${id} 起動完了"
+            return 0
         fi
 
         print_warning "IGNITIAN-${id} 起動失敗、リトライ中..."
@@ -357,72 +260,41 @@ restart_leader_in_pane() {
         character_file="$IGNITE_CHARACTERS_DIR/leader-solo.md"
     fi
 
-    if cli_is_headless_mode; then
-        # ヘッドレス: リカバリフロー
-        cli_load_agent_state "$pane"
-        local old_pid="${_AGENT_PID:-}"
-        local old_port="${_AGENT_PORT:-}"
-        local old_session="${_AGENT_SESSION_ID:-}"
+    # リカバリフロー
+    cli_load_agent_state "$pane"
+    local old_pid="${_AGENT_PID:-}"
+    local old_port="${_AGENT_PORT:-}"
+    local old_session="${_AGENT_SESSION_ID:-}"
 
-        # サーバープロセスが生存しているか
-        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-            # 旧セッションで resume 試行
-            if [[ -n "$old_session" ]]; then
-                local init_prompt
-                init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
-                if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                    log_info "Leader リカバリ: 旧セッションで再開"
-                    return 0
-                fi
-            fi
-            # 旧セッション失敗 → 新規セッション作成
-            local new_session
-            new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-            if [[ -n "$new_session" ]]; then
-                cli_save_agent_state "$pane" "$old_port" "$new_session" "${LEADER_NAME} (Leader)"
-                local init_prompt
-                init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
-                cli_send_message "$old_port" "$new_session" "$init_prompt" || true
-                log_info "Leader リカバリ: 新規セッションで再開"
+    # サーバープロセスが生存しているか
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
+        # 旧セッションで resume 試行
+        if [[ -n "$old_session" ]]; then
+            local init_prompt
+            init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
+            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
+                log_info "Leader リカバリ: 旧セッションで再開"
                 return 0
             fi
         fi
-
-        # サーバー死亡 → 再起動
-        _kill_agent_process "$pane"
-        cli_setup_project_config "$WORKSPACE_DIR" "leader" "$character_file" "$instruction_file"
-        _start_agent_headless "leader" "${LEADER_NAME}" "$pane" || return 1
-        return 0
+        # 旧セッション失敗 → 新規セッション作成
+        local new_session
+        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
+        if [[ -n "$new_session" ]]; then
+            cli_save_agent_state "$pane" "$old_port" "$new_session" "${LEADER_NAME} (Leader)"
+            local init_prompt
+            init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
+            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+            log_info "Leader リカバリ: 新規セッションで再開"
+            return 0
+        fi
     fi
 
-    # TUI モード
-    local target="$SESSION_NAME:$TMUX_WINDOW_NAME.$pane"
-
+    # サーバー死亡 → 再起動
+    _kill_agent_process "$pane"
     cli_setup_project_config "$WORKSPACE_DIR" "leader" "$character_file" "$instruction_file"
-
-    local _launch_cmd
-    _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "" "$_gh_export" "leader")
-    tmux send-keys -t "$target" "$_launch_cmd" Enter
-    sleep "$(get_delay leader_startup 3)"
-
-    if cli_needs_permission_accept; then
-        tmux send-keys -t "$target" Down
-        sleep "$(get_delay permission_accept 0.5)"
-        tmux send-keys -t "$target" Enter
-    fi
-    sleep "$(get_delay cli_startup 8)"
-
-    cli_wait_tui_ready "$target"
-
-    if cli_needs_prompt_injection; then
-        tmux send-keys -l -t "$target" \
-            "以下のファイルを読んでください: $character_file と $instruction_file あなたはLeader（${LEADER_NAME}）として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    else
-        tmux send-keys -l -t "$target" \
-            "あなたはLeader（${LEADER_NAME}）です。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    fi
-    sleep "$(get_delay prompt_send 0.3)"
-    eval "tmux send-keys -t '$target' $(cli_get_submit_keys)"
+    _start_agent_headless "leader" "${LEADER_NAME}" "$pane" || return 1
+    return 0
 }
 
 # restart_agent_in_pane <role> <name> <pane> <gh_export>
@@ -433,70 +305,36 @@ restart_agent_in_pane() {
     local pane="$3"
     local _gh_export="${4:-}"
 
-    if cli_is_headless_mode; then
-        cli_load_agent_state "$pane"
-        local old_pid="${_AGENT_PID:-}"
-        local old_port="${_AGENT_PORT:-}"
-        local old_session="${_AGENT_SESSION_ID:-}"
+    cli_load_agent_state "$pane"
+    local old_pid="${_AGENT_PID:-}"
+    local old_port="${_AGENT_PORT:-}"
+    local old_session="${_AGENT_SESSION_ID:-}"
 
-        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-            if [[ -n "$old_session" ]]; then
-                local init_prompt
-                init_prompt=$(_build_init_prompt "$role" "$name")
-                if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                    log_info "${name} リカバリ: 旧セッションで再開"
-                    return 0
-                fi
-            fi
-            local new_session
-            new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-            if [[ -n "$new_session" ]]; then
-                cli_save_agent_state "$pane" "$old_port" "$new_session" "${name} (${role^})"
-                local init_prompt
-                init_prompt=$(_build_init_prompt "$role" "$name")
-                cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
+        if [[ -n "$old_session" ]]; then
+            local init_prompt
+            init_prompt=$(_build_init_prompt "$role" "$name")
+            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
+                log_info "${name} リカバリ: 旧セッションで再開"
                 return 0
             fi
         fi
-
-        _kill_agent_process "$pane"
-        cli_setup_project_config "$WORKSPACE_DIR" "$role" \
-            "$IGNITE_CHARACTERS_DIR/${role}.md" "$IGNITE_INSTRUCTIONS_DIR/${role}.md"
-        _start_agent_headless "$role" "$name" "$pane" || return 1
-        return 0
+        local new_session
+        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
+        if [[ -n "$new_session" ]]; then
+            cli_save_agent_state "$pane" "$old_port" "$new_session" "${name} (${role^})"
+            local init_prompt
+            init_prompt=$(_build_init_prompt "$role" "$name")
+            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+            return 0
+        fi
     fi
 
-    # TUI モード
-    local target="$SESSION_NAME:$TMUX_WINDOW_NAME.$pane"
-
-    tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "${name} (${role^})" 2>/dev/null || true
-
+    _kill_agent_process "$pane"
     cli_setup_project_config "$WORKSPACE_DIR" "$role" \
         "$IGNITE_CHARACTERS_DIR/${role}.md" "$IGNITE_INSTRUCTIONS_DIR/${role}.md"
-
-    local _launch_cmd
-    _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "" "$_gh_export" "$role")
-    tmux send-keys -t "$target" "$_launch_cmd" Enter
-    sleep "$(get_delay leader_startup 3)"
-
-    if cli_needs_permission_accept; then
-        tmux send-keys -t "$target" Down
-        sleep "$(get_delay permission_accept 0.5)"
-        tmux send-keys -t "$target" Enter
-    fi
-    sleep "$(get_delay cli_startup 8)"
-
-    cli_wait_tui_ready "$target"
-
-    if cli_needs_prompt_injection; then
-        tmux send-keys -l -t "$target" \
-            "以下のファイルを読んでください: $IGNITE_CHARACTERS_DIR/${role}.md と $IGNITE_INSTRUCTIONS_DIR/${role}.md あなたは${name}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    else
-        tmux send-keys -l -t "$target" \
-            "あなたは${name}（${role^}）です。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    fi
-    sleep "$(get_delay prompt_send 0.3)"
-    eval "tmux send-keys -t \"$target\" $(cli_get_submit_keys)"
+    _start_agent_headless "$role" "$name" "$pane" || return 1
+    return 0
 }
 
 # restart_ignitian_in_pane <id> <pane> <gh_export>
@@ -509,66 +347,32 @@ restart_ignitian_in_pane() {
     # キューディレクトリは既存を再利用（既に存在するはず）
     mkdir -p "$IGNITE_RUNTIME_DIR/queue/ignitian_${id}"
 
-    if cli_is_headless_mode; then
-        cli_load_agent_state "$pane"
-        local old_pid="${_AGENT_PID:-}"
-        local old_port="${_AGENT_PORT:-}"
-        local old_session="${_AGENT_SESSION_ID:-}"
+    cli_load_agent_state "$pane"
+    local old_pid="${_AGENT_PID:-}"
+    local old_port="${_AGENT_PORT:-}"
+    local old_session="${_AGENT_SESSION_ID:-}"
 
-        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-            if [[ -n "$old_session" ]]; then
-                local init_prompt
-                init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
-                if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                    log_info "IGNITIAN-${id} リカバリ: 旧セッションで再開"
-                    return 0
-                fi
-            fi
-            local new_session
-            new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-            if [[ -n "$new_session" ]]; then
-                cli_save_agent_state "$pane" "$old_port" "$new_session" "IGNITIAN-${id}"
-                local init_prompt
-                init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
-                cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
+        if [[ -n "$old_session" ]]; then
+            local init_prompt
+            init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
+            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
+                log_info "IGNITIAN-${id} リカバリ: 旧セッションで再開"
                 return 0
             fi
         fi
-
-        _kill_agent_process "$pane"
-        _start_ignitian_headless "$id" "$pane" || return 1
-        return 0
+        local new_session
+        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
+        if [[ -n "$new_session" ]]; then
+            cli_save_agent_state "$pane" "$old_port" "$new_session" "IGNITIAN-${id}"
+            local init_prompt
+            init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
+            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+            return 0
+        fi
     fi
 
-    # TUI モード
-    local target="$SESSION_NAME:$TMUX_WINDOW_NAME.$pane"
-
-    tmux set-option -t "$SESSION_NAME:$TMUX_WINDOW_NAME.$pane" -p @agent_name "IGNITIAN-${id}" 2>/dev/null || true
-
-    cli_setup_project_config "$WORKSPACE_DIR" "ignitian_${id}" \
-        "$IGNITE_CHARACTERS_DIR/ignitian.md" "$IGNITE_INSTRUCTIONS_DIR/ignitian.md"
-
-    local _launch_cmd
-    _launch_cmd=$(cli_build_launch_command "$WORKSPACE_DIR" "export IGNITE_WORKER_ID=${id} && " "$_gh_export" "ignitian_${id}")
-    tmux send-keys -t "$target" "$_launch_cmd" Enter
-    sleep "$(get_delay leader_startup 3)"
-
-    if cli_needs_permission_accept; then
-        tmux send-keys -t "$target" Down
-        sleep "$(get_delay permission_accept 0.5)"
-        tmux send-keys -t "$target" Enter
-    fi
-    sleep "$(get_delay cli_startup 8)"
-
-    cli_wait_tui_ready "$target"
-
-    if cli_needs_prompt_injection; then
-        tmux send-keys -l -t "$target" \
-            "以下のファイルを読んでください: $IGNITE_CHARACTERS_DIR/ignitian.md と $IGNITE_INSTRUCTIONS_DIR/ignitian.md あなたはIGNITIAN-${id}として振る舞ってください。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    else
-        tmux send-keys -l -t "$target" \
-            "あなたはIGNITIAN-${id}です。ワークスペースは $WORKSPACE_DIR です。起動時の初期化を行ってください。以降のメッセージ通知は queue_monitor が通知します。instructions内の workspace/ は $WORKSPACE_DIR に、./scripts/utils/ は $IGNITE_SCRIPTS_DIR/utils/ に、config/ は $IGNITE_CONFIG_DIR/ に読み替えてください。"
-    fi
-    sleep "$(get_delay prompt_send 0.3)"
-    eval "tmux send-keys -t \"$target\" $(cli_get_submit_keys)"
+    _kill_agent_process "$pane"
+    _start_ignitian_headless "$id" "$pane" || return 1
+    return 0
 }

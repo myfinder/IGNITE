@@ -26,8 +26,6 @@ print_header() { echo -e "${BOLD}=== $1 ===${NC}"; }
 PASS_COUNT=0
 FAIL_COUNT=0
 FAILED_TESTS=()
-SMOKE_SESSION_NAME=""
-HEADLESS_MODE=false
 
 # =============================================================================
 # Assert ヘルパー
@@ -325,12 +323,10 @@ phase_start_stop() {
     local cli_available=false
     if command -v opencode &>/dev/null; then
         cli_available=true
-    elif command -v claude &>/dev/null; then
-        cli_available=true
     fi
 
     if [[ "$cli_available" != true ]]; then
-        print_warning "No CLI provider (opencode/claude) found, skipping start/stop tests"
+        print_warning "No CLI provider (opencode) found, skipping start/stop tests"
         return
     fi
 
@@ -352,22 +348,6 @@ phase_start_stop() {
         return
     fi
 
-    # headless モード判定（cli_provider.sh を source）
-    local cli_provider_sh="$SMOKE_DIR/home/.local/share/ignite/scripts/lib/cli_provider.sh"
-    if [[ -f "$cli_provider_sh" ]]; then
-        # cli_provider.sh が依存する変数・関数を最小限スタブ化
-        __LIB_CORE_LOADED=1
-        IGNITE_CONFIG_DIR="${SMOKE_DIR}/workspace/.ignite"
-        DEFAULT_MODEL="${DEFAULT_MODEL:-sonnet}"
-        command -v get_config &>/dev/null || get_config() { echo "${3:-}"; }
-        # shellcheck source=/dev/null
-        source "$cli_provider_sh" 2>/dev/null || true
-        cli_load_config 2>/dev/null || true
-        if cli_is_headless_mode 2>/dev/null; then
-            HEADLESS_MODE=true
-        fi
-    fi
-
     # ignite start（デーモンモードで起動）
     local start_ok=false
     if timeout 120 "$SMOKE_DIR/home/.local/bin/ignite" start --daemon -w "$SMOKE_DIR/workspace" >/dev/null 2>&1; then
@@ -383,178 +363,96 @@ phase_start_stop() {
 
     local runtime_dir="$SMOKE_DIR/workspace/.ignite"
 
-    if [[ "$HEADLESS_MODE" == true ]]; then
-        # ── headless モード: PID ファイル + HTTP ヘルスチェックで検証 ──
+    # ── PID ファイル + HTTP ヘルスチェックで検証 ──
 
-        # セッション名を runtime.yaml から取得
-        local session_name=""
-        if [[ -f "$runtime_dir/runtime.yaml" ]]; then
-            session_name=$(grep 'session_name:' "$runtime_dir/runtime.yaml" | awk '{print $2}' | tr -d '"' | head -1)
-        fi
-        SMOKE_SESSION_NAME="${session_name:-}"
+    # セッション名を runtime.yaml から取得
+    local session_name=""
+    if [[ -f "$runtime_dir/runtime.yaml" ]]; then
+        session_name=$(grep 'session_name:' "$runtime_dir/runtime.yaml" | awk '{print $2}' | tr -d '"' | head -1)
+    fi
 
-        # PID ファイルの存在で起動確認
-        local pid_files
-        pid_files=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
-        if [[ "$start_ok" == true ]]; then
-            if [[ "$pid_files" -gt 0 ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: PID files found (count: $pid_files)"
-            else
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("PID files found in headless mode")
-                print_error "FAIL: no PID files found in headless mode"
-            fi
+    # PID ファイルの存在で起動確認
+    local pid_files
+    pid_files=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
+    if [[ "$start_ok" == true ]]; then
+        if [[ "$pid_files" -gt 0 ]]; then
+            PASS_COUNT=$((PASS_COUNT + 1))
+            print_success "PASS: PID files found (count: $pid_files)"
         else
-            print_info "PID files: $pid_files (partial start)"
-        fi
-
-        # HTTP ヘルスチェック（opencode serve のヘルスエンドポイント）
-        if [[ "$start_ok" == true ]]; then
-            local health_ok=false
-            # ポート情報が runtime.yaml にある場合チェック
-            local port
-            port=$(grep 'port:' "$runtime_dir/runtime.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1 || true)
-            if [[ -n "$port" ]]; then
-                if curl -s --max-time 5 "http://localhost:${port}/health" >/dev/null 2>&1; then
-                    health_ok=true
-                fi
-            fi
-            if [[ "$health_ok" == true ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: HTTP health check passed (port: $port)"
-            else
-                print_info "HTTP health check skipped or unavailable"
-            fi
-        fi
-
-        # キューモニター確認
-        if [[ "$start_ok" == true ]]; then
-            if [[ -f "$runtime_dir/queue_monitor.pid" ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: queue monitor PID file exists"
-            else
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("queue monitor PID file exists")
-                print_error "FAIL: queue monitor PID file not found"
-            fi
-        fi
-
-        # ignite status 実行
-        local status_output
-        if [[ -n "${session_name:-}" ]]; then
-            status_output=$("$SMOKE_DIR/home/.local/bin/ignite" status -s "$session_name" -w "$SMOKE_DIR/workspace" 2>&1 || true)
-            assert "ignite status exits without error" \
-                "$SMOKE_DIR/home/.local/bin/ignite" status -s "$session_name" -w "$SMOKE_DIR/workspace"
-        else
-            status_output=$("$SMOKE_DIR/home/.local/bin/ignite" status -w "$SMOKE_DIR/workspace" 2>&1 || true)
-            assert "ignite status exits without error" \
-                "$SMOKE_DIR/home/.local/bin/ignite" status -w "$SMOKE_DIR/workspace"
-        fi
-        if [[ "$start_ok" == true ]]; then
-            assert_not_contains "no crashed agents in status" "$status_output" "crashed"
-        fi
-
-        # ignite stop -y（start が成功した場合のみ）
-        if [[ "$start_ok" == true ]]; then
-            if [[ -n "${session_name:-}" ]]; then
-                assert "ignite stop -y exits successfully" \
-                    timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -s "$session_name" -w "$SMOKE_DIR/workspace"
-            else
-                assert "ignite stop -y exits successfully" \
-                    timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -w "$SMOKE_DIR/workspace"
-            fi
-
-            # PID ファイルが消えたことを確認
-            local remaining_pids
-            remaining_pids=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
-            if [[ "$remaining_pids" -eq 0 ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: PID files cleaned up after stop"
-            else
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("PID files cleaned up after stop")
-                print_error "FAIL: $remaining_pids PID files still exist after stop"
-            fi
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            FAILED_TESTS+=("PID files found")
+            print_error "FAIL: no PID files found"
         fi
     else
-        # ── TUI モード (claude): tmux セッションで検証 ──
+        print_info "PID files: $pid_files (partial start)"
+    fi
 
-        # tmux セッション名を検出（tmux から直接、または runtime.yaml から）
-        local session_name
-        session_name=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^ignite-' | head -1 || true)
-        if [[ -z "$session_name" ]] && [[ -f "$runtime_dir/runtime.yaml" ]]; then
-            session_name=$(grep 'session_name:' "$runtime_dir/runtime.yaml" | awk '{print $2}' | tr -d '"' | head -1)
-        fi
-
-        SMOKE_SESSION_NAME="${session_name:-}"
-
-        if [[ -z "${session_name:-}" ]] || ! tmux has-session -t "$session_name" 2>/dev/null; then
-            if [[ "$start_ok" == true ]]; then
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("tmux session found")
-                print_error "FAIL: no ignite tmux session found"
-            else
-                print_warning "tmux session not found (expected: start failed)"
+    # HTTP ヘルスチェック（opencode serve のヘルスエンドポイント）
+    if [[ "$start_ok" == true ]]; then
+        local health_ok=false
+        # ポート情報が runtime.yaml にある場合チェック
+        local port
+        port=$(grep 'port:' "$runtime_dir/runtime.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1 || true)
+        if [[ -n "$port" ]]; then
+            if curl -s --max-time 5 "http://localhost:${port}/health" >/dev/null 2>&1; then
+                health_ok=true
             fi
-            echo ""
-            return
         fi
-
-        PASS_COUNT=$((PASS_COUNT + 1))
-        print_success "PASS: tmux session found ($session_name)"
-
-        # ペイン数確認（start 成功時のみペイン数9を期待）
-        local pane_count
-        pane_count=$(tmux list-panes -t "$session_name" 2>/dev/null | wc -l || echo 0)
-        if [[ "$start_ok" == true ]]; then
-            if [[ "$pane_count" -ge 9 ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: tmux panes exist (count: $pane_count)"
-            else
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("expected 9 panes, got $pane_count")
-                print_error "FAIL: expected 9 panes, got $pane_count"
-            fi
+        if [[ "$health_ok" == true ]]; then
+            PASS_COUNT=$((PASS_COUNT + 1))
+            print_success "PASS: HTTP health check passed (port: $port)"
         else
-            print_info "tmux panes: $pane_count (partial start)"
+            print_info "HTTP health check skipped or unavailable"
         fi
+    fi
 
-        # キューモニター確認（start 成功時のみ検証）
-        if [[ "$start_ok" == true ]]; then
-            if [[ -f "$runtime_dir/queue_monitor.pid" ]]; then
-                PASS_COUNT=$((PASS_COUNT + 1))
-                print_success "PASS: queue monitor PID file exists"
-            else
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                FAILED_TESTS+=("queue monitor PID file exists")
-                print_error "FAIL: queue monitor PID file not found"
-            fi
+    # キューモニター確認
+    if [[ "$start_ok" == true ]]; then
+        if [[ -f "$runtime_dir/queue_monitor.pid" ]]; then
+            PASS_COUNT=$((PASS_COUNT + 1))
+            print_success "PASS: queue monitor PID file exists"
+        else
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            FAILED_TESTS+=("queue monitor PID file exists")
+            print_error "FAIL: queue monitor PID file not found"
         fi
+    fi
 
-        # ignite status 実行・crashed 検証（start 成功時のみ crashed を検証）
-        local status_output
+    # ignite status 実行
+    local status_output
+    if [[ -n "${session_name:-}" ]]; then
         status_output=$("$SMOKE_DIR/home/.local/bin/ignite" status -s "$session_name" -w "$SMOKE_DIR/workspace" 2>&1 || true)
         assert "ignite status exits without error" \
             "$SMOKE_DIR/home/.local/bin/ignite" status -s "$session_name" -w "$SMOKE_DIR/workspace"
-        if [[ "$start_ok" == true ]]; then
-            assert_not_contains "no crashed agents in status" "$status_output" "crashed"
+    else
+        status_output=$("$SMOKE_DIR/home/.local/bin/ignite" status -w "$SMOKE_DIR/workspace" 2>&1 || true)
+        assert "ignite status exits without error" \
+            "$SMOKE_DIR/home/.local/bin/ignite" status -w "$SMOKE_DIR/workspace"
+    fi
+    if [[ "$start_ok" == true ]]; then
+        assert_not_contains "no crashed agents in status" "$status_output" "crashed"
+    fi
+
+    # ignite stop -y（start が成功した場合のみ）
+    if [[ "$start_ok" == true ]]; then
+        if [[ -n "${session_name:-}" ]]; then
+            assert "ignite stop -y exits successfully" \
+                timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -s "$session_name" -w "$SMOKE_DIR/workspace"
+        else
+            assert "ignite stop -y exits successfully" \
+                timeout 30 "$SMOKE_DIR/home/.local/bin/ignite" stop -y -w "$SMOKE_DIR/workspace"
         fi
 
-        # ignite stop -y
-        assert "ignite stop -y exits successfully" \
-            "$SMOKE_DIR/home/.local/bin/ignite" stop -y -s "$session_name" -w "$SMOKE_DIR/workspace"
-
-        # tmux セッションが消えたことを確認
-        if ! tmux has-session -t "$session_name" 2>/dev/null; then
+        # PID ファイルが消えたことを確認
+        local remaining_pids
+        remaining_pids=$(ls "$runtime_dir"/*.pid 2>/dev/null | wc -l || echo 0)
+        if [[ "$remaining_pids" -eq 0 ]]; then
             PASS_COUNT=$((PASS_COUNT + 1))
-            print_success "PASS: tmux session cleaned up after stop"
+            print_success "PASS: PID files cleaned up after stop"
         else
             FAIL_COUNT=$((FAIL_COUNT + 1))
-            FAILED_TESTS+=("tmux session cleaned up after stop")
-            print_error "FAIL: tmux session still exists after stop"
-            # クリーンアップ
-            tmux kill-session -t "$session_name" 2>/dev/null || true
+            FAILED_TESTS+=("PID files cleaned up after stop")
+            print_error "FAIL: $remaining_pids PID files still exist after stop"
         fi
     fi
 
@@ -571,23 +469,16 @@ cleanup() {
         return
     fi
 
-    if [[ "$HEADLESS_MODE" == true ]]; then
-        # headless モード: PID ファイルからプロセスを停止
-        if [[ -n "${SMOKE_DIR:-}" ]] && [[ -d "$SMOKE_DIR/workspace/.ignite" ]]; then
-            for pidfile in "$SMOKE_DIR/workspace/.ignite"/*.pid; do
-                [[ -f "$pidfile" ]] || continue
-                local pid
-                pid=$(cat "$pidfile" 2>/dev/null || true)
-                if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-                    kill "$pid" 2>/dev/null || true
-                fi
-            done
-        fi
-    else
-        # TUI モード: 残留 tmux セッションのクリーンアップ（自分が起動したセッションのみ）
-        if [[ -n "${SMOKE_SESSION_NAME:-}" ]]; then
-            tmux kill-session -t "$SMOKE_SESSION_NAME" 2>/dev/null || true
-        fi
+    # PID ファイルからプロセスを停止
+    if [[ -n "${SMOKE_DIR:-}" ]] && [[ -d "$SMOKE_DIR/workspace/.ignite" ]]; then
+        for pidfile in "$SMOKE_DIR/workspace/.ignite"/*.pid; do
+            [[ -f "$pidfile" ]] || continue
+            local pid
+            pid=$(cat "$pidfile" 2>/dev/null || true)
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                kill "$pid" 2>/dev/null || true
+            fi
+        done
     fi
 
     if [[ -n "${SMOKE_DIR:-}" ]] && [[ -d "$SMOKE_DIR" ]]; then

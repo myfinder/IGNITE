@@ -4,18 +4,9 @@
 
 # =============================================================================
 # 関数名: generate_session_id
-# 目的: ユニークなtmuxセッションIDを自動生成する
+# 目的: ユニークなセッションIDを自動生成する
 # 引数: なし
 # 戻り値: "ignite-XXXX" 形式のセッションID（XXXXは4文字のハッシュ）
-# 生成ロジック:
-#   1. PROJECT_ROOT（プロジェクトパス）と現在のUnixタイムスタンプを連結
-#   2. md5sumでハッシュ化
-#   3. 先頭4文字を抽出
-#   4. "ignite-" プレフィックスを付与
-# 例: /home/user/project + 1704067200 → ignite-a1b2
-# 注意:
-#   - 同じプロジェクトでも時刻が異なれば別IDが生成される
-#   - セッションの重複を避けつつ、識別しやすいIDを提供
 # =============================================================================
 generate_session_id() {
     # プロジェクトパス + タイムスタンプから短いIDを生成
@@ -28,7 +19,7 @@ get_default_workspace() {
 }
 
 # セッションIDの設定（指定がなければ自動生成）
-# 解決順: 1) runtime.yaml → 2) セッション一覧(1つなら採用/複数ならエラー) → 3) 新規生成
+# 解決順: 1) runtime.yaml → 2) 新規生成
 setup_session_name() {
     [[ -n "$SESSION_NAME" ]] && return
 
@@ -44,16 +35,10 @@ setup_session_name() {
         local name
         name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name")
         if [[ -n "$name" ]]; then
-            if cli_is_headless_mode; then
-                # ヘッドレス: Leader PID が生存していれば有効
-                local leader_pid
-                leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
-                    SESSION_NAME="$name"
-                    WORKSPACE_DIR="$ws"
-                    return
-                fi
-            elif tmux has-session -t "$name" 2>/dev/null; then
+            # Leader PID が生存していれば有効
+            local leader_pid
+            leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+            if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
                 SESSION_NAME="$name"
                 WORKSPACE_DIR="$ws"
                 return
@@ -61,29 +46,8 @@ setup_session_name() {
         fi
     fi
 
-    # 2. フォールバック: ignite-* セッション一覧から判定
-    if cli_is_headless_mode; then
-        # ヘッドレス: PID ファイルがあり Leader が生存していれば runtime.yaml から取得済み
-        # ここに到達 = セッションなし → 新規生成
-        SESSION_NAME=$(generate_session_id)
-    else
-        local sessions
-        sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
-        local count
-        count=$(echo "$sessions" | grep -c . 2>/dev/null || echo 0)
-
-        if [[ "$count" -eq 1 ]]; then
-            SESSION_NAME=$(echo "$sessions" | head -1)
-        elif [[ "$count" -gt 1 ]]; then
-            print_error "複数の IGNITE セッションが実行中です:"
-            echo "$sessions" | while read -r s; do echo "  - $s"; done
-            print_info "-s <session> で対象を指定してください"
-            exit 1
-        else
-            # 3. セッションなし: 新規生成
-            SESSION_NAME=$(generate_session_id)
-        fi
-    fi
+    # 2. セッションなし → 新規生成
+    SESSION_NAME=$(generate_session_id)
 }
 
 # ワークスペースの設定（指定がなければ 環境変数 → .ignite/ 自動検出 → デフォルト）
@@ -115,48 +79,31 @@ require_workspace() {
 
 # 実行中の全IGNITEセッションを一覧表示
 list_sessions() {
-    if cli_is_headless_mode; then
-        # ヘッドレス: runtime.yaml ベースで一覧
-        local ws="${WORKSPACE_DIR:-}"
-        if [[ -n "$ws" ]] && [[ -f "$ws/.ignite/runtime.yaml" ]]; then
-            local name
-            name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
-            if [[ -n "$name" ]]; then
-                local leader_pid
-                leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
-                    echo "$name"
-                    return 0
-                fi
+    # runtime.yaml ベースで一覧
+    local ws="${WORKSPACE_DIR:-}"
+    if [[ -n "$ws" ]] && [[ -f "$ws/.ignite/runtime.yaml" ]]; then
+        local name
+        name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
+        if [[ -n "$name" ]]; then
+            local leader_pid
+            leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+            if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
+                echo "$name"
+                return 0
             fi
         fi
-        print_warning "実行中のIGNITEセッションはありません"
-        return 1
     fi
-
-    # 既存 tmux コード
-    local sessions
-    sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
-
-    if [[ -z "$sessions" ]]; then
-        print_warning "実行中のIGNITEセッションはありません"
-        return 1
-    fi
-
-    echo "$sessions"
+    print_warning "実行中のIGNITEセッションはありません"
+    return 1
 }
 
 # セッションが存在するかチェック
 session_exists() {
-    if cli_is_headless_mode; then
-        local state_dir="$IGNITE_RUNTIME_DIR/state"
-        ls "$state_dir"/.agent_pid_* &>/dev/null || return 1
-        local leader_pid
-        leader_pid=$(cat "$state_dir/.agent_pid_0" 2>/dev/null || true)
-        [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null
-    else
-        tmux has-session -t "$SESSION_NAME" 2>/dev/null
-    fi
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    ls "$state_dir"/.agent_pid_* &>/dev/null || return 1
+    local leader_pid
+    leader_pid=$(cat "$state_dir/.agent_pid_0" 2>/dev/null || true)
+    [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null
 }
 
 # 設定ファイルからワーカー数を取得（resolve_config でワークスペース優先）

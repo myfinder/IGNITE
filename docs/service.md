@@ -26,15 +26,15 @@ flowchart TB
 
     subgraph IGNITE["IGNITE プロセス"]
         Start["ignite start --daemon"]
-        Tmux["tmux セッション"]
+        Agents["エージェントサーバー群"]
         Leader["Leader"]
         SubLeaders["Sub-Leaders"]
         IGNITIANs["IGNITIANs"]
 
-        Start -->|"PIDファイル書出し<br/>exit 0"| Tmux
-        Tmux --> Leader
-        Tmux --> SubLeaders
-        Tmux --> IGNITIANs
+        Start -->|"PIDファイル書出し<br/>exit 0"| Agents
+        Agents --> Leader
+        Agents --> SubLeaders
+        Agents --> IGNITIANs
     end
 
     subgraph Config["設定"]
@@ -46,7 +46,7 @@ flowchart TB
     systemd -->|"journalctl"| Watcher
 
     style Unit fill:#4ecdc4,color:#fff
-    style Tmux fill:#ff6b6b,color:#fff
+    style Agents fill:#ff6b6b,color:#fff
     style EnvFile fill:#ffeaa7,color:#333
 ```
 
@@ -55,7 +55,6 @@ flowchart TB
 | 要件 | 最小バージョン | 確認コマンド |
 |------|--------------|------------|
 | systemd | 246+ | `systemctl --version` |
-| tmux | 3.0+ | `tmux -V` |
 | bash | 5.0+ | `bash --version` |
 | loginctl | — | `loginctl --version` |
 
@@ -398,9 +397,9 @@ ignite service help
 | 項目 | 通常モード | daemonモード (`--daemon`) |
 |------|----------|------------------------|
 | コマンド | `ignite start` | `ignite start --daemon` |
-| tmuxセッション | 作成 | 作成 |
+| エージェントサーバー | 起動 | 起動 |
 | 起動後の動作 | アタッチプロンプト表示 | PIDファイル書出し → `exit 0` |
-| プロセス終了 | tmux detach まで維持 | 即座に終了（tmuxは残存） |
+| プロセス終了 | ユーザー操作まで維持 | 即座に終了（エージェントサーバーは残存） |
 | systemd連携 | 不可 | `Type=oneshot` + `RemainAfterExit=yes` で連携可能 |
 | PIDファイル | なし | `<workspace>/ignite-daemon.pid` |
 
@@ -408,11 +407,11 @@ ignite service help
 
 `--daemon` フラグを指定すると、`ignite start` プロセスは以下の動作をします:
 
-1. tmuxセッションを作成・エージェントを起動
+1. エージェントサーバーを起動
 2. PIDファイル `<workspace>/ignite-daemon.pid` に自身のPIDを書出し
 3. `exit 0` でプロセスを終了
 
-systemdは `Type=oneshot` + `RemainAfterExit=yes` により、`exit 0` をもってサービスを `active (exited)` 状態に遷移させます。tmuxセッションはバックグラウンドで稼働し続けます。
+systemdは `Type=oneshot` + `RemainAfterExit=yes` により、`exit 0` をもってサービスを `active (exited)` 状態に遷移させます。エージェントサーバーはバックグラウンドで稼働し続けます。
 
 ### 暗黙的に有効化されるオプション
 
@@ -432,8 +431,8 @@ ignite start --daemon -s my-project -w ~/workspace/my-project
 # PIDファイルの確認
 cat ~/workspace/my-project/ignite-daemon.pid
 
-# プロセスの確認（tmuxセッション）
-tmux list-sessions | grep my-project
+# プロセスの確認（エージェントサーバー）
+ignite status
 ```
 
 ---
@@ -570,22 +569,19 @@ systemctl --user daemon-reload
 
 ---
 
-### tmuxセッションが残留
+### エージェントプロセスが残留
 
-**症状:** `ignite service stop` 後もtmuxセッションが残る
+**症状:** `ignite service stop` 後もエージェントプロセスが残る
 
-**原因:** systemd停止がPIDプロセスのみ終了し、tmuxは独立プロセス
+**原因:** systemd停止がPIDプロセスのみ終了し、エージェントサーバーは独立プロセス
 
 **解決方法:**
 
 ```bash
-# 残留セッションの確認
-tmux list-sessions | grep ignite
+# 残留プロセスの確認
+ignite status
 
-# 手動クリーンアップ
-tmux kill-session -t <session-name>
-
-# または ignite stop を使用
+# ignite stop を使用してクリーンアップ
 ignite stop -s <session-name>
 ```
 

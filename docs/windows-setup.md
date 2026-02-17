@@ -66,7 +66,7 @@ WSL2 の Ubuntu ターミナルを開き、以下を実行します：
 sudo apt update && sudo apt upgrade -y
 
 # 必要なツールをインストール
-sudo apt install -y tmux git jq curl
+sudo apt install -y git jq curl
 
 # GitHub CLI のインストール
 # 参考: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
@@ -90,7 +90,6 @@ gh auth login
 インストールの確認：
 
 ```bash
-tmux -V          # tmux 3.x+
 git --version    # git 2.x+
 gh --version     # gh 2.x+
 jq --version     # jq 1.6+
@@ -175,15 +174,15 @@ code .
 
 ## 8. Windows Terminal の設定
 
-[Windows Terminal](https://aka.ms/terminal) は IGNITE の tmux セッションに最適な環境を提供します。
+[Windows Terminal](https://aka.ms/terminal) は IGNITE の実行に適した環境を提供します。
 
 **推奨設定**（設定 > Ubuntu プロファイル）：
 
 | 設定 | 推奨値 | 理由 |
 |------|--------|------|
-| フォント | Cascadia Code NF / Hack Nerd Font | tmux ステータスバーの特殊文字に対応 |
-| フォントサイズ | 10-12 | 画面に多くのペインを表示可能 |
-| 配色 | One Half Dark / Tango Dark | tmux ペインのコントラストが良好 |
+| フォント | Cascadia Code NF / Hack Nerd Font | 特殊文字に対応 |
+| フォントサイズ | 10-12 | 画面を有効活用 |
+| 配色 | One Half Dark / Tango Dark | コントラストが良好 |
 | スクロールバック | 10000以上 | エージェントの出力履歴を保持 |
 
 **便利なショートカット**：
@@ -220,18 +219,6 @@ wsl --set-default-version 2
 ```powershell
 wsl --shutdown
 ```
-
-### tmux の表示が崩れる
-
-**症状**: tmux 内で文字が正しく表示されない。
-
-**対処法**:
-1. Nerd Font をインストール（例：[Hack Nerd Font](https://www.nerdfonts.com/)）
-2. Windows Terminal のフォント設定で指定
-3. 必要に応じて `~/.tmux.conf` に以下を追加：
-   ```bash
-   set -g default-terminal "tmux-256color"
-   ```
 
 ### ファイル操作が遅い
 

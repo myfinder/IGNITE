@@ -42,37 +42,9 @@ cmd_activate() {
         exit 1
     fi
 
-    if cli_is_headless_mode; then
-        # ヘッドレスモード: エージェントは HTTP API 経由で初期化済み
-        print_info "ヘッドレスモード: エージェントは HTTP 経由で初期化済みです"
-        echo ""
-        echo -e "状態確認: ${YELLOW}./scripts/ignite status -s $SESSION_NAME${NC}"
-        return 0
-    fi
-
-    print_header "エージェントをアクティベート中"
+    # ヘッドレスモード: エージェントは HTTP API 経由で初期化済み
+    print_info "エージェントは HTTP 経由で初期化済みです"
     echo ""
-    echo -e "${BLUE}セッション:${NC} $SESSION_NAME"
-    echo ""
-
-    # ペイン数を確認
-    local pane_count
-    pane_count=$(tmux list-panes -t "$SESSION_NAME" 2>/dev/null | wc -l)
-
-    print_info "検出されたペイン数: $pane_count"
-
-    # 各paneに対して確定キーを送信して、入力待ちのコマンドを実行
-    local _submit_keys
-    _submit_keys=$(cli_get_submit_keys 2>/dev/null || echo "C-m")
-    for ((i=1; i<pane_count; i++)); do
-        print_info "pane $i をアクティベート中..."
-        eval "tmux send-keys -t '$SESSION_NAME:$TMUX_WINDOW_NAME.$i' $_submit_keys"
-        sleep 1
-    done
-
-    print_success "全エージェントにアクティベーション信号を送信しました"
-    echo ""
-    echo "各エージェントがシステムプロンプトを読み込んでいます。"
     echo -e "状態確認: ${YELLOW}./scripts/ignite status -s $SESSION_NAME${NC}"
 }
 
@@ -164,21 +136,11 @@ cmd_notify() {
         exit 1
     fi
 
-    if cli_is_headless_mode; then
-        # ヘッドレス: PID ファイルでエージェント存在確認
-        local state_dir="$IGNITE_RUNTIME_DIR/state"
-        if [[ ! -f "${state_dir}/.agent_pid_${pane_num}" ]]; then
-            print_error "ターゲット '${target}' のエージェント (idx=${pane_num}) が存在しません"
-            exit 1
-        fi
-    else
-        # TUI: ペインの存在確認
-        local pane_count
-        pane_count=$(tmux list-panes -t "$SESSION_NAME:$TMUX_WINDOW_NAME" 2>/dev/null | wc -l)
-        if [[ "$pane_num" -ge "$pane_count" ]]; then
-            print_error "ターゲット '${target}' のペイン (${pane_num}) が存在しません（ペイン数: ${pane_count}）"
-            exit 1
-        fi
+    # PID ファイルでエージェント存在確認
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    if [[ ! -f "${state_dir}/.agent_pid_${pane_num}" ]]; then
+        print_error "ターゲット '${target}' のエージェント (idx=${pane_num}) が存在しません"
+        exit 1
     fi
 
     require_workspace
@@ -205,7 +167,7 @@ $(printf '%s' "$message" | sed 's/^/  /')"
 }
 
 # =============================================================================
-# attach コマンド - tmuxセッションに接続
+# attach コマンド - エージェントに接続
 # =============================================================================
 
 cmd_attach() {
@@ -253,70 +215,66 @@ cmd_attach() {
         exit 1
     fi
 
-    if cli_is_headless_mode; then
-        local state_dir="$IGNITE_RUNTIME_DIR/state"
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
 
-        if [[ -n "$agent_name" ]]; then
-            # 指定エージェントに接続
-            local found_idx=""
-            for name_file in "$state_dir"/.agent_name_*; do
-                [[ -f "$name_file" ]] || continue
-                local stored_name
-                stored_name=$(cat "$name_file")
-                if [[ "$stored_name" == "$agent_name" ]]; then
-                    found_idx=$(basename "$name_file" | sed 's/^\.agent_name_//')
-                    break
-                fi
-            done
-
-            if [[ -z "$found_idx" ]]; then
-                print_error "エージェント '$agent_name' が見つかりません"
-                return 1
+    if [[ -n "$agent_name" ]]; then
+        # 指定エージェントに接続
+        local found_idx=""
+        for name_file in "$state_dir"/.agent_name_*; do
+            [[ -f "$name_file" ]] || continue
+            local stored_name
+            stored_name=$(cat "$name_file")
+            if [[ "$stored_name" == "$agent_name" ]]; then
+                found_idx=$(basename "$name_file" | sed 's/^\.agent_name_//')
+                break
             fi
+        done
 
-            local port
-            port=$(cat "${state_dir}/.agent_port_${found_idx}" 2>/dev/null || true)
-            if [[ -z "$port" ]]; then
-                print_error "エージェント '$agent_name' のポートが見つかりません"
-                return 1
-            fi
-
-            exec opencode attach "http://localhost:${port}"
-        else
-            # エージェント一覧を表示して選択
-            print_header "実行中のエージェント"
-            echo ""
-            local agents=()
-            local idx=0
-            for name_file in "$state_dir"/.agent_name_*; do
-                [[ -f "$name_file" ]] || continue
-                local _name _idx _port
-                _idx=$(basename "$name_file" | sed 's/^\.agent_name_//')
-                _name=$(cat "$name_file")
-                _port=$(cat "${state_dir}/.agent_port_${_idx}" 2>/dev/null || echo "-")
-                agents+=("${_name}")
-                printf "  %d) %-20s (idx=%s, port=%s)\n" "$((idx + 1))" "$_name" "$_idx" "$_port"
-                idx=$((idx + 1))
-            done
-
-            if [[ ${#agents[@]} -eq 0 ]]; then
-                print_warning "実行中のエージェントはありません"
-                return 1
-            fi
-
-            echo ""
-            read -p "接続するエージェント番号を選択 (1-${#agents[@]}): " -r choice
-            if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt ${#agents[@]} ]]; then
-                print_error "無効な選択: $choice"
-                return 1
-            fi
-
-            local selected_name="${agents[$((choice - 1))]}"
-            # 再帰的に呼び出し
-            cmd_attach "$selected_name"
+        if [[ -z "$found_idx" ]]; then
+            print_error "エージェント '$agent_name' が見つかりません"
+            return 1
         fi
+
+        local port
+        port=$(cat "${state_dir}/.agent_port_${found_idx}" 2>/dev/null || true)
+        if [[ -z "$port" ]]; then
+            print_error "エージェント '$agent_name' のポートが見つかりません"
+            return 1
+        fi
+
+        exec opencode attach "http://localhost:${port}"
     else
-        tmux attach -t "$SESSION_NAME"
+        # エージェント一覧を表示して選択
+        print_header "実行中のエージェント"
+        echo ""
+        local agents=()
+        local idx=0
+        for name_file in "$state_dir"/.agent_name_*; do
+            [[ -f "$name_file" ]] || continue
+            local _name _idx _port
+            _idx=$(basename "$name_file" | sed 's/^\.agent_name_//')
+            _name=$(cat "$name_file")
+            _port=$(cat "${state_dir}/.agent_port_${_idx}" 2>/dev/null || echo "-")
+            agents+=("${_name}")
+            printf "  %d) %-20s (idx=%s, port=%s)\n" "$((idx + 1))" "$_name" "$_idx" "$_port"
+            idx=$((idx + 1))
+        done
+
+        if [[ ${#agents[@]} -eq 0 ]]; then
+            print_warning "実行中のエージェントはありません"
+            return 1
+        fi
+
+        echo ""
+        read -p "接続するエージェント番号を選択 (1-${#agents[@]}): " -r choice
+        if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt ${#agents[@]} ]]; then
+            print_error "無効な選択: $choice"
+            return 1
+        fi
+
+        local selected_name="${agents[$((choice - 1))]}"
+        # 再帰的に呼び出し
+        cmd_attach "$selected_name"
     fi
 }
 
@@ -502,7 +460,6 @@ cmd_list() {
 
     local session_dir="$IGNITE_CONFIG_DIR/sessions"
     local found=0
-    # 表示済みセッション名を記録（tmuxフォールバック時の重複防止）
     local shown_sessions=""
 
     # テーブルヘッダー
@@ -523,19 +480,12 @@ cmd_list() {
             s_mode=${s_mode:-unknown}
             s_total=${s_total:-"-"}
             s_actual=${s_actual:-"-"}
-            # STATUS判定
+            # STATUS判定: Leader PID で判定
             local s_status="stopped"
-            if cli_is_headless_mode; then
-                # ヘッドレス: Leader PID で判定
-                local _leader_pid
-                if [[ -n "$s_workspace" ]] && [[ -f "$s_workspace/.ignite/state/.agent_pid_0" ]]; then
-                    _leader_pid=$(cat "$s_workspace/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                    if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                        s_status="running"
-                    fi
-                fi
-            else
-                if tmux has-session -t "$s_name" 2>/dev/null; then
+            local _leader_pid
+            if [[ -n "$s_workspace" ]] && [[ -f "$s_workspace/.ignite/state/.agent_pid_0" ]]; then
+                _leader_pid=$(cat "$s_workspace/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+                if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
                     s_status="running"
                 fi
             fi
@@ -551,33 +501,18 @@ cmd_list() {
     fi
 
     # Step 3: フォールバック（YAMLなしのセッションを補完）
-    if cli_is_headless_mode; then
-        # ヘッドレス: runtime.yaml ベースで補完
-        local _ws="${WORKSPACE_DIR:-}"
-        if [[ -n "$_ws" ]] && [[ -f "$_ws/.ignite/runtime.yaml" ]]; then
-            local _rt_name
-            _rt_name=$(yaml_get "$_ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
-            if [[ -n "$_rt_name" ]] && [[ "$shown_sessions" != *"$_rt_name "* ]]; then
-                local _leader_pid
-                _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                    printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws"
-                    found=$((found + 1))
-                fi
-            fi
-        fi
-    else
-        local tmux_sessions
-        tmux_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
-        if [[ -n "$tmux_sessions" ]]; then
-            while IFS= read -r s_name; do
-                # 既にYAMLで表示済みならスキップ
-                if [[ "$shown_sessions" == *"$s_name "* ]]; then
-                    continue
-                fi
-                printf "  %-16s %-10s %-8s %s\n" "$s_name" "running" "-" "-"
+    # runtime.yaml ベースで補完
+    local _ws="${WORKSPACE_DIR:-}"
+    if [[ -n "$_ws" ]] && [[ -f "$_ws/.ignite/runtime.yaml" ]]; then
+        local _rt_name
+        _rt_name=$(yaml_get "$_ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
+        if [[ -n "$_rt_name" ]] && [[ "$shown_sessions" != *"$_rt_name "* ]]; then
+            local _leader_pid
+            _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+            if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
+                printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws"
                 found=$((found + 1))
-            done <<< "$tmux_sessions"
+            fi
         fi
     fi
 
@@ -627,7 +562,7 @@ cmd_watcher() {
             export WORKSPACE_DIR="$WORKSPACE_DIR"
             export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
             export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
-            export IGNITE_TMUX_SESSION="${SESSION_NAME:-}"
+            export IGNITE_SESSION="${SESSION_NAME:-}"
             "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
             echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/github_watcher.pid"

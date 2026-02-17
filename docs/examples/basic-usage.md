@@ -24,7 +24,7 @@ ignite start
 workspaceを初期化中...
 ✓ workspace初期化完了
 
-tmuxセッションを作成中...
+エージェントサーバーを起動中...
 Leader (伊羽ユイ) を起動中...
 Leaderの起動を待機中... (3秒)
 Leaderシステムプロンプトをロード中...
@@ -35,11 +35,9 @@ Leaderに初期化メッセージを送信中...
 === 起動完了 ===
 
 次のステップ:
-  1. tmuxセッションに接続: tmux attach -t ignite-session
+  1. セッションに接続: ignite attach
   2. ダッシュボード確認: cat workspace/.ignite/dashboard.md
   3. タスク投入: ignite plan "目標"
-
-tmuxセッションにアタッチしますか? (Y/n):
 ```
 
 **2. タスク投入**
@@ -63,7 +61,7 @@ ignite plan "READMEファイルを作成する"
 次のステップ:
   1. ダッシュボード確認: cat workspace/.ignite/dashboard.md
   2. ステータス確認: ignite status
-  3. tmuxセッション表示: tmux attach -t ignite-session
+  3. セッションに接続: ignite attach
 ```
 
 **3. 進捗監視**
@@ -108,17 +106,17 @@ watch -n 5 cat workspace/.ignite/dashboard.md
 [17:09:30] [通瀬アイナ] 進捗: 1/3完了。このペースで続けましょう。
 ```
 
-**4. tmuxセッションで詳細確認**
+**4. セッションで詳細確認**
 
 ```bash
-tmux attach -t ignite-session
+ignite attach
 ```
 
-各ペインで各エージェントの動作を確認できます:
-- Pane 0: Leader の判断プロセス
-- Pane 1: Strategist のタスク分解
-- Pane 4: Coordinator のタスク配分
-- Pane 6-8: IGNITIANs の実行状況
+各エージェントの動作をログで確認できます:
+- Leader の判断プロセス
+- Strategist のタスク分解
+- Coordinator のタスク配分
+- IGNITIANs の実行状況
 
 **5. ステータス確認**
 
@@ -130,8 +128,8 @@ ignite status
 ```
 === IGNITE システム状態 ===
 
-✓ tmuxセッション: 実行中
-  ペイン数: 9
+✓ エージェントサーバー: 実行中
+  エージェント数: 9
 
 === ダッシュボード ===
 
@@ -389,18 +387,13 @@ watch -n 5 cat workspace/.ignite/dashboard.md
 tail -f workspace/.ignite/logs/*.log
 ```
 
-### 5. tmuxセッションの活用
+### 5. セッションの活用
 
 各エージェントの動作を確認:
 
 ```bash
-tmux attach -t ignite-session
+ignite attach
 ```
-
-ペイン移動:
-- `Ctrl+b o` - 次のペインへ
-- `Ctrl+b ;` - 前のペインへ
-- `Ctrl+b q` - ペイン番号表示
 
 ---
 
@@ -417,10 +410,9 @@ cat workspace/.ignite/dashboard.md
 
 **原因2: IGNITIANが応答しない**
 
-tmuxセッションで該当ペインを確認:
+エージェントの状態を確認:
 ```bash
-tmux attach -t ignite-session
-# Ctrl+b q でペイン番号確認
+ignite status
 ```
 
 **原因3: メッセージが溜まっている**
@@ -439,9 +431,9 @@ grep -i error workspace/.ignite/logs/*.log
 
 ### システムが起動しない
 
-既存セッションを削除:
+既存セッションを停止して再起動:
 ```bash
-tmux kill-session -t ignite-session
+ignite stop
 ignite start
 ```
 

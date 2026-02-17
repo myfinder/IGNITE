@@ -367,10 +367,6 @@ _service_setup_env() {
         fi
     fi
 
-    # CLI Provider 固有の環境変数を取得
-    local _cli_env_vars
-    _cli_env_vars=$(cli_get_env_vars 2>/dev/null || echo "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
-
     # ワークスペースパスの検出
     local _workspace_dir=""
     if [[ -d "$(pwd)/.ignite" ]]; then
@@ -394,8 +390,6 @@ _service_setup_env() {
 PATH=${_current_path}
 HOME=${HOME}
 TERM=xterm-256color
-
-${_cli_env_vars}
 
 XDG_CONFIG_HOME=${HOME}/.config
 XDG_DATA_HOME=${HOME}/.local/share

@@ -102,48 +102,42 @@ cmd_stop() {
     # コスト履歴を保存
     save_cost_history
 
-    # セッション終了
-    if cli_is_headless_mode; then
-        # ヘッドレス: PID ベースでエージェント停止
-        print_warning "エージェントプロセスを停止中..."
-        for pid_file in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
-            [[ -f "$pid_file" ]] || continue
-            local pid
-            pid=$(cat "$pid_file" 2>/dev/null || true)
-            if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
-                pkill -P "$pid" 2>/dev/null || true
-                kill "$pid" 2>/dev/null || true
-                local i
-                for i in {1..6}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
-                if kill -0 "$pid" 2>/dev/null; then
-                    pkill -9 -P "$pid" 2>/dev/null || true
-                    kill -9 "$pid" 2>/dev/null || true
-                fi
+    # エージェントプロセス停止（PID ベース）
+    print_warning "エージェントプロセスを停止中..."
+    for pid_file in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
+        [[ -f "$pid_file" ]] || continue
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+            pkill -P "$pid" 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+            local i
+            for i in {1..6}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+            if kill -0 "$pid" 2>/dev/null; then
+                pkill -9 -P "$pid" 2>/dev/null || true
+                kill -9 "$pid" 2>/dev/null || true
             fi
-            rm -f "$pid_file"
-        done
-        # PID ファイルに載っていない孤立プロセスも掃除
-        local _orphan_pids=""
-        _orphan_pids=$(pgrep -f "opencode serve.*--print-logs" 2>/dev/null | while read -r _op; do
-            # このワークスペースに属するプロセスのみ対象
-            if grep -qsF "$WORKSPACE_DIR" "/proc/$_op/environ" 2>/dev/null; then
-                echo "$_op"
-            fi
-        done) || true
-        if [[ -n "$_orphan_pids" ]]; then
-            echo "$_orphan_pids" | xargs kill 2>/dev/null || true
-            sleep 1
-            echo "$_orphan_pids" | while read -r _op; do
-                kill -0 "$_op" 2>/dev/null && kill -9 "$_op" 2>/dev/null || true
-            done
         fi
-        rm -f "$IGNITE_RUNTIME_DIR/state"/.agent_{port,session,name}_*
-        rm -f "$IGNITE_RUNTIME_DIR/state"/.send_lock_*
-        print_success "エージェントプロセスを停止しました"
-    else
-        print_warning "tmuxセッションを終了中..."
-        tmux kill-session -t "$SESSION_NAME"
+        rm -f "$pid_file"
+    done
+    # PID ファイルに載っていない孤立プロセスも掃除
+    local _orphan_pids=""
+    _orphan_pids=$(pgrep -f "opencode serve.*--print-logs" 2>/dev/null | while read -r _op; do
+        # このワークスペースに属するプロセスのみ対象
+        if grep -qsF "$WORKSPACE_DIR" "/proc/$_op/environ" 2>/dev/null; then
+            echo "$_op"
+        fi
+    done) || true
+    if [[ -n "$_orphan_pids" ]]; then
+        echo "$_orphan_pids" | xargs kill 2>/dev/null || true
+        sleep 1
+        echo "$_orphan_pids" | while read -r _op; do
+            kill -0 "$_op" 2>/dev/null && kill -9 "$_op" 2>/dev/null || true
+        done
     fi
+    rm -f "$IGNITE_RUNTIME_DIR/state"/.agent_{port,session,name}_*
+    rm -f "$IGNITE_RUNTIME_DIR/state"/.send_lock_*
+    print_success "エージェントプロセスを停止しました"
 
     # セッション情報ファイルを削除
     rm -f "$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"

@@ -136,18 +136,13 @@ YAML
 @test "validate_all_configs: エラーありでもレポートが出力される" {
     mkdir -p "$TEST_TEMP_DIR/config"
     cat > "$TEST_TEMP_DIR/config/system.yaml" <<'YAML'
-tmux:
-  window_name: ignite
 delays:
   leader_startup: 3
-  claude_startup: 8
+  server_ready: 8
   leader_init: 10
   agent_stabilize: 2
   agent_retry_wait: 3
   process_cleanup: 1
-  session_create: 1
-  permission_accept: 1
-  prompt_send: 1
 defaults:
   message_priority: normal
   task_timeout: 300

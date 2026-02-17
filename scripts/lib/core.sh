@@ -212,7 +212,6 @@ resolve_config() {
 }
 
 # system.yaml から読み込むグローバル設定
-TMUX_WINDOW_NAME=$(get_config tmux window_name "ignite")
 DEFAULT_MESSAGE_PRIORITY=$(get_config defaults message_priority "normal")
 
 # CLI Provider 抽象化レイヤー
