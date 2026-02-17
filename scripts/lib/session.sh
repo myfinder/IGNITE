@@ -28,17 +28,44 @@ get_default_workspace() {
 }
 
 # セッションIDの設定（指定がなければ自動生成）
+# 解決順: 1) runtime.yaml → 2) セッション一覧(1つなら採用/複数ならエラー) → 3) 新規生成
 setup_session_name() {
-    if [[ -z "$SESSION_NAME" ]]; then
-        # 既存セッションを検索
-        local existing_session
-        existing_session=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" | head -1 || true)
+    [[ -n "$SESSION_NAME" ]] && return
 
-        if [[ -n "$existing_session" ]]; then
-            SESSION_NAME="$existing_session"
-        else
-            SESSION_NAME=$(generate_session_id)
+    # 1. ワークスペースの runtime.yaml からセッション名を取得
+    local ws="${WORKSPACE_DIR:-}"
+    if [[ -z "$ws" ]] && [[ -n "${IGNITE_WORKSPACE:-}" ]]; then
+        ws="$IGNITE_WORKSPACE"
+    fi
+    if [[ -z "$ws" ]] && [[ -d "$(pwd)/.ignite" ]]; then
+        ws="$(pwd)"
+    fi
+    if [[ -n "$ws" ]] && [[ -f "$ws/.ignite/runtime.yaml" ]]; then
+        local name
+        name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name")
+        if [[ -n "$name" ]] && tmux has-session -t "$name" 2>/dev/null; then
+            SESSION_NAME="$name"
+            WORKSPACE_DIR="$ws"
+            return
         fi
+    fi
+
+    # 2. フォールバック: ignite-* セッション一覧から判定
+    local sessions
+    sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^ignite-" || true)
+    local count
+    count=$(echo "$sessions" | grep -c . 2>/dev/null || echo 0)
+
+    if [[ "$count" -eq 1 ]]; then
+        SESSION_NAME=$(echo "$sessions" | head -1)
+    elif [[ "$count" -gt 1 ]]; then
+        print_error "複数の IGNITE セッションが実行中です:"
+        echo "$sessions" | while read -r s; do echo "  - $s"; done
+        print_info "-s <session> で対象を指定してください"
+        exit 1
+    else
+        # 3. セッションなし: 新規生成
+        SESSION_NAME=$(generate_session_id)
     fi
 }
 
