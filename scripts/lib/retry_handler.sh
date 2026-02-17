@@ -35,12 +35,13 @@ RETRY_TIMEOUT="${RETRY_TIMEOUT:-300}"           # processingタイムアウト�
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"       # バックオフの基本遅延（秒）
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-300}"        # バックオフの最大遅延（秒）
 
-# カラー定義
-_RH_GREEN='\033[0;32m'
-_RH_BLUE='\033[0;34m'
-_RH_YELLOW='\033[1;33m'
-_RH_RED='\033[0;31m'
-_RH_NC='\033[0m'
+# カラー定義は core.sh に依存（NO_COLOR / TTY 判定を尊重）
+# core.sh が source 済みでない場合のフォールバック
+_RH_GREEN="${GREEN:-}"
+_RH_BLUE="${BLUE:-}"
+_RH_YELLOW="${YELLOW:-}"
+_RH_RED="${RED:-}"
+_RH_NC="${NC:-}"
 
 # ログ出力（すべて標準エラー出力に出力して、コマンド置換で混入しないようにする）
 _rh_log_info()    { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${_RH_BLUE}[RETRY]${_RH_NC} $1" >&2; }

@@ -19,12 +19,12 @@ _DLQ_IGNITE_MIME="${BASH_SOURCE[0]%/*}/ignite_mime.py"
 
 DLQ_MAX_RETRIES="${DLQ_MAX_RETRIES:-3}"
 
-# カラー定義（sourced 元で未定義の場合のフォールバック）
-_DLQ_GREEN="${GREEN:-\033[0;32m}"
-_DLQ_YELLOW="${YELLOW:-\033[1;33m}"
-_DLQ_RED="${RED:-\033[0;31m}"
-_DLQ_BLUE="${BLUE:-\033[0;34m}"
-_DLQ_NC="${NC:-\033[0m}"
+# カラー定義は core.sh に依存（NO_COLOR / TTY 判定を尊重）
+_DLQ_GREEN="${GREEN:-}"
+_DLQ_YELLOW="${YELLOW:-}"
+_DLQ_RED="${RED:-}"
+_DLQ_BLUE="${BLUE:-}"
+_DLQ_NC="${NC:-}"
 
 # ログ関数（sourced 元で未定義の場合のフォールバック）
 if ! declare -f log_info &>/dev/null; then

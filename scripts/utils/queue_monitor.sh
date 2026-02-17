@@ -25,6 +25,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
 source "${SCRIPT_DIR}/../lib/cli_provider.sh"
+source "${SCRIPT_DIR}/../lib/health_check.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
@@ -111,6 +112,16 @@ PROGRESS_MAX_CHARS="${QUEUE_PROGRESS_MAX_CHARS:-400}"
 PROGRESS_MAX_LINES="${QUEUE_PROGRESS_MAX_LINES:-4}"
 PROGRESS_LATEST_FILE="${IGNITE_RUNTIME_DIR}/state/progress_update_latest.txt"
 
+# 再開フロー/誤検知対策
+HEARTBEAT_INTERVAL="${QUEUE_HEARTBEAT_INTERVAL:-10}"
+PROGRESS_LOG_INTERVAL="${QUEUE_PROGRESS_INTERVAL:-30}"
+MISSING_SESSION_GRACE="${QUEUE_MISSING_SESSION_GRACE:-60}"
+MISSING_SESSION_THRESHOLD="${QUEUE_MISSING_SESSION_THRESHOLD:-3}"
+MONITOR_LOCK_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor.lock"
+MONITOR_STATE_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_state.json"
+MONITOR_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_heartbeat.json"
+MONITOR_PROGRESS_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_progress.log"
+
 # CLI プロバイダー設定を読み込み（submit keys 判定に必要）
 cli_load_config 2>/dev/null || true
 
@@ -134,6 +145,282 @@ _resolve_task_timeout() {
         _TASK_TIMEOUT="${RETRY_TIMEOUT:-300}"
     fi
     echo "$_TASK_TIMEOUT"
+}
+
+# =============================================================================
+# キュー統計の共通スキャン（_write_task_health_snapshot / _log_progress で共有）
+# X-IGNITE-Status ヘッダーを grep で高速に取得（python3 呼び出しを回避）
+# =============================================================================
+# グローバルキャッシュ変数（ポーリング1サイクル内で再利用）
+_QUEUE_STATS_CACHE=""
+_QUEUE_STATS_EPOCH=0
+
+_scan_queue_stats() {
+    local now_epoch
+    now_epoch=$(date +%s)
+    # 同一秒内のキャッシュを再利用
+    if [[ -n "$_QUEUE_STATS_CACHE" ]] && [[ "$_QUEUE_STATS_EPOCH" -eq "$now_epoch" ]]; then
+        printf '%s' "$_QUEUE_STATS_CACHE"
+        return
+    fi
+
+    local result=""
+    for queue_dir in "$IGNITE_RUNTIME_DIR/queue"/*; do
+        [[ -d "$queue_dir" ]] || continue
+        local queue_name
+        queue_name=$(basename "$queue_dir")
+        [[ "$queue_name" == "dead_letter" ]] && continue
+
+        local pending_count
+        pending_count=$(find "$queue_dir" -maxdepth 1 -name "*.mime" -type f 2>/dev/null | wc -l)
+
+        local processed_dir="$queue_dir/processed"
+        local processing_count=0
+        local retrying_count=0
+        local delivered_count=0
+        if [[ -d "$processed_dir" ]]; then
+            for file in "$processed_dir"/*.mime; do
+                [[ -f "$file" ]] || continue
+                # grep でヘッダーから直接取得（python3 起動を回避）
+                local status
+                status=$(grep -m1 '^X-IGNITE-Status:' "$file" 2>/dev/null | sed 's/^X-IGNITE-Status:[[:space:]]*//' | tr -d '\r')
+                case "$status" in
+                    processing|"")
+                        processing_count=$((processing_count + 1))
+                        ;;
+                    retrying)
+                        retrying_count=$((retrying_count + 1))
+                        ;;
+                    delivered|completed)
+                        delivered_count=$((delivered_count + 1))
+                        ;;
+                esac
+            done
+        fi
+
+        result+="${queue_name}|${pending_count}|${processing_count}|${retrying_count}|${delivered_count}"
+        result+=$'\n'
+    done
+
+    _QUEUE_STATS_CACHE="$result"
+    _QUEUE_STATS_EPOCH="$now_epoch"
+    printf '%s' "$result"
+}
+
+# task_health.json の永続化
+_write_task_health_snapshot() {
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    local output_file="$state_dir/task_health.json"
+    mkdir -p "$state_dir"
+
+    local timestamp
+    timestamp=$(date -Iseconds)
+
+    local agents_json="[]"
+    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        agents_json=$(get_agents_health_json "$TMUX_SESSION:$TMUX_WINDOW_NAME" 2>/dev/null || echo "[]")
+    fi
+
+    local queue_lines
+    queue_lines=$(_scan_queue_stats)
+
+    TASK_HEALTH_TIMESTAMP="$timestamp" \
+    TASK_HEALTH_SESSION="$TMUX_SESSION" \
+    TASK_HEALTH_WORKSPACE="$WORKSPACE_DIR" \
+    TASK_HEALTH_AGENTS_JSON="$agents_json" \
+    TASK_HEALTH_QUEUE_LINES="$queue_lines" \
+    python3 - <<'PY' > "$output_file"
+import json
+import os
+
+timestamp = os.environ.get("TASK_HEALTH_TIMESTAMP", "")
+session = os.environ.get("TASK_HEALTH_SESSION", "")
+workspace = os.environ.get("TASK_HEALTH_WORKSPACE", "")
+agents_json = os.environ.get("TASK_HEALTH_AGENTS_JSON", "[]")
+queue_lines = os.environ.get("TASK_HEALTH_QUEUE_LINES", "")
+
+try:
+    agents = json.loads(agents_json)
+except json.JSONDecodeError:
+    agents = []
+
+queues = []
+for raw in queue_lines.splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+    parts = line.split("|", 4)
+    if len(parts) != 5:
+        continue
+    name, pending, processing, retrying, delivered = parts
+    queues.append({
+        "name": name,
+        "pending": int(pending),
+        "processing": int(processing),
+        "retrying": int(retrying),
+        "delivered": int(delivered),
+    })
+
+payload = {
+    "generated_at": timestamp,
+    "session": session,
+    "workspace_dir": workspace,
+    "agents": agents,
+    "queues": queues,
+}
+print(json.dumps(payload, ensure_ascii=False))
+PY
+}
+
+
+# =============================================================================
+# 再開フロー基盤（resume_token/ロック/バックオフ）
+# =============================================================================
+
+_ensure_state_dir() {
+    mkdir -p "${IGNITE_RUNTIME_DIR}/state"
+}
+
+_load_monitor_state() {
+    _ensure_state_dir
+    if [[ ! -f "$MONITOR_STATE_FILE" ]]; then
+        return 0
+    fi
+
+    local state_json
+    state_json=$(cat "$MONITOR_STATE_FILE" 2>/dev/null || true)
+    if [[ -z "$state_json" ]]; then
+        return 0
+    fi
+
+    local parsed
+    if ! parsed=$(STATE_JSON="$state_json" python3 - <<'PY'
+import json
+import os
+import sys
+
+state = os.environ.get("STATE_JSON", "{}")
+try:
+    data = json.loads(state)
+    if not isinstance(data, dict):
+        raise ValueError("monitor state must be an object")
+except (json.JSONDecodeError, ValueError) as exc:
+    print(f"invalid monitor state json: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+resume_token = data.get("resume_token", "")
+failure_count = data.get("failure_count", 0)
+last_exit = data.get("last_exit_code", 0)
+last_failure_at = data.get("last_failure_at", "")
+
+try:
+    failure_count = int(failure_count)
+except (TypeError, ValueError):
+    failure_count = 0
+try:
+    last_exit = int(last_exit)
+except (TypeError, ValueError):
+    last_exit = 0
+
+print(f"{resume_token}\t{failure_count}\t{last_exit}\t{last_failure_at}")
+PY
+); then
+        log_warn "monitor state JSONの解析に失敗しました。既定値へフォールバックします: $MONITOR_STATE_FILE"
+        MONITOR_RESUME_TOKEN=""
+        MONITOR_FAILURE_COUNT=0
+        MONITOR_LAST_EXIT=0
+        MONITOR_LAST_FAILURE_AT=""
+        return 0
+    fi
+
+    IFS=$'\t' read -r MONITOR_RESUME_TOKEN MONITOR_FAILURE_COUNT MONITOR_LAST_EXIT MONITOR_LAST_FAILURE_AT <<< "$parsed"
+}
+
+_save_monitor_state() {
+    _ensure_state_dir
+    local timestamp
+    timestamp=$(date -Iseconds)
+    MONITOR_STATE_TIMESTAMP="$timestamp" \
+    MONITOR_STATE_TOKEN="${MONITOR_RESUME_TOKEN:-}" \
+    MONITOR_STATE_FAILURE_COUNT="${MONITOR_FAILURE_COUNT:-0}" \
+    MONITOR_STATE_LAST_EXIT="${MONITOR_LAST_EXIT:-0}" \
+    MONITOR_STATE_LAST_FAILURE_AT="${MONITOR_LAST_FAILURE_AT:-}" \
+    python3 - <<'PY' > "$MONITOR_STATE_FILE"
+import json,os
+data={
+  "resume_token": os.environ.get("MONITOR_STATE_TOKEN",""),
+  "failure_count": int(os.environ.get("MONITOR_STATE_FAILURE_COUNT","0")),
+  "last_exit_code": int(os.environ.get("MONITOR_STATE_LAST_EXIT","0")),
+  "last_failure_at": os.environ.get("MONITOR_STATE_LAST_FAILURE_AT", ""),
+  "updated_at": os.environ.get("MONITOR_STATE_TIMESTAMP", "")
+}
+print(json.dumps(data, ensure_ascii=False))
+PY
+}
+
+_init_resume_token() {
+    if [[ -z "${MONITOR_RESUME_TOKEN:-}" ]]; then
+        MONITOR_RESUME_TOKEN="$(date +%s%6N)-$RANDOM"
+    fi
+}
+
+_apply_resume_backoff() {
+    if [[ "${MONITOR_LAST_EXIT:-0}" -ne 0 ]]; then
+        MONITOR_FAILURE_COUNT=$((MONITOR_FAILURE_COUNT + 1))
+        MONITOR_LAST_FAILURE_AT="$(date -Iseconds)"
+        local backoff
+        backoff=$(calculate_backoff "$MONITOR_FAILURE_COUNT")
+        log_warn "再開バックオフ: ${backoff}秒（失敗回数: ${MONITOR_FAILURE_COUNT}）"
+        sleep "$backoff"
+    else
+        MONITOR_FAILURE_COUNT=0
+    fi
+    _save_monitor_state
+}
+
+_write_heartbeat() {
+    _ensure_state_dir
+    local timestamp
+    timestamp=$(date -Iseconds)
+    printf '{"timestamp":"%s","resume_token":"%s","tmux_session":"%s"}\n' \
+        "$timestamp" "${MONITOR_RESUME_TOKEN:-}" "$TMUX_SESSION" \
+        > "$MONITOR_HEARTBEAT_FILE"
+}
+
+_log_progress() {
+    _ensure_state_dir
+    local timestamp
+    timestamp=$(date -Iseconds)
+
+    local pending_total=0
+    local processing_total=0
+    local retrying_total=0
+    local delivered_total=0
+
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local _name pending processing retrying delivered
+        IFS='|' read -r _name pending processing retrying delivered <<< "$line"
+        pending_total=$((pending_total + pending))
+        processing_total=$((processing_total + processing))
+        retrying_total=$((retrying_total + retrying))
+        delivered_total=$((delivered_total + delivered))
+    done <<< "$(_scan_queue_stats)"
+
+    printf '%s resume=%s pending=%s processing=%s retrying=%s delivered=%s\n' \
+        "$timestamp" "${MONITOR_RESUME_TOKEN:-}" \
+        "$pending_total" "$processing_total" "$retrying_total" "$delivered_total" \
+        >> "$MONITOR_PROGRESS_FILE"
+}
+
+_on_monitor_exit() {
+    local exit_code=$?
+    MONITOR_LAST_EXIT=$exit_code
+    if [[ $exit_code -ne 0 ]]; then
+        MONITOR_LAST_FAILURE_AT="$(date -Iseconds)"
+    fi
+    _save_monitor_state
 }
 
 # =============================================================================
@@ -881,14 +1168,33 @@ monitor_queues() {
 
     local poll_count=0
     local SYNC_INTERVAL=30    # 30 × 10秒 = ~5分
+    local missing_session_count=0
+    local missing_session_first_at=0
+    local last_heartbeat_epoch=0
+    local last_progress_epoch=0
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-        # tmuxセッション生存チェック
+        # tmuxセッション生存チェック（誤検知対策）
         if ! tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-            log_warn "tmux セッション '$TMUX_SESSION' が消滅しました。監視を終了します"
-            _SHUTDOWN_REQUESTED=true
-            break
+            local now_epoch
+            now_epoch=$(date +%s)
+            if [[ $missing_session_count -eq 0 ]]; then
+                missing_session_first_at=$now_epoch
+            fi
+            missing_session_count=$((missing_session_count + 1))
+            local elapsed=$((now_epoch - missing_session_first_at))
+            log_warn "tmux セッション未検出: ${missing_session_count}/${MISSING_SESSION_THRESHOLD} (経過 ${elapsed}s)"
+            if [[ $elapsed -ge $MISSING_SESSION_GRACE ]] && [[ $missing_session_count -ge $MISSING_SESSION_THRESHOLD ]]; then
+                log_error "tmux セッション未検出が継続（猶予 ${MISSING_SESSION_GRACE}s 超過）"
+                _EXIT_CODE=1
+                _SHUTDOWN_REQUESTED=true
+                break
+            fi
+            sleep 1
+            continue
         fi
+        missing_session_count=0
+        missing_session_first_at=0
 
         # Leader キュー
         scan_queue "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
@@ -921,6 +1227,20 @@ monitor_queues() {
             dirname=$(basename "$ignitian_dir")
             scan_for_timeouts "$ignitian_dir" "$dirname"
         done
+
+        _write_task_health_snapshot || true
+
+        # heartbeat / progress
+        local now_epoch
+        now_epoch=$(date +%s)
+        if [[ $((now_epoch - last_heartbeat_epoch)) -ge $HEARTBEAT_INTERVAL ]]; then
+            _write_heartbeat || true
+            last_heartbeat_epoch=$now_epoch
+        fi
+        if [[ $((now_epoch - last_progress_epoch)) -ge $PROGRESS_LOG_INTERVAL ]]; then
+            _log_progress || true
+            last_progress_epoch=$now_epoch
+        fi
 
         # 定期的にダッシュボードから日次レポートに同期（~5分ごと）
         poll_count=$((poll_count + 1))
@@ -1014,6 +1334,23 @@ main() {
         log_error "tmux セッションが見つかりません: $TMUX_SESSION"
         exit 1
     fi
+
+    # 二重起動防止ロック
+    _ensure_state_dir
+    exec 9>"$MONITOR_LOCK_FILE"
+    if ! flock -n 9; then
+        log_error "queue_monitor は既に起動しています: $MONITOR_LOCK_FILE"
+        exit 1
+    fi
+
+    # 再開フロー初期化
+    _load_monitor_state
+    _init_resume_token
+    _apply_resume_backoff
+    _write_heartbeat
+
+    # 終了時の状態保存
+    trap _on_monitor_exit EXIT
 
     # SIGHUP ハンドラ（フラグベース遅延リロード）
     # trap内で直接load_config()を呼ぶと、scan_queue()実行中に

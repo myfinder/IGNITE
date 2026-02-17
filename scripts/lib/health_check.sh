@@ -23,12 +23,8 @@
 readonly IDLE_THRESHOLD=300   # 5分
 readonly STALE_THRESHOLD=900  # 15分
 
-# カラー定義（未定義時のみ設定）
-: "${GREEN:=\033[0;32m}"
-: "${YELLOW:=\033[1;33m}"
-: "${RED:=\033[0;31m}"
-: "${CYAN:=\033[0;36m}"
-: "${NC:=\033[0m}"
+# カラー定義は core.sh に依存（core.sh が NO_COLOR / TTY を考慮して設定済み）
+# `:=` は空文字列を「未設定」と見なすため core.sh のカラー無効化を上書きしてしまう
 
 # =============================================================================
 # Layer 1: プロセス存在チェック
@@ -304,4 +300,43 @@ format_health_status() {
             echo -e "? ${status}"
             ;;
     esac
+}
+
+# =============================================================================
+# JSONエクスポート
+# =============================================================================
+
+# get_agents_health_json <session>
+# 戻り値(stdout): エージェント状態JSON配列
+get_agents_health_json() {
+    local session="$1"
+    local lines
+    lines=$(get_all_agents_health "$session" 2>/dev/null || true)
+    if [[ -z "$lines" ]]; then
+        echo "[]"
+        return
+    fi
+
+    HEALTH_LINES="$lines" python3 - <<'PY'
+import json
+import os
+
+agents = []
+data = os.environ.get("HEALTH_LINES", "")
+for raw in data.splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+    parts = line.split(':', 2)
+    if len(parts) != 3:
+        continue
+    pane, name, status = parts
+    try:
+        pane_id = int(pane)
+    except ValueError:
+        pane_id = None
+    agents.append({"pane": pane_id, "name": name, "status": status})
+
+print(json.dumps(agents, ensure_ascii=False))
+PY
 }
