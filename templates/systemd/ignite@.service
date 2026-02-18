@@ -10,6 +10,15 @@ RemainAfterExit=yes
 
 EnvironmentFile=-%h/.config/ignite/env.%i
 
+# rootless runtime 設定（デフォルト互換: auto は要件不足時に rootful へフォールバック）
+# 依存: cgroup v2 / userns / subuid+subgid / slirp4netns or pasta / fuse-overlayfs
+Environment=IGNITE_RUNTIME_MODE=auto
+# Environment=IGNITE_ROOTLESS_RUNTIME=podman
+# Environment=IGNITE_ROOTLESS_IMAGE=ghcr.io/myfinder/ignite:latest
+
+# ワークスペース永続化: env.%i で IGNITE_WORKSPACE/WORKSPACE_DIR を設定すること
+# ログ出力: systemd --user の journal に集約（ignite service logs 参照）
+
 # headless モード (opencode): tmux 不要、HTTP 通信で動作
 # TUI モード (claude): tmux セッション内で動作
 ExecStart=%h/.local/share/ignite/scripts/ignite start --daemon -s %i

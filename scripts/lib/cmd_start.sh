@@ -5,6 +5,144 @@
 [[ -n "${__LIB_CMD_START_LOADED:-}" ]] && return; __LIB_CMD_START_LOADED=1
 
 # =============================================================================
+# runtime モード判定/チェック（rootless/rootful/auto）
+# =============================================================================
+
+sanitize_runtime_mode() {
+    local mode
+    mode=$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')
+    case "$mode" in
+        rootless|rootful|auto)
+            echo "$mode"
+            ;;
+        "")
+            echo "rootful"
+            ;;
+        *)
+            print_warning "無効な runtime mode: ${1:-<empty>}。rootful にフォールバックします"
+            echo "rootful"
+            ;;
+    esac
+}
+
+sanitize_runtime_command() {
+    local cmd
+    cmd=$(echo "${1:-}" | tr -cd 'a-zA-Z0-9._-')
+    if [[ -z "$cmd" ]]; then
+        echo "podman"
+        return
+    fi
+    echo "$cmd"
+}
+
+_check_rootless_requirements() {
+    local strict="$1"
+    local -a missing=()
+
+    if [[ "$EUID" -eq 0 ]]; then
+        missing+=("root ユーザーでの実行")
+    fi
+
+    if [[ ! -f "/sys/fs/cgroup/cgroup.controllers" ]]; then
+        missing+=("cgroup v2")
+    fi
+
+    local userns_ok=false
+    if [[ -f "/proc/sys/kernel/unprivileged_userns_clone" ]]; then
+        if [[ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" == "1" ]]; then
+            userns_ok=true
+        fi
+    fi
+    if [[ "$userns_ok" != true ]] && [[ -f "/proc/sys/user/max_user_namespaces" ]]; then
+        local max_userns
+        max_userns=$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "0")
+        if [[ "$max_userns" =~ ^[0-9]+$ ]] && [[ "$max_userns" -gt 0 ]]; then
+            userns_ok=true
+        fi
+    fi
+    if [[ "$userns_ok" != true ]]; then
+        missing+=("userns（unprivileged_userns_clone）")
+    fi
+
+    local user_name="${SUDO_USER:-${USER:-}}"
+    if [[ -z "$user_name" ]] || ! grep -q "^${user_name}:" /etc/subuid 2>/dev/null; then
+        missing+=("/etc/subuid")
+    fi
+    if [[ -z "$user_name" ]] || ! grep -q "^${user_name}:" /etc/subgid 2>/dev/null; then
+        missing+=("/etc/subgid")
+    fi
+
+    if ! command -v slirp4netns &>/dev/null && ! command -v pasta &>/dev/null; then
+        missing+=("slirp4netns または pasta")
+    fi
+    if ! command -v fuse-overlayfs &>/dev/null; then
+        missing+=("fuse-overlayfs")
+    fi
+
+    if ! command -v systemctl &>/dev/null; then
+        missing+=("systemd --user")
+    fi
+
+    local runtime_cmd
+    runtime_cmd=$(sanitize_runtime_command "${IGNITE_ROOTLESS_RUNTIME:-podman}")
+    if ! command -v "$runtime_cmd" &>/dev/null; then
+        missing+=("runtime command: ${runtime_cmd}")
+    fi
+
+    if [[ -z "${IGNITE_ROOTLESS_IMAGE:-}" ]]; then
+        missing+=("IGNITE_ROOTLESS_IMAGE")
+    fi
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        if [[ "$strict" == "true" ]]; then
+            print_error "rootless runtime 要件を満たしません。rootful に切替できません"
+            for item in "${missing[@]}"; do
+                print_error "  - ${item}"
+            done
+        else
+            print_warning "rootless runtime 事前チェックに失敗。rootful にフォールバックします"
+            for item in "${missing[@]}"; do
+                print_warning "  - ${item}"
+            done
+        fi
+        return 1
+    fi
+
+    return 0
+}
+
+_resolve_runtime_mode() {
+    local requested
+    requested="${IGNITE_RUNTIME_MODE:-}"
+    if [[ -z "$requested" ]]; then
+        requested=$(get_config runtime mode "rootful")
+    fi
+    requested=$(sanitize_runtime_mode "$requested")
+
+    local resolved="rootful"
+    case "$requested" in
+        auto)
+            if _check_rootless_requirements false; then
+                resolved="rootless"
+            fi
+            ;;
+        rootless)
+            if _check_rootless_requirements true; then
+                resolved="rootless"
+            else
+                return 1
+            fi
+            ;;
+        rootful)
+            resolved="rootful"
+            ;;
+    esac
+
+    export IGNITE_RUNTIME_MODE="$resolved"
+    return 0
+}
+
+# =============================================================================
 # start コマンド
 # =============================================================================
 cmd_start() {
@@ -83,6 +221,12 @@ cmd_start() {
     # ワークスペース固有の CLI 設定を再読み込み
     cli_load_config
 
+    # runtime モードの決定（rootless/rootful/auto）
+    if ! _resolve_runtime_mode; then
+        print_error "runtime モードの決定に失敗しました。起動を中止します"
+        exit 1
+    fi
+
     # 起動並列化
     START_PARALLEL_SLOTS="${IGNITE_START_PARALLEL_SLOTS:-5}"
     START_PARALLEL_TIMEOUT="${IGNITE_START_PARALLEL_TIMEOUT:-90}"
@@ -129,6 +273,7 @@ cmd_start() {
     echo -e "${BLUE}セッションID:${NC} $SESSION_NAME"
     echo -e "${BLUE}ワークスペース:${NC} $WORKSPACE_DIR"
     echo -e "${BLUE}起動モード:${NC} $agent_mode"
+    echo -e "${BLUE}runtime:${NC} ${IGNITE_RUNTIME_MODE:-rootful}"
     if [[ "$agent_mode" != "leader" ]]; then
         echo -e "${BLUE}Sub-Leaders:${NC} ${#SUB_LEADERS[@]}名"
     fi
@@ -317,6 +462,7 @@ EOF
 system:
   started_at: "$(date -Iseconds)"
   agent_mode: "${agent_mode}"
+  runtime_mode: "${IGNITE_RUNTIME_MODE:-rootful}"
   session_name: "${SESSION_NAME}"
   workspace_dir: "${WORKSPACE_DIR}"
   startup_status: "complete"
@@ -644,6 +790,7 @@ EOF
 system:
   started_at: "$(date -Iseconds)"
   agent_mode: "${agent_mode}"
+  runtime_mode: "${IGNITE_RUNTIME_MODE:-rootful}"
   session_name: "${SESSION_NAME}"
   workspace_dir: "${WORKSPACE_DIR}"
   startup_status: "${_startup_status}"
