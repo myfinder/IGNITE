@@ -56,6 +56,7 @@ timestamp: "2026-01-31T17:01:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  action_type: "implement"    # implement / review / explain / insights / github_ops
   repository: "myfinder/IGNITE"
   issue_number: 123
   requirements:
@@ -64,6 +65,21 @@ payload:
     - "使用例を記載"
   context: "ユーザーからの直接依頼"
 ```
+
+**action_type フィールド:**
+
+Leader が `trigger_comment` のキーワードマッチングで判定した意図分類。この値に基づいて戦略のアプローチを決定する:
+
+| action_type | 戦略の方向性 | 主要 task_type |
+|-------------|------------|---------------|
+| `implement` | コード実装・修正。PR作成がゴール | implement |
+| `review` | コードレビュー・品質確認 | review |
+| `explain` | 説明・解説文の生成 | document |
+| `insights` | 分析・インサイト生成 | analyze |
+| `github_ops` | GitHub API操作（Issue/PR操作） | github_ops |
+
+> **後方互換**: `action_type` 未設定時は `goal` テキストから推測し、`implement` をデフォルトとする。
+> **注意**: `github_ops` は通常 Strategist を経由しない（Leader → Coordinator 直接）が、万が一受信した場合は上表に従う。
 
 **送信メッセージ例（戦略提案）:**
 ```yaml
@@ -108,6 +124,7 @@ timestamp: "2026-01-31T17:04:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  action_type: "implement"
   repository: "myfinder/IGNITE"
   issue_number: 123
   strategy_summary: "3フェーズで段階的に構築"
@@ -115,6 +132,7 @@ payload:
     - task_id: "task_001"
       title: "README骨組み作成"
       description: "基本的なMarkdown構造を作成"
+      task_type: "implement"
       phase: 1
       priority: high
       estimated_time: 60
@@ -135,6 +153,7 @@ payload:
     - task_id: "task_002"
       title: "インストール手順作成"
       description: "インストール方法を詳細に記載"
+      task_type: "implement"
       phase: 2
       priority: normal
       estimated_time: 120
@@ -148,6 +167,7 @@ payload:
     - task_id: "task_003"
       title: "使用例作成"
       description: "使用方法とサンプルコードを記載"
+      task_type: "implement"
       phase: 2
       priority: normal
       estimated_time: 120
@@ -158,6 +178,17 @@ payload:
       deliverables:
         - "README.md (使用例セクション完成)"
 ```
+
+**task_type の決定ルール:**
+
+`action_type` から各タスクの `task_type` を導出する:
+- `implement`: コード実装・修正（ファイル作成/編集が成果物）
+- `analyze`: コード分析・調査（分析結果が成果物）
+- `document`: ドキュメント・説明文作成（テキストが成果物）
+- `review`: コードレビュー（レビューコメントが成果物）
+- `github_ops`: GitHub API操作（gh コマンド実行が成果物）
+
+一つの戦略内で異なる task_type を混在させてよい（例: implement 戦略でも document タスクを含む場合）。
 
 **送信メッセージ例（設計レビュー依頼 - Architect宛）:**
 ```yaml

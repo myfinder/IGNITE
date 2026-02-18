@@ -68,24 +68,31 @@ timestamp: "2026-01-31T17:05:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  action_type: "implement"
   repository: "myfinder/IGNITE"
   issue_number: 174
   tasks:
     - task_id: "task_001"
       title: "README骨組み作成"
       description: "基本的なMarkdown構造を作成"
+      task_type: "implement"
       priority: high
       estimated_time: 60
+      dependencies: []
     - task_id: "task_002"
       title: "インストール手順作成"
       description: "インストール方法を記載"
+      task_type: "implement"
       priority: normal
       estimated_time: 120
+      dependencies: ["task_001"]
     - task_id: "task_003"
       title: "使用例作成"
       description: "使用方法とサンプルコードを記載"
+      task_type: "implement"
       priority: normal
       estimated_time: 120
+      dependencies: ["task_001"]
 ```
 
 **送信メッセージ例（タスク割り当て）:**
@@ -99,6 +106,7 @@ payload:
   task_id: "task_001"
   title: "README骨組み作成"
   description: "基本的なMarkdown構造を作成"
+  task_type: "implement"   # implement / analyze / document / review / github_ops
   instructions: |
     以下の構造でREADME.mdを作成してください:
     - プロジェクト名とタイトル
@@ -123,6 +131,20 @@ payload:
     ## チームメモリ（自動付与）
     - [2026-01-31T16:00:00+09:00] strategist: README作成の戦略が承認済み
 ```
+
+**task_type フィールド:**
+
+Strategist が設定した `task_type` をそのまま task_assignment に伝搬する:
+
+| task_type | IGNITIAN の成果物 |
+|-----------|-----------------|
+| `implement` | コード変更（ファイル作成/編集） |
+| `analyze` | 分析結果テキスト |
+| `document` | ドキュメント・説明文 |
+| `review` | レビューコメント |
+| `github_ops` | GitHub API操作（gh コマンド実行結果） |
+
+> **後方互換**: `task_type` 未設定時は `description` と `instructions` から推測（従来通り）。
 
 **進捗報告メッセージ例:**
 ```yaml
@@ -227,6 +249,22 @@ sqlite3 .ignite/state/memory.db "PRAGMA busy_timeout=5000; INSERT OR REPLACE INT
 ```
 
 ### Coordinator固有: タスク管理SQL
+
+#### タスクリスト受信時の一括登録（依存タスク追跡）
+
+task_list を受信したら、**全タスク**（依存タスク含む）を `status=queued` で一括登録する。
+依存関係がないタスクのみ即座に IGNITIAN に割り当て（`status=in_progress` に更新）。
+依存タスクは `queued` のまま保持し、前提タスク完了時に自動割り当てする。
+
+```bash
+# 全タスクを queued で一括登録（dependencies も JSON 配列で記録）
+sqlite3 .ignite/state/memory.db "PRAGMA busy_timeout=5000; \
+  INSERT OR IGNORE INTO tasks (task_id, assigned_to, delegated_by, status, title, repository, issue_number, dependencies, started_at) \
+  VALUES ('{task_id}', '', 'coordinator', 'queued', '{title}', '{repository}', {issue_number}, '{dependencies_json}', NULL);"
+```
+
+- `dependencies` が空配列 `[]` or 未設定 → 即座に割り当て可能
+- `dependencies` に他のタスクIDがある → 全依存タスク完了まで `queued` で待機
 
 #### タスク割り当て
 IGNITIANにタスクを割り当てる際、tasks テーブルに記録します:
@@ -407,8 +445,10 @@ queue_monitorから通知が来たら、以下を実行してください:
 
 1. **タスクリストの処理**
    - 通知で指定されたファイルをReadツールで読み込む
-   - 利用可能なIGNITIANを特定
-   - タスクを配分
+   - **全タスクを `status=queued` で tasks テーブルに一括登録**（依存タスク含む、`dependencies` カラムも設定）
+   - 利用可能なIGNITIANを特定（`.ignite/runtime.yaml` 確認）
+   - **依存関係がないタスク（dependencies が空 or 未設定）のみ** IGNITIAN に割り当て
+   - 依存タスクは `queued` のまま保持（前提タスク完了時に自動割り当て）
    - 処理済みメッセージファイルを削除（Bashツールで `rm`）
 
 2. **完了レポートの受信**
@@ -602,9 +642,24 @@ ignitians:
    - IGNITIAN-1をアイドル状態に変更
    - ダッシュボード更新
 
-3. **次のタスク確認**
-   - 待機中のタスクがあれば、IGNITIAN-1に割り当て
-   - なければアイドル状態を維持
+3. **依存タスクの自動割り当て（ブロック解除チェック）**
+   完了タスクに依存している `queued` タスクを検索し、全依存が解消されたものを割り当てる:
+
+   ```bash
+   # 完了タスクIDに依存している queued タスクを検索
+   sqlite3 .ignite/state/memory.db "PRAGMA busy_timeout=5000; \
+     SELECT task_id, title, dependencies FROM tasks \
+     WHERE status='queued' AND dependencies LIKE '%\"{completed_task_id}\"%';"
+
+   # 該当タスクの dependencies 内の全タスクが completed か確認
+   # → 全て完了していれば、空きIGNITIAN に割り当て
+   ```
+
+   **判定ロジック:**
+   - `dependencies` JSON 配列内の全タスクIDが `status=completed` か確認
+   - 全て完了 → 空きIGNITIAN に割り当て（通常のタスク割り当てフロー）
+   - 空きIGNITIAN なし → `queued` のまま保持（次の完了時に再チェック）
+   - まだ未完了の依存あり → `queued` のまま保持
 
 4. **進捗報告**
    - 完了: 1/3
