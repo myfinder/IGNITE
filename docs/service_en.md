@@ -21,12 +21,15 @@ IGNITE Service provides systemd-based service management using template units. I
 flowchart TB
     subgraph systemd["systemd (user)"]
         Unit["ignite@&lt;session&gt;.service<br/>Type=oneshot + RemainAfterExit"]
+        Monitor["ignite-monitor@&lt;session&gt;.service<br/>Queue Monitor"]
         Watcher["ignite-watcher@&lt;session&gt;.service"]
+        Unit -.->|"PartOf"| Monitor
     end
 
     subgraph IGNITE["IGNITE Process"]
         Start["ignite start --daemon"]
         Agents["Agent Servers"]
+        QueueMon["queue_monitor.sh<br/>flock exclusive"]
         Leader["Leader"]
         SubLeaders["Sub-Leaders"]
         IGNITIANs["IGNITIANs"]
@@ -43,12 +46,91 @@ flowchart TB
 
     Unit -->|"ExecStart=<br/>ignite start --daemon"| Start
     Unit -->|"EnvironmentFile="| EnvFile
+    Monitor -->|"ExecStart=<br/>queue_monitor.sh"| QueueMon
+    Monitor -->|"EnvironmentFile="| EnvFile
     systemd -->|"journalctl"| Watcher
 
     style Unit fill:#4ecdc4,color:#fff
+    style Monitor fill:#45b7d1,color:#fff
     style Agents fill:#ff6b6b,color:#fff
+    style QueueMon fill:#ff6b6b,color:#fff
     style EnvFile fill:#ffeaa7,color:#333
 ```
+
+### Service Unit Structure
+
+IGNITE consists of three systemd template units:
+
+| Unit | Type | Role | Dependencies |
+|------|------|------|-------------|
+| `ignite@.service` | `oneshot` + `RemainAfterExit` | Main service. Starts agent servers and exits with `exit 0` | — |
+| `ignite-monitor@.service` | `simple` | Queue monitor (`queue_monitor.sh`). Watches message queues | `PartOf=ignite@%i.service` |
+| `ignite-watcher@.service` | — | GitHub Watcher | — |
+
+#### `PartOf=` Directive Behavior
+
+`ignite-monitor@.service` has `PartOf=ignite@%i.service` configured. This means:
+
+- When `ignite@<session>.service` is stopped/restarted, `ignite-monitor@<session>.service` is **automatically stopped/restarted** as well
+- The reverse (monitor stop → main service stop) does **not** happen
+- `enable`/`disable` are not linked; they must be configured individually
+
+### Understanding Service Status
+
+Example `systemctl --user list-units` output:
+
+```
+ignite@my-project.service         loaded active exited  IGNITE my-project
+ignite-monitor@my-project.service loaded active running IGNITE Monitor my-project
+ignite-watcher@my-project.service loaded active running IGNITE Watcher my-project
+```
+
+| Status | Meaning | Normal/Abnormal |
+|--------|---------|----------------|
+| `active (exited)` | `Type=oneshot` process exited with `exit 0`. `RemainAfterExit=yes` keeps it in active state | **Normal** — correct state for `ignite@.service` |
+| `active (running)` | Process is running | **Normal** — correct state for `ignite-monitor@.service` |
+| `inactive (dead)` | Service is stopped | Normal if intentionally stopped |
+| `failed` (● red dot) | Process exited abnormally | **Investigate** — check logs |
+
+> **Tip:** It is normal for `ignite@.service` to show `active (exited)`. By design with `Type=oneshot` + `RemainAfterExit=yes`, the `ignite start --daemon` process exits with `exit 0` and the service remains in active state. Agent servers continue running independently in the background.
+
+### Queue Monitor Lifecycle
+
+`queue_monitor.sh` monitors message queues and delivers new messages to agents.
+
+#### Exclusive Locking (flock)
+
+Each workspace's queue monitor uses `flock` for exclusive locking to ensure only a **single instance** runs:
+
+- Lock file: `<workspace>/.ignite/state/queue_monitor.lock`
+- Each workspace uses an independent lock file
+- If a second monitor starts for the same workspace, it fails to acquire `flock` and exits immediately
+
+#### Monitor Startup in systemd Environment
+
+When `ignite-monitor@.service` is enabled:
+1. `ignite@.service` runs `ignite start --daemon`
+2. `cmd_start.sh` detects that `ignite-monitor@.service` is enabled and **does not start the monitor itself**
+3. systemd starts `ignite-monitor@.service` → `queue_monitor.sh` runs
+
+When `ignite-monitor@.service` is not enabled:
+1. `ignite@.service` runs `ignite start --daemon`
+2. `cmd_start.sh` starts the monitor as a background process
+
+#### Environment Variable Propagation
+
+In systemd environments, environment variables are passed via the `env.<session>` file:
+
+```
+env.<session> → IGNITE_WORKSPACE=/path/to/workspace
+                WORKSPACE_DIR=/path/to/workspace
+                         ↓
+queue_monitor.sh → Uses WORKSPACE_DIR to determine
+                   lock file path:
+                   .ignite/state/queue_monitor.lock
+```
+
+Both `IGNITE_WORKSPACE` and `WORKSPACE_DIR` are included in the env file to ensure correct variable resolution within scripts.
 
 ## Prerequisites
 
@@ -308,8 +390,10 @@ ignite service status my-project
 ```
 === IGNITE Service Status ===
 
-ignite@my-project.service loaded active running IGNITE my-project
-ignite@staging.service    loaded active running IGNITE staging
+ignite@my-project.service         loaded active exited  IGNITE my-project
+ignite-monitor@my-project.service loaded active running IGNITE Monitor my-project
+ignite@staging.service            loaded active exited  IGNITE staging
+ignite-monitor@staging.service    loaded active running IGNITE Monitor staging
 ```
 
 ---
@@ -460,6 +544,7 @@ Minimal variables generated by `setup-env`:
 | `XDG_CONFIG_HOME` | — | XDG config directory | `${HOME}/.config` |
 | `XDG_DATA_HOME` | — | XDG data directory | `${HOME}/.local/share` |
 | `IGNITE_WORKSPACE` | — | Workspace path | `/home/user/repos/my-project` |
+| `WORKSPACE_DIR` | — | Workspace path (internal use by scripts; same value as `IGNITE_WORKSPACE`) | `/home/user/repos/my-project` |
 
 ### Project-Specific Variables (API Keys, etc.)
 
@@ -487,11 +572,82 @@ XDG_DATA_HOME=/home/user/.local/share
 
 # Workspace path (used at systemd startup)
 IGNITE_WORKSPACE=/home/user/repos/my-project
+WORKSPACE_DIR=/home/user/repos/my-project
 ```
 
 ---
 
 ## Troubleshooting
+
+### Queue Monitor Seesaw Problem (Multiple Workspaces)
+
+**Symptom:** When running multiple workspace services simultaneously, starting one `ignite-monitor@` causes the other to stop
+
+**Cause:** `queue_monitor.sh` cannot resolve `IGNITE_WORKSPACE`, so all instances default to the same path for `flock`. The exclusive lock allows only one to run
+
+**Solution:**
+
+```bash
+# 1. Upgrade to v0.6.2 or later
+cd /path/to/ignite && git pull
+./scripts/install.sh --upgrade
+
+# 2. Verify env file contains WORKSPACE_DIR
+grep WORKSPACE_DIR ~/.config/ignite/env.<session>
+
+# 3. If missing, regenerate the env file
+ignite service setup-env <session> --force
+```
+
+---
+
+### Queue Monitor flock Acquisition Failure
+
+**Symptom:** Journal logs show "flock acquisition failed: another monitor is running"
+
+**Cause:** `ignite start --daemon` (ExecStart of `ignite@.service`) starts a monitor as a background process, and `ignite-monitor@.service` also starts one, causing flock collision
+
+**Solution:**
+
+```bash
+# 1. Upgrade to v0.6.2 or later (includes double-start prevention in cmd_start.sh)
+./scripts/install.sh --upgrade
+
+# 2. Kill orphaned monitor processes
+pkill -f 'queue_monitor.sh'
+
+# 3. Reset failed state
+systemctl --user reset-failed
+
+# 4. Restart services
+ignite service restart <session>
+```
+
+---
+
+### Service in `failed` (● Red Dot) State
+
+**Symptom:** `systemctl --user list-units` shows `●` mark (red dot), service is in `failed` state
+
+**Cause:** Service process exited abnormally (flock collision, configuration error, etc.)
+
+**Solution:**
+
+```bash
+# 1. Check logs to identify the cause
+journalctl --user-unit ignite-monitor@<session>.service --no-pager -n 50
+
+# 2. Kill orphaned processes if necessary
+pkill -f 'queue_monitor.sh'
+
+# 3. Reset failed state
+systemctl --user reset-failed
+
+# 4. Restart services
+ignite service restart <session>
+```
+
+---
 
 ### Linger Not Enabled
 

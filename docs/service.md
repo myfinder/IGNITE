@@ -21,12 +21,15 @@ IGNITE Serviceは、systemdのテンプレートユニットを使用してIGNIT
 flowchart TB
     subgraph systemd["systemd (user)"]
         Unit["ignite@&lt;session&gt;.service<br/>Type=oneshot + RemainAfterExit"]
+        Monitor["ignite-monitor@&lt;session&gt;.service<br/>キューモニター"]
         Watcher["ignite-watcher@&lt;session&gt;.service"]
+        Unit -.->|"PartOf"| Monitor
     end
 
     subgraph IGNITE["IGNITE プロセス"]
         Start["ignite start --daemon"]
         Agents["エージェントサーバー群"]
+        QueueMon["queue_monitor.sh<br/>flock 排他制御"]
         Leader["Leader"]
         SubLeaders["Sub-Leaders"]
         IGNITIANs["IGNITIANs"]
@@ -43,12 +46,91 @@ flowchart TB
 
     Unit -->|"ExecStart=<br/>ignite start --daemon"| Start
     Unit -->|"EnvironmentFile="| EnvFile
+    Monitor -->|"ExecStart=<br/>queue_monitor.sh"| QueueMon
+    Monitor -->|"EnvironmentFile="| EnvFile
     systemd -->|"journalctl"| Watcher
 
     style Unit fill:#4ecdc4,color:#fff
+    style Monitor fill:#45b7d1,color:#fff
     style Agents fill:#ff6b6b,color:#fff
+    style QueueMon fill:#ff6b6b,color:#fff
     style EnvFile fill:#ffeaa7,color:#333
 ```
+
+### サービスユニット構成
+
+IGNITE は3つの systemd テンプレートユニットで構成されます:
+
+| ユニット | Type | 役割 | 依存関係 |
+|---------|------|------|---------|
+| `ignite@.service` | `oneshot` + `RemainAfterExit` | メインサービス。エージェントサーバーを起動し `exit 0` | — |
+| `ignite-monitor@.service` | `simple` | キューモニター（`queue_monitor.sh`）。メッセージキューを監視 | `PartOf=ignite@%i.service` |
+| `ignite-watcher@.service` | — | GitHub Watcher | — |
+
+#### `PartOf=` ディレクティブの動作
+
+`ignite-monitor@.service` は `PartOf=ignite@%i.service` を設定しています。これにより:
+
+- `ignite@<session>.service` が停止/再起動されると、`ignite-monitor@<session>.service` も**自動的に停止/再起動**される
+- 逆方向（monitor 停止 → メインサービス停止）は発生しない
+- `enable`/`disable` は連動しないため、個別に設定が必要
+
+### サービスステータスの読み方
+
+`systemctl --user list-units` の出力例:
+
+```
+ignite@my-project.service         loaded active exited  IGNITE my-project
+ignite-monitor@my-project.service loaded active running IGNITE Monitor my-project
+ignite-watcher@my-project.service loaded active running IGNITE Watcher my-project
+```
+
+| ステータス | 意味 | 正常/異常 |
+|-----------|------|----------|
+| `active (exited)` | `Type=oneshot` のプロセスが `exit 0` で正常終了。`RemainAfterExit=yes` によりアクティブ状態を維持 | **正常** — `ignite@.service` はこの状態が正しい |
+| `active (running)` | プロセスが稼働中 | **正常** — `ignite-monitor@.service` はこの状態が正しい |
+| `inactive (dead)` | サービスが停止中 | 意図的な停止なら正常 |
+| `failed` (● 赤丸表示) | プロセスが異常終了した | **要調査** — ログを確認 |
+
+> **💡 ポイント:** `ignite@.service` が `active (exited)` と表示されるのは正常です。`Type=oneshot` + `RemainAfterExit=yes` の設計により、`ignite start --daemon` プロセスが `exit 0` した後もサービスはアクティブ状態を維持します。エージェントサーバーはバックグラウンドで独立して稼働し続けています。
+
+### キューモニターのライフサイクル
+
+`queue_monitor.sh` はメッセージキューを監視し、新しいメッセージをエージェントに配信するプロセスです。
+
+#### 排他制御（flock）
+
+各ワークスペースのキューモニターは `flock` による排他制御で**単一インスタンス**のみ稼働します:
+
+- ロックファイル: `<workspace>/.ignite/state/queue_monitor.lock`
+- ワークスペースごとに独立したロックファイルを使用
+- 同一ワークスペースで2つ目のモニターが起動すると `flock` 取得に失敗し即座に終了
+
+#### systemd 環境でのモニター起動
+
+`ignite-monitor@.service` が enabled の場合:
+1. `ignite@.service` が `ignite start --daemon` を実行
+2. `cmd_start.sh` が `ignite-monitor@.service` の enabled 状態を検出し、**自分ではモニターを起動しない**
+3. systemd が `ignite-monitor@.service` を起動 → `queue_monitor.sh` が稼働
+
+`ignite-monitor@.service` が enabled でない場合:
+1. `ignite@.service` が `ignite start --daemon` を実行
+2. `cmd_start.sh` がモニターをバックグラウンドプロセスとして起動
+
+#### 環境変数の伝搬
+
+systemd 環境では `env.<session>` ファイル経由で環境変数が渡されます:
+
+```
+env.<session> → IGNITE_WORKSPACE=/path/to/workspace
+                WORKSPACE_DIR=/path/to/workspace
+                         ↓
+queue_monitor.sh → WORKSPACE_DIR を使用して
+                   ロックファイルパスを決定
+                   .ignite/state/queue_monitor.lock
+```
+
+`IGNITE_WORKSPACE` と `WORKSPACE_DIR` の両方が env ファイルに含まれることで、スクリプト内の変数解決が正しく行われます。
 
 ## 前提条件
 
@@ -308,8 +390,10 @@ ignite service status my-project
 ```
 === IGNITE サービス状態 ===
 
-ignite@my-project.service loaded active running IGNITE my-project
-ignite@staging.service    loaded active running IGNITE staging
+ignite@my-project.service         loaded active exited  IGNITE my-project
+ignite-monitor@my-project.service loaded active running IGNITE Monitor my-project
+ignite@staging.service            loaded active exited  IGNITE staging
+ignite-monitor@staging.service    loaded active running IGNITE Monitor staging
 ```
 
 ---
@@ -460,6 +544,7 @@ ignite status
 | `XDG_CONFIG_HOME` | — | XDG設定ディレクトリ | `${HOME}/.config` |
 | `XDG_DATA_HOME` | — | XDGデータディレクトリ | `${HOME}/.local/share` |
 | `IGNITE_WORKSPACE` | — | ワークスペースパス | `/home/user/repos/my-project` |
+| `WORKSPACE_DIR` | — | ワークスペースパス（スクリプト内部用。`IGNITE_WORKSPACE` と同値） | `/home/user/repos/my-project` |
 
 ### API Key 等のプロジェクト固有変数
 
@@ -487,11 +572,82 @@ XDG_DATA_HOME=/home/user/.local/share
 
 # ワークスペースパス（systemd 起動時に使用）
 IGNITE_WORKSPACE=/home/user/repos/my-project
+WORKSPACE_DIR=/home/user/repos/my-project
 ```
 
 ---
 
 ## トラブルシューティング
+
+### キューモニターのシーソー現象（複数ワークスペース）
+
+**症状:** 複数ワークスペースのサービスを同時起動すると、一方の `ignite-monitor@` を起動すると他方が停止する
+
+**原因:** `queue_monitor.sh` が `IGNITE_WORKSPACE` を認識できず、全インスタンスが同一のデフォルトパスで `flock` を取得。排他制御により1つしか起動できない
+
+**解決方法:**
+
+```bash
+# 1. v0.6.2 以降にアップグレード
+cd /path/to/ignite && git pull
+./scripts/install.sh --upgrade
+
+# 2. env ファイルに WORKSPACE_DIR が含まれることを確認
+grep WORKSPACE_DIR ~/.config/ignite/env.<session>
+
+# 3. 含まれていない場合は再生成
+ignite service setup-env <session> --force
+```
+
+---
+
+### キューモニターの flock 取得失敗
+
+**症状:** ジャーナルログに「flock取得失敗: 別のモニターが稼働中」と表示される
+
+**原因:** `ignite start --daemon`（`ignite@.service` の ExecStart）がモニターをバックグラウンドで起動し、さらに `ignite-monitor@.service` も起動するため flock が衝突
+
+**解決方法:**
+
+```bash
+# 1. v0.6.2 以降にアップグレード（cmd_start.sh のモニター二重起動防止が含まれる）
+./scripts/install.sh --upgrade
+
+# 2. 孤立したモニタープロセスを停止
+pkill -f 'queue_monitor.sh'
+
+# 3. failed 状態をリセット
+systemctl --user reset-failed
+
+# 4. サービスを再起動
+ignite service restart <session>
+```
+
+---
+
+### サービスが `failed` (● 赤丸) 状態
+
+**症状:** `systemctl --user list-units` で `●` マーク（赤丸）が表示され、サービスが `failed` 状態
+
+**原因:** サービスプロセスが異常終了した（flock 衝突、設定エラー等）
+
+**解決方法:**
+
+```bash
+# 1. ログを確認して原因を特定
+journalctl --user-unit ignite-monitor@<session>.service --no-pager -n 50
+
+# 2. 孤立プロセスを停止（必要に応じて）
+pkill -f 'queue_monitor.sh'
+
+# 3. failed 状態をリセット
+systemctl --user reset-failed
+
+# 4. サービスを再起動
+ignite service restart <session>
+```
+
+---
 
 ### linger が有効になっていない
 
