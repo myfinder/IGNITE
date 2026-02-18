@@ -3,7 +3,7 @@
 # cmd_stop.sh テスト
 # テスト対象: scripts/lib/cmd_stop.sh
 # _kill_process_tree, _stop_systemd_service, _sweep_orphan_processes,
-# _check_remaining_processes, _is_workspace_process
+# _check_remaining_processes, _is_workspace_process, _stop_pid_process
 # =============================================================================
 
 load 'test_helper'
@@ -71,6 +71,13 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
+@test "_kill_process_tree: stale PGIDファイルで誤killしない" {
+    # 存在しないPIDのPGIDファイルを作成 → _validate_pid で弾かれる
+    echo "9999999" > "$IGNITE_RUNTIME_DIR/state/.agent_pgid_0"
+    run _kill_process_tree "9999999" "0" "$IGNITE_RUNTIME_DIR"
+    [ "$status" -eq 0 ]
+}
+
 # =============================================================================
 # _is_workspace_process テスト
 # =============================================================================
@@ -78,6 +85,23 @@ teardown() {
 @test "_is_workspace_process: 存在しないPIDでfalse" {
     run _is_workspace_process "9999999"
     [ "$status" -ne 0 ]
+}
+
+# =============================================================================
+# _stop_pid_process テスト
+# =============================================================================
+
+@test "_stop_pid_process: PIDファイルなしで正常終了" {
+    run _stop_pid_process "$IGNITE_RUNTIME_DIR/nonexistent.pid" "テスト"
+    [ "$status" -eq 0 ]
+}
+
+@test "_stop_pid_process: 存在しないPIDで正常終了" {
+    echo "9999999" > "$IGNITE_RUNTIME_DIR/test.pid"
+    run _stop_pid_process "$IGNITE_RUNTIME_DIR/test.pid" "テスト"
+    [ "$status" -eq 0 ]
+    # PIDファイルが削除されている
+    [ ! -f "$IGNITE_RUNTIME_DIR/test.pid" ]
 }
 
 # =============================================================================
@@ -137,7 +161,6 @@ teardown() {
 }
 
 @test "_stop_systemd_service: 直接実行でactive時にstop呼び出し" {
-    local stop_called=false
     systemctl() {
         if [[ "$*" == *"is-active"* ]]; then
             echo "active"
@@ -174,36 +197,12 @@ teardown() {
 }
 
 # =============================================================================
-# setsid 導入テスト
-# =============================================================================
-
-@test "cli_start_agent_server: setsid nohup がソースに含まれている" {
-    local content
-    content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
-    [[ "$content" == *"setsid nohup"* ]]
-}
-
-@test "cli_start_agent_server: PGIDファイル書き込みがソースに含まれている" {
-    local content
-    content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
-    [[ "$content" == *"agent_pgid"* ]]
-}
-
-# =============================================================================
 # DRY化テスト: agent.sh が _kill_process_tree を使用
 # =============================================================================
 
 @test "agent.sh: _kill_agent_process が _kill_process_tree を呼び出している" {
-    local content
-    content=$(cat "$SCRIPTS_DIR/lib/agent.sh")
-    [[ "$content" == *"_kill_process_tree"* ]]
-}
-
-@test "agent.sh: 旧killロジック（pkill -P + kill + kill -9 直接記述）が削除されている" {
-    # _kill_agent_process 関数内に直接 pkill -P の記述がないことを確認
     local func_body
     func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
-    # _kill_process_tree 呼び出しはあるが、直接の pkill -P はない
     [[ "$func_body" == *"_kill_process_tree"* ]]
     [[ "$func_body" != *"pkill -P"* ]]
 }

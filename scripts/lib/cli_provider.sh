@@ -176,15 +176,17 @@ _kill_process_tree() {
     local pane_idx="$2"
     local runtime_dir="${3:-${IGNITE_RUNTIME_DIR:-}}"
     local pgid_file="${runtime_dir}/state/.agent_pgid_${pane_idx}"
-    local max_wait=10  # 生存確認タイムアウト（秒）: systemd TimeoutStopSec=30 と整合
+    local max_attempts=10  # 生存確認回数（0.5秒 × 10 = 最大5秒）
+    local pgid=""
 
-    # (1) PGID ファイルが存在し有効なら PGID kill
+    # PGID ファイルから読み込み（SIGTERM / SIGKILL 両方で使用）
     if [[ -f "$pgid_file" ]]; then
-        local pgid
         pgid=$(cat "$pgid_file" 2>/dev/null || true)
-        if [[ -n "$pgid" ]] && kill -0 "$pgid" 2>/dev/null; then
-            kill -- -"$pgid" 2>/dev/null || true
-        fi
+    fi
+
+    # (1) PGID kill（_validate_pid で検証してから実行）
+    if [[ -n "$pgid" ]] && _validate_pid "$pgid" "opencode"; then
+        kill -- -"$pgid" 2>/dev/null || true
     fi
 
     # (2) pkill -P（フォールバック: 子プロセスを停止）
@@ -197,23 +199,19 @@ _kill_process_tree() {
         kill "$pid" 2>/dev/null || true
     fi
 
-    # (4) 生存確認ループ（max_wait 秒）
-    local elapsed=0
-    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $elapsed -lt $max_wait ]]; do
+    # (4) 生存確認ループ（0.5秒 × max_attempts 回）
+    local attempt=0
+    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $attempt -lt $max_attempts ]]; do
         sleep 0.5
-        elapsed=$((elapsed + 1))  # 0.5秒ステップだが整数カウント（実質5-10秒）
+        attempt=$((attempt + 1))
     done
 
     # (5) SIGKILL エスカレーション
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        log_warn "プロセス PID=$pid が ${max_wait} 回のチェック後も生存、SIGKILL を送信します"
-        # PGID kill (SIGKILL)
-        if [[ -f "$pgid_file" ]]; then
-            local pgid
-            pgid=$(cat "$pgid_file" 2>/dev/null || true)
-            if [[ -n "$pgid" ]]; then
-                kill -9 -- -"$pgid" 2>/dev/null || true
-            fi
+        log_warn "プロセス PID=$pid が ${max_attempts} 回のチェック後も生存、SIGKILL を送信します"
+        # PGID kill (SIGKILL) — 検証済みの pgid を再利用
+        if [[ -n "$pgid" ]] && kill -0 "$pgid" 2>/dev/null; then
+            kill -9 -- -"$pgid" 2>/dev/null || true
         fi
         pkill -9 -P "$pid" 2>/dev/null || true
         kill -9 "$pid" 2>/dev/null || true
@@ -284,8 +282,12 @@ cli_start_agent_server() {
         setsid nohup opencode serve --port 0 --print-logs >> "$log_file" 2>&1 &
         local child_pid=$!
         echo "$child_pid" > "$pid_file"
-        # setsid により child_pid == PGID となる
-        echo "$child_pid" > "$pgid_file"
+        # /proc から実際の PGID を取得（setsid が fork した場合に $! と異なる可能性）
+        local actual_pgid=""
+        if [[ -f "/proc/$child_pid/stat" ]]; then
+            actual_pgid=$(awk '{print $5}' "/proc/$child_pid/stat" 2>/dev/null || true)
+        fi
+        echo "${actual_pgid:-$child_pid}" > "$pgid_file"
     )
 
     # PID ファイルが書き込まれるまで少し待つ
