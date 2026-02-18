@@ -190,6 +190,86 @@ EOF
     [ -f "$list_file" ]
 }
 
+# --- cleanup_stale_sessions ---
+
+@test "cleanup_stale_sessions: PID死亡のセッションYAMLを削除" {
+    local ws="$TEST_TEMP_DIR/workspace"
+    mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
+    cat > "$ws/.ignite/sessions/stale.yaml" << EOF
+session_name: ignite-stale
+workspace_dir: $ws
+EOF
+    # 存在しないPIDを設定
+    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+
+    run cleanup_stale_sessions "$ws"
+    [ "$status" -eq 0 ]
+    [ ! -f "$ws/.ignite/sessions/stale.yaml" ]
+}
+
+@test "cleanup_stale_sessions: PID生存のセッションYAMLは残す" {
+    local ws="$TEST_TEMP_DIR/workspace"
+    mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
+    cat > "$ws/.ignite/sessions/active.yaml" << EOF
+session_name: ignite-active
+workspace_dir: $ws
+EOF
+    # 自プロセスのPIDを設定（必ず生存）
+    echo "$$" > "$ws/.ignite/state/.agent_pid_0"
+
+    run cleanup_stale_sessions "$ws"
+    [ "$status" -eq 0 ]
+    [ -f "$ws/.ignite/sessions/active.yaml" ]
+}
+
+@test "cleanup_stale_sessions: sessionsディレクトリなしでもエラーにならない" {
+    local ws="$TEST_TEMP_DIR/workspace"
+    mkdir -p "$ws/.ignite"
+    # sessions/ ディレクトリを作成しない
+
+    run cleanup_stale_sessions "$ws"
+    [ "$status" -eq 0 ]
+}
+
+@test "cleanup_stale_sessions: 複数staleセッションを一括削除" {
+    local ws="$TEST_TEMP_DIR/workspace"
+    mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
+    cat > "$ws/.ignite/sessions/stale1.yaml" << EOF
+session_name: ignite-stale1
+workspace_dir: $ws
+EOF
+    cat > "$ws/.ignite/sessions/stale2.yaml" << EOF
+session_name: ignite-stale2
+workspace_dir: $ws
+EOF
+    cat > "$ws/.ignite/sessions/stale3.yaml" << EOF
+session_name: ignite-stale3
+workspace_dir: $ws
+EOF
+    # 存在しないPIDを設定
+    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+
+    run cleanup_stale_sessions "$ws"
+    [ "$status" -eq 0 ]
+    [ ! -f "$ws/.ignite/sessions/stale1.yaml" ]
+    [ ! -f "$ws/.ignite/sessions/stale2.yaml" ]
+    [ ! -f "$ws/.ignite/sessions/stale3.yaml" ]
+}
+
+@test "cleanup_stale_sessions: PIDファイルなしのセッションYAMLを削除" {
+    local ws="$TEST_TEMP_DIR/workspace"
+    mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
+    cat > "$ws/.ignite/sessions/orphan.yaml" << EOF
+session_name: ignite-orphan
+workspace_dir: $ws
+EOF
+    # PIDファイルを作成しない
+
+    run cleanup_stale_sessions "$ws"
+    [ "$status" -eq 0 ]
+    [ ! -f "$ws/.ignite/sessions/orphan.yaml" ]
+}
+
 # --- list_all_sessions ---
 
 @test "list_all_sessions: sessions/*.yaml から正常セッションを取得" {

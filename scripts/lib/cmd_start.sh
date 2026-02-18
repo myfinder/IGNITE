@@ -102,6 +102,9 @@ cmd_start() {
         exit 1
     fi
 
+    # stale セッション YAML のクリーンアップ
+    cleanup_stale_sessions "$WORKSPACE_DIR"
+
     # ワーカー数の決定
     if [[ -z "$worker_count" ]]; then
         worker_count=$(get_worker_count)

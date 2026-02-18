@@ -340,6 +340,55 @@ list_all_sessions() {
     return 0
 }
 
+# =============================================================================
+# 関数名: cleanup_stale_sessions
+# 目的: PID が死亡している stale セッション YAML を削除する
+# 引数: [workspace_path] ワークスペースパス（省略時は WORKSPACE_DIR）
+# 戻り値: 0=常に成功
+# =============================================================================
+cleanup_stale_sessions() {
+    local ws="${1:-${WORKSPACE_DIR:-}}"
+    [[ -z "$ws" ]] && return 0
+
+    local session_dir="${ws}/.ignite/sessions"
+    [[ -d "$session_dir" ]] || return 0
+
+    local yaml_file
+    for yaml_file in "$session_dir"/*.yaml; do
+        [[ -f "$yaml_file" ]] || continue
+        [[ -s "$yaml_file" ]] || continue
+
+        # session_name を取得
+        local s_name
+        s_name="$(grep '^session_name:' "$yaml_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")"
+        [[ -z "$s_name" ]] && continue
+
+        # workspace_dir を取得
+        local s_workspace
+        s_workspace="$(grep '^workspace_dir:' "$yaml_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")"
+        [[ -z "$s_workspace" ]] && continue
+
+        # PID ファイルのパスを決定
+        local pid_file="${s_workspace}/.ignite/state/.agent_pid_0"
+        if [[ ! -f "$pid_file" ]]; then
+            # PID ファイルなし → stale
+            log_info "stale セッションを削除: $s_name (PIDファイルなし)"
+            rm -f "$yaml_file"
+            continue
+        fi
+
+        local leader_pid
+        leader_pid="$(cat "$pid_file" 2>/dev/null || true)"
+        if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+            # PID が空 or 死亡 → stale
+            log_info "stale セッションを削除: $s_name (PID=${leader_pid:-empty})"
+            rm -f "$yaml_file"
+        fi
+    done
+
+    return 0
+}
+
 # 設定ファイルからワーカー数を取得（resolve_config でワークスペース優先）
 get_worker_count() {
     local config_file

@@ -404,6 +404,10 @@ cmd_clean() {
     # クリーンアップ実行
     print_info "workspaceをクリア中..."
 
+    # stale セッション YAML のクリーンアップ + sessions/ ディレクトリクリア
+    cleanup_stale_sessions "$WORKSPACE_DIR"
+    rm -rf "$IGNITE_RUNTIME_DIR/sessions"/*
+
     rm -rf "$IGNITE_RUNTIME_DIR/queue"/*/
     mkdir -p "$IGNITE_RUNTIME_DIR/queue"/{leader,strategist,architect,evaluator,coordinator,innovator}
     # IGNITIANキューディレクトリの動的作成
