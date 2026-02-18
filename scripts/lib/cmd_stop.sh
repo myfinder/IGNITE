@@ -138,33 +138,6 @@ cmd_stop() {
     print_success "IGNITE システムを停止しました"
 }
 
-# _stop_pid_process <pid_file> <label>
-# PIDファイルベースのプロセス停止（SIGTERM → 待機 → SIGKILL）
-_stop_pid_process() {
-    local pid_file="$1"
-    local label="$2"
-
-    [[ -f "$pid_file" ]] || return 0
-
-    local pid
-    pid=$(cat "$pid_file" 2>/dev/null || true)
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        print_info "${label}を停止中..."
-        kill "$pid" 2>/dev/null || true
-        # プロセス終了を最大3秒待機（0.5秒 × 6回）
-        local attempt=0
-        while kill -0 "$pid" 2>/dev/null && [[ $attempt -lt 6 ]]; do
-            sleep 0.5
-            attempt=$((attempt + 1))
-        done
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-        print_success "${label}停止完了"
-    fi
-    rm -f "$pid_file"
-}
-
 # _is_workspace_process <pid>
 # 指定PIDが自ワークスペースに属するか判定（macOS/Linux両対応）
 _is_workspace_process() {
