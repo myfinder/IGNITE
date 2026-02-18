@@ -122,14 +122,14 @@ teardown() {
     [[ -z "$num" ]]
 }
 
-@test "v1 DB → migration → user_version = 3" {
+@test "v1 DB → migration → user_version = 4" {
     create_v1_db "$DB_PATH"
 
     bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
 
     local version
     version=$(get_user_version "$DB_PATH")
-    [[ "$version" -eq 3 ]]
+    [[ "$version" -eq 4 ]]
 }
 
 # =============================================================================
@@ -160,10 +160,10 @@ teardown() {
     columns=$(get_columns "$DB_PATH" "tasks")
     [[ "$columns" == *"issue_number"* ]]
 
-    # user_version が 3 に更新されていること
+    # user_version が 4 に更新されていること
     local version
     version=$(get_user_version "$DB_PATH")
-    [[ "$version" -eq 3 ]]
+    [[ "$version" -eq 4 ]]
 }
 
 @test "v2 DB → schema_migrate.sh → skip メッセージ" {
@@ -171,6 +171,81 @@ teardown() {
 
     run bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
 
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Already at version"* ]]
+}
+
+# =============================================================================
+# v3→v4 マイグレーション（dependencies カラム追加）
+# =============================================================================
+
+@test "v3 DB → 本番init sequence → dependencies カラムが存在する" {
+    create_v3_db "$DB_PATH"
+    run init_db_production_sequence "$DB_PATH"
+    [[ "$status" -eq 0 ]]
+
+    local columns
+    columns=$(get_columns "$DB_PATH" "tasks")
+    [[ "$columns" == *"dependencies"* ]]
+}
+
+@test "v3 DB → migration → dependencies カラムが追加される" {
+    create_v3_db "$DB_PATH"
+
+    run bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
+    [[ "$status" -eq 0 ]]
+
+    local columns
+    columns=$(get_columns "$DB_PATH" "tasks")
+    [[ "$columns" == *"dependencies"* ]]
+}
+
+@test "v3 DB → migration → user_version = 4" {
+    create_v3_db "$DB_PATH"
+
+    bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
+
+    local version
+    version=$(get_user_version "$DB_PATH")
+    [[ "$version" -eq 4 ]]
+}
+
+@test "v3 DB → migration → 既存タスクデータが保持される" {
+    create_v3_db "$DB_PATH"
+    sqlite3 "$DB_PATH" "INSERT INTO tasks (task_id, assigned_to, status, repository, issue_number) VALUES ('issue42_task_1', 'ignitian_1', 'in_progress', 'owner/repo', 42);"
+
+    bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
+
+    local repo
+    repo=$(sqlite3 "$DB_PATH" "SELECT repository FROM tasks WHERE task_id='issue42_task_1';")
+    [[ "$repo" == "owner/repo" ]]
+
+    local num
+    num=$(sqlite3 "$DB_PATH" "SELECT issue_number FROM tasks WHERE task_id='issue42_task_1';")
+    [[ "$num" -eq 42 ]]
+}
+
+@test "v1 DB → 本番init sequence → v4 まで一気にマイグレーションされる" {
+    create_v1_db "$DB_PATH"
+    run init_db_production_sequence "$DB_PATH"
+    [[ "$status" -eq 0 ]]
+
+    local version
+    version=$(get_user_version "$DB_PATH")
+    [[ "$version" -eq 4 ]]
+
+    local columns
+    columns=$(get_columns "$DB_PATH" "tasks")
+    [[ "$columns" == *"dependencies"* ]]
+}
+
+@test "v3 DB → マイグレーション冪等性: 2回実行してもエラーなし" {
+    create_v3_db "$DB_PATH"
+
+    run bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
+    [[ "$status" -eq 0 ]]
+
+    run bash "$SCRIPTS_DIR/schema_migrate.sh" "$DB_PATH"
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Already at version"* ]]
 }

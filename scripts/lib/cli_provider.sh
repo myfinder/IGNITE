@@ -237,11 +237,11 @@ _kill_process_tree() {
         kill "$pid" 2>/dev/null || true
     fi
 
-    # (4) 生存確認ループ（max_wait 秒）
-    local elapsed=0
-    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $elapsed -lt $max_wait ]]; do
+    # (4) 生存確認ループ（0.5秒 × max_wait 回）
+    local attempt=0
+    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $attempt -lt $max_wait ]]; do
         sleep 0.5
-        elapsed=$((elapsed + 1))  # 0.5秒ステップだが整数カウント（実質5-10秒）
+        attempt=$((attempt + 1))
     done
 
     # (5) SIGKILL エスカレーション

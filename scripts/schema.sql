@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     title TEXT,
     repository TEXT,
     issue_number INTEGER,
+    dependencies TEXT,          -- JSON配列: 依存タスクIDリスト ["task_001", "task_002"]
     started_at DATETIME,
     completed_at DATETIME
 );

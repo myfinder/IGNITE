@@ -90,11 +90,14 @@ cmd_stop() {
         fi
     fi
 
-    # GitHub Watcher を停止
-    _stop_daemon_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
-
-    # キューモニターを停止
+    # 停止順序: queue_monitor → watcher → agents
+    # キューモニターを先に停止（watcher 再起動ループ防止のため）
+    # queue_monitor は _check_and_recover_watcher() で watcher を自動復旧するため、
+    # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある
     _stop_daemon_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
+
+    # GitHub Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
+    _stop_daemon_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
 
     # エージェントプロセス停止（PID ベース → 共通 _kill_process_tree 使用）
     print_warning "エージェントプロセスを停止中..."
@@ -133,6 +136,33 @@ cmd_stop() {
 
     log_info "IGNITE システム停止完了: session=$SESSION_NAME, workspace=$WORKSPACE_DIR"
     print_success "IGNITE システムを停止しました"
+}
+
+# _stop_pid_process <pid_file> <label>
+# PIDファイルベースのプロセス停止（SIGTERM → 待機 → SIGKILL）
+_stop_pid_process() {
+    local pid_file="$1"
+    local label="$2"
+
+    [[ -f "$pid_file" ]] || return 0
+
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || true)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        print_info "${label}を停止中..."
+        kill "$pid" 2>/dev/null || true
+        # プロセス終了を最大3秒待機（0.5秒 × 6回）
+        local attempt=0
+        while kill -0 "$pid" 2>/dev/null && [[ $attempt -lt 6 ]]; do
+            sleep 0.5
+            attempt=$((attempt + 1))
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        print_success "${label}停止完了"
+    fi
+    rm -f "$pid_file"
 }
 
 # _is_workspace_process <pid>
@@ -251,7 +281,9 @@ _stop_systemd_service() {
     fi
 
     # 直接実行時: systemd サービスが active なら停止
-    local service_name="ignite@${SESSION_NAME}.service"
+    # SESSION_NAME は "ignite-xxx" だが、systemd インスタンス名は "xxx"（ignite- プレフィックスなし）
+    local instance_name="${SESSION_NAME#ignite-}"
+    local service_name="ignite@${instance_name}.service"
     local service_state
     service_state=$(systemctl --user is-active "$service_name" 2>/dev/null || true)
 

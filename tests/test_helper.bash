@@ -50,6 +50,13 @@ create_v1_db() {
     sqlite3 "$db_path" < "$PROJECT_ROOT/tests/fixtures/schema_v1.sql"
 }
 
+# v3 DB 作成（v3→v4 アップグレードテスト用）
+create_v3_db() {
+    local db_path="${1:-$TEST_TEMP_DIR/state/memory.db}"
+    mkdir -p "$(dirname "$db_path")"
+    sqlite3 "$db_path" < "$PROJECT_ROOT/tests/fixtures/schema_v3.sql"
+}
+
 # テーブルカラム名一覧を取得
 get_columns() {
     sqlite3 "$1" "PRAGMA table_info($2);" | cut -d'|' -f2 | sort

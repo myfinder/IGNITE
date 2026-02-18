@@ -48,7 +48,7 @@ fi
 
 CURRENT_VERSION=$(sqlite3 "$DB_PATH" "PRAGMA user_version;")
 
-if [[ "$CURRENT_VERSION" -ge 3 ]]; then
+if [[ "$CURRENT_VERSION" -ge 4 ]]; then
     echo "[schema_migrate] Already at version $CURRENT_VERSION (skip)" >&2
     exit 0
 fi
@@ -151,4 +151,23 @@ PRAGMA user_version = 3;
 SQL
 
     echo "[schema_migrate] Migration to version 3 completed successfully." >&2
+fi
+
+# ============================================================
+# Version 3 → 4: tasks テーブルに dependencies 追加
+# ============================================================
+if [[ "$CURRENT_VERSION" -lt 4 ]]; then
+    echo "[schema_migrate] Migrating from version $(sqlite3 "$DB_PATH" "PRAGMA user_version;") to 4..." >&2
+
+    HAS_DEPS=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='dependencies';")
+
+    if [[ "$HAS_DEPS" -eq 0 ]]; then
+        sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; \
+          ALTER TABLE tasks ADD COLUMN dependencies TEXT;"
+        echo "[schema_migrate] Added column: tasks.dependencies" >&2
+    fi
+
+    sqlite3 "$DB_PATH" "PRAGMA busy_timeout=5000; PRAGMA user_version = 4;"
+    echo "[schema_migrate] Migration to version 4 completed successfully." >&2
 fi

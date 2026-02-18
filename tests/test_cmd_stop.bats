@@ -3,7 +3,7 @@
 # cmd_stop.sh テスト
 # テスト対象: scripts/lib/cmd_stop.sh
 # _kill_process_tree, _stop_systemd_service, _sweep_orphan_processes,
-# _check_remaining_processes, _is_workspace_process
+# _check_remaining_processes, _is_workspace_process, _stop_pid_process
 # =============================================================================
 
 load 'test_helper'
@@ -71,6 +71,13 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
+@test "_kill_process_tree: stale PGIDファイルで誤killしない" {
+    # 存在しないPIDのPGIDファイルを作成 → _validate_pid で弾かれる
+    echo "9999999" > "$IGNITE_RUNTIME_DIR/state/.agent_pgid_0"
+    run _kill_process_tree "9999999" "0" "$IGNITE_RUNTIME_DIR"
+    [ "$status" -eq 0 ]
+}
+
 # =============================================================================
 # _is_workspace_process テスト
 # =============================================================================
@@ -78,6 +85,23 @@ teardown() {
 @test "_is_workspace_process: 存在しないPIDでfalse" {
     run _is_workspace_process "9999999"
     [ "$status" -ne 0 ]
+}
+
+# =============================================================================
+# _stop_pid_process テスト
+# =============================================================================
+
+@test "_stop_pid_process: PIDファイルなしで正常終了" {
+    run _stop_pid_process "$IGNITE_RUNTIME_DIR/nonexistent.pid" "テスト"
+    [ "$status" -eq 0 ]
+}
+
+@test "_stop_pid_process: 存在しないPIDで正常終了" {
+    echo "9999999" > "$IGNITE_RUNTIME_DIR/test.pid"
+    run _stop_pid_process "$IGNITE_RUNTIME_DIR/test.pid" "テスト"
+    [ "$status" -eq 0 ]
+    # PIDファイルが削除されている
+    [ ! -f "$IGNITE_RUNTIME_DIR/test.pid" ]
 }
 
 # =============================================================================
@@ -137,7 +161,6 @@ teardown() {
 }
 
 @test "_stop_systemd_service: 直接実行でactive時にstop呼び出し" {
-    local stop_called=false
     systemctl() {
         if [[ "$*" == *"is-active"* ]]; then
             echo "active"
