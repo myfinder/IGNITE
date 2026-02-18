@@ -421,8 +421,8 @@ sequenceDiagram
     A->>S: design_review_response
     E->>S: quality_plan_response
     I->>S: insight_response
-    S->>L: strategy_response
-    S->>C: task_list
+    S->>L: strategy_response (tasks含む)
+    L->>C: task_list (承認後)
     C->>IG: task_assignment
     IG->>C: task_completed
     C->>E: evaluation_request
@@ -451,6 +451,8 @@ IGNITEは **YAMLファイルキュー** と **SQLiteデータベース** の2層
 - **SQLite**: WALモードで並行アクセスに対応。全エージェントが学習・決定・タスク状態をセッション横断で記録し、再起動時の状態復元やMemory Insightsに活用
 
 詳細は [docs/architecture.md](docs/architecture.md) の「データストレージアーキテクチャ」セクションを参照してください。
+
+詳細なエージェント間通信フロー（implement/review/help_request 等）は [docs/communication-flow.md](docs/communication-flow.md) を参照してください。
 
 ## 📂 プロジェクト構造
 

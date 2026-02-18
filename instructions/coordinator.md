@@ -60,9 +60,13 @@ cat .ignite/runtime.yaml
 以下の例はボディ（YAML）部分のみ示します。
 
 **受信メッセージ例（タスクリスト）:**
+
+> **重要**: task_list は **Leader から受信** する（Strategist からの直接受信ではない）。
+> Leader が Strategist の strategy_response を承認後、task_list として Coordinator に転送する。
+
 ```yaml
 type: task_list
-from: strategist
+from: leader
 to: coordinator
 timestamp: "2026-01-31T17:05:00+09:00"
 priority: high
@@ -572,9 +576,12 @@ ignitians:
    ```yaml
    # .ignite/queue/coordinator/task_list_1738315260123456.mime
    type: task_list
-   from: strategist
+   from: leader
    to: coordinator
    payload:
+     action_type: "implement"
+     repository: "myfinder/IGNITE"
+     issue_number: 174
      tasks: [...]
    ```
 
@@ -1000,6 +1007,99 @@ evaluation_result 受信後の処理:
 - `verdict: approve` → 完了報告（Leaderへ）
 - `verdict: revise` → IGNITIAN に revision_request（差し戻し）
 - `verdict: reject` → Leader にエスカレーション
+
+## 全タスク完了後の action_type 別ワークフロー
+
+task_list 受信時に `action_type` を記録しておき、全タスクが `completed` になった時に以下のアクションを実行する:
+
+### implement
+
+1. `create_pr` タスクが task_list に含まれている場合:
+   - 依存関係の解決により自動的に配分される（通常フロー）
+   - `create_pr` タスクの完了報告に `pr_url` が含まれる
+2. `create_pr` タスクが含まれていない場合（バックアップ）:
+   - Coordinator が `create_pr` タスクを自動生成し、空き IGNITIAN に配分:
+     ```yaml
+     task_id: "create_pr_{issue_number}"
+     title: "PR作成: Issue #{issue_number}"
+     task_type: "github_ops"
+     instructions: |
+       1. setup_repo.sh clone {repository} で自分の clone を取得
+       2. git fetch origin && git checkout ignite/issue-{issue_number} && git pull
+       3. ./scripts/utils/create_pr.sh {issue_number} --repo {repository} --bot
+       4. PR URL を deliverables に含めて task_completed を報告
+     ```
+3. PR 作成完了後、Leader に `progress_update`（`pr_url` 含む）を送信:
+   ```yaml
+   type: progress_update
+   from: coordinator
+   to: leader
+   payload:
+     repository: "owner/repo"
+     issue_number: 123
+     action_type: "implement"
+     pr_url: "https://github.com/owner/repo/pull/456"
+     total_tasks: 3
+     completed: 3
+     in_progress: 0
+     pending: 0
+     summary: "全タスク完了。PR #456 を作成しました"
+   ```
+
+### review / explain
+
+全タスク完了後、Leader に `progress_update` を送信。IGNITIAN が個別に GitHub コメントを投稿済みのため、Leader はサマリーのみ投稿する:
+
+```yaml
+payload:
+  action_type: "review"
+  summary: "全レビュータスク完了。各 IGNITIAN が GitHub にレビューコメントを投稿済み"
+```
+
+### insights
+
+progress_update を Leader に送信（GitHub 投稿は Leader が担当）。
+
+## Leader からの help_ack リレー処理
+
+Leader から `help_ack` を受信した場合の処理:
+
+1. **`payload.relay_to` フィールドで宛先 IGNITIAN を特定**
+2. **help_ack を該当 IGNITIAN にリレー**（`from: coordinator` に書き換え）:
+   ```yaml
+   type: help_ack
+   from: coordinator
+   to: ignitian_{n}
+   payload:
+     task_id: "{task_id}"
+     original_help_type: "{help_type}"
+     action: "{action}"     # investigating | reassigning | escalating | resolved
+     guidance: |
+       {Leader からの対処方針}
+   ```
+3. **タスクの状態を action に応じて更新**:
+   - `reassigning` → タスクを別の IGNITIAN に再割当
+   - `resolved` → IGNITIAN が作業再開（タスク状態は `in_progress` のまま）
+   - `escalating` → ダッシュボードに記録
+
+## Leader からの issue_proposal_ack リレー処理
+
+Leader から `issue_proposal_ack` を受信した場合の処理:
+
+1. **`payload.original_from` で元の IGNITIAN を特定**
+2. **issue_proposal_ack を該当 IGNITIAN にリレー**:
+   ```yaml
+   type: issue_proposal_ack
+   from: coordinator
+   to: ignitian_{n}
+   payload:
+     task_id: "{task_id}"
+     decision: "{decision}"    # created | appended | rejected
+     issue_url: "{url}"        # created/appended の場合
+     reason: "{判断理由}"
+   ```
+3. `decision: created` の場合: IGNITIAN に Issue 作成が完了したことを通知
+4. `decision: rejected` の場合: IGNITIAN に理由を伝達
 
 ## 潜在的不具合の報告（remaining_concerns）
 

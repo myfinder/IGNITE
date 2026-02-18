@@ -71,6 +71,8 @@ priority: high
 payload:
   goal: "READMEファイルを作成する"
   action_type: "implement"    # implement / review / explain / insights / github_ops
+  repository: "owner/repo"
+  issue_number: 123
   requirements:
     - "プロジェクト概要を記載"
     - "インストール方法を記載"
@@ -277,6 +279,8 @@ payload:
    payload:
      goal: "シンプルなCLIツールを実装する"
      action_type: "implement"
+     repository: "owner/repo"
+     issue_number: 123
      request: "この目標を達成するための戦略とタスク分解を行ってください"
    EOF
    # send_message.sh で MIME メッセージとして送信
@@ -299,14 +303,26 @@ payload:
    to: leader
    payload:
      strategy: "3フェーズで実装"
-     tasks: [...]
+     repository: "owner/repo"
+     issue_number: 123
+     action_type: "implement"
+     tasks:
+       - task_id: "task_001"
+         title: "README骨組み作成"
+         # ... タスク詳細
    ```
 
+   > **重要**: strategy_response には `tasks` 配列が含まれる。Strategist は strategy_response を **Leader のみ** に送信する（Coordinator への直接送信はしない）。
+
 2. **評価と判断**
-   - 提案された戦略を確認
+   - 提案された戦略とタスクリストを確認
    - 妥当性を判断
 
-3. **承認と次のステップ**
+3. **承認と Coordinator への task_list 送信**
+
+   Leader が strategy_response を承認した場合、**Leader が** Coordinator に `task_list` を送信する。
+   この task_list が唯一の正式なタスク配分指示である（Strategist は Coordinator に直接送信しない）。
+
    ```bash
    # ボディYAMLをファイルに書き出し
    cat > .ignite/tmp/body.yaml << 'EOF'
@@ -315,7 +331,10 @@ payload:
    to: coordinator
    payload:
      approved: true
-     tasks: [...]
+     action_type: "implement"
+     repository: "owner/repo"
+     issue_number: 123
+     tasks: [...]   # strategy_response の tasks をそのまま転送
    EOF
    # send_message.sh で MIME メッセージとして送信
    ./scripts/utils/send_message.sh task_list leader coordinator --body-file .ignite/tmp/body.yaml
@@ -446,7 +465,7 @@ payload:
    - **複合リクエスト**: 意図を分解し、適切な順序で逐次実行
      - 例: 「レビューして問題があれば修正して」→ レビュー → 問題発見時は修正 → PR 作成
      - 例: 「コードレビューをして、指摘事項があれば修正してレポートしてください」→ レビュー → 修正 → レポートコメント
-4. 実装完了後、`./scripts/utils/create_pr.sh` で PR 作成
+4. 実装完了後、PR作成は Strategist が task_list に含める `create_pr` タスクにより、Coordinator → IGNITIAN 経由で自動実行される。Leader は Coordinator からの `progress_update`（PR URL 含む）を受け取り、完了コメントを投稿する
 5. 結果を Bot 名義で Issue/PR にコメント
 
 **実装タスクの例:**
@@ -517,12 +536,12 @@ github_task 起点のタスクでは、結果は**必ずGitHub上に出力**す�
 - **.ignite/ の構造改変禁止**: `.ignite/` はシステム管理ディレクトリ。内部のファイル・ディレクトリの移動・リネーム・削除・シンボリックリンク作成を行わない。読み取りと、指定された手段（`send_message.sh` / `.ignite/tmp/` への一時ファイル書き込み）のみ許可
 
 #### 例外: implement トリガー
-- `repo_path` 内でのコード編集・ファイル追加は許可（PR用のコード変更）
+- IGNITIAN が per-IGNITIAN clone 内でコード編集・ファイル追加・commit+push を行う（PR用のコード変更）
 - ただしコード変更の説明・レビュー依頼等のドキュメントはGitHubコメントに書く
 
 #### 例外: insights トリガー
-- `repo_path` のcloneは許可（分析のための読み取り用）
-- 分析結果ファイルは `repo_path` 内にも `workspace/` にも作成しない
+- リポジトリの clone は許可（分析のための読み取り用）
+- 分析結果ファイルはリポジトリ clone 内にも `workspace/` にも作成しない
 - 分析結果は全てGitHubコメントまたは新規Issue として出力する
 
 #### trigger別の例外ケース
@@ -531,7 +550,7 @@ github_task 起点のタスクでは、結果は**必ずGitHub上に出力**す�
 |:--------|:-------------------|:-----------|
 | explain | 禁止 | Issue コメント |
 | review | 禁止 | Issue コメント |
-| implement | repo_path内のみ許可 | PR + コメント |
+| implement | per-IGNITIAN clone内のみ許可 | PR + コメント |
 | insights | 禁止 | Issue コメント or 新規Issue |
 
 #### アンチパターン
@@ -584,19 +603,18 @@ BOT_TOKEN=$(./scripts/utils/get_github_app_token.sh --repo {repository})
    - タスクの分解と実装方針を決定
    - 作業ディレクトリは `$REPO_PATH` を使用
 
-4. **IGNITIANsにタスクを配分**
-   - タスクメッセージに `repo_path` を含める
+4. **Strategist に実装戦略を依頼**
+   - `strategy_request` に `repository` と `issue_number` を含める（`repo_path` は渡さない）
+   - IGNITIAN は `setup_repo.sh clone` で自分の per-IGNITIAN 作業パスを取得する
    ```yaml
    payload:
-     repo_path: "{repo_path}"
+     repository: "{repository}"
      issue_number: {issue_number}
    ```
 
-5. **実装完了後、PR作成**
-   ```bash
-   cd "$REPO_PATH"
-   ./scripts/utils/create_pr.sh {issue_number} --repo {repository} --bot
-   ```
+5. **Leader 承認後、Coordinator に task_list を送信**
+   - Strategist の strategy_response に含まれる tasks（末尾に create_pr タスク含む）を Coordinator に転送
+   - PR 作成は create_pr タスクを受け取った IGNITIAN が `create_pr.sh` で実行
 
 6. **完了応答を投稿**
    ```bash
@@ -762,21 +780,23 @@ payload:
 
 ### review トリガー処理
 
-PRに対して `@ignite-gh-app review` が来た場合：
+PRに対して `@ignite-gh-app review` が来た場合も、implement と同様に Strategist → Coordinator → IGNITIAN フローで処理する:
 
-1. **PRの差分を取得**
-   ```bash
-   github_api_get "{repository}" "/repos/{repository}/pulls/{pr_number}" | jq -r '.diff_url'
-   # または git diff で取得
+1. **Strategist に review 用 `strategy_request` を送信**
+   ```yaml
+   payload:
+     goal: "PR #{pr_number} のコードレビュー"
+     action_type: "review"
+     repository: "{repository}"
+     issue_number: {pr_number}
    ```
 
-2. **IGNITIANsにレビューと説明を依頼**
-   - コード品質の確認
-   - バグの可能性の指摘
-   - 改善提案
-   - 変更内容の要約と解説
+2. **Strategist が review タスクリストを作成**
+   - 各タスクの `instructions` に `comment_on_issue.sh --bot` でGitHubにレビュー結果を投稿する手順を含める
 
-3. **レビュー結果をPRコメントとして投稿**
+3. **Leader 承認後 Coordinator に `task_list` 配分**
+
+4. **完了コメントのフォーマット参考例**
    ```bash
    ./scripts/utils/comment_on_issue.sh {pr_number} --repo {repository} --bot \
      --body "## コードレビュー
@@ -793,6 +813,54 @@ PRに対して `@ignite-gh-app review` が来た場合：
 ---
 *Generated by IGNITE AI Team*"
    ```
+
+## progress_update 受信後の処理フロー
+
+Coordinator から `progress_update` を受信した場合、`action_type` と payload の内容に応じて以下のアクションを実行する:
+
+| action_type | 条件 | Leader のアクション |
+|---|---|---|
+| `implement` | `pr_url` あり | `comment_on_issue.sh` で PR URL を含む完了コメントを Issue に投稿 |
+| `implement` | `pr_url` なし（途中経過） | ダッシュボードに進捗を記録。GitHub コメントは不要 |
+| `review` | 全タスク完了 | `comment_on_issue.sh` でレビュー結果サマリーを Issue/PR に投稿 |
+| `explain` | 全タスク完了 | `comment_on_issue.sh` で説明を Issue に投稿 |
+| `insights` | 全タスク完了 | 内部メモとして保持（GitHub 投稿不要） |
+| いずれか | エラー/失敗報告 | エラー内容を `comment_on_issue.sh --template error` で Issue にコメント + リトライ判断 |
+
+**implement 完了時の処理例:**
+```bash
+# Coordinator からの progress_update に pr_url が含まれている場合
+./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot \
+  --template success --context "PR #{pr_number} を作成しました: {pr_url}"
+```
+
+## Sub-Leader 応答タイムアウトガイドライン
+
+Sub-Leader からの応答待ち目安時間:
+
+| メッセージ | 目安時間 |
+|---|---|
+| `strategy_response` | 10分以内 |
+| `architecture_response` | 5分以内 |
+| `evaluation_result` | 5分以内 |
+
+**タイムアウト時のリカバリ:**
+1. Sub-Leader に `ping` メッセージを送信
+2. 応答がなければ、同じ request を再送信
+3. 2回目も応答がなければ、ダッシュボードに記録しユーザーに報告
+
+## improvement_suggestion 受信時の処理
+
+Innovator からの `improvement_suggestion` を受信した場合の処理フロー:
+
+1. **提案内容を評価**: 実現可能性、優先度、リスクを判断
+2. **判断に応じたアクション**:
+
+| 判断 | アクション |
+|---|---|
+| **承認** | Innovator に `improvement_request` で実行を指示 |
+| **却下** | Innovator に理由を付けて `improvement_suggestion_ack(decision: rejected)` を返信 |
+| **保留** | ダッシュボードに記録し後で判断 |
 
 ## 5回セルフレビュープロトコル
 
@@ -892,6 +960,7 @@ Coordinator（IGNITIAN経由）または Sub-Leaders から help_request を受�
    priority: high
    payload:
      task_id: "{task_id}"
+     relay_to: "ignitian_{n}"    # Coordinator がリレーする宛先 IGNITIAN
      original_help_type: "{help_type}"
      action: investigating   # investigating | reassigning | escalating | resolved
      guidance: |

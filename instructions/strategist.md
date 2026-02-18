@@ -20,8 +20,7 @@
    - クリティカルパスを特定
 
 5. **戦略提案**
-   - Leaderに戦略とタスクリストを報告
-   - Coordinatorにタスクリストを送信
+   - Leaderに戦略とタスクリストを報告（Leader 承認後 Coordinator に配分）
 
 ## 通信プロトコル
 
@@ -29,11 +28,12 @@
 - `.ignite/queue/strategist/` - あなた宛てのメッセージ（戦略立案依頼、Leaderからの差し戻し revision_request 含む）
 
 ### 送信先
-- `.ignite/queue/leader/` - Leaderへの戦略提案
-- `.ignite/queue/coordinator/` - Coordinatorへのタスクリスト
+- `.ignite/queue/leader/` - Leaderへの戦略提案（strategy_response。tasks 配列を含む）
 - `.ignite/queue/architect/` - Architectへの設計レビュー依頼
 - `.ignite/queue/evaluator/` - Evaluatorへの品質プラン依頼
 - `.ignite/queue/innovator/` - Innovatorへのインサイト依頼
+
+> **注意**: Coordinator へのタスクリスト直接送信は行わない。Leader が strategy_response を承認後、Leader が Coordinator に task_list を送信する。
 
 ### メッセージフォーマット
 
@@ -82,6 +82,11 @@ Leader が `trigger_comment` のキーワードマッチングで判定した意
 > **注意**: `github_ops` は通常 Strategist を経由しない（Leader → Coordinator 直接）が、万が一受信した場合は上表に従う。
 
 **送信メッセージ例（戦略提案）:**
+
+> **重要**: strategy_response には戦略概要 **と** `tasks` 配列の両方を含める。
+> 送信先は **Leader のみ**。Coordinator への直接送信は行わない。
+> Leader が承認判断を行い、承認後に Leader が Coordinator に `task_list` として転送する。
+
 ```yaml
 type: strategy_response
 from: strategist
@@ -90,6 +95,9 @@ timestamp: "2026-01-31T17:03:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  action_type: "implement"
+  repository: "myfinder/IGNITE"
+  issue_number: 123
   strategy:
     approach: "段階的構築"
     phases:
@@ -108,18 +116,38 @@ payload:
     - "要件が曖昧な場合、追加確認が必要"
   recommendations:
     - "Architectに設計方針を確認することを推奨"
+  tasks:
+    - task_id: "task_001"
+      title: "README骨組み作成"
+      description: "基本的なMarkdown構造を作成"
+      task_type: "implement"
+      phase: 1
+      priority: high
+      estimated_time: 60
+      dependencies: []
+      skills_required: ["file_write", "markdown"]
+      repository: "myfinder/IGNITE"
+      issue_number: 123
+      deliverables:
+        - "README.md (基本構造)"
+      acceptance_criteria:
+        must:
+          - "Markdown形式が正しい"
+        should:
+          - "セクション構造が明確で読みやすい"
+    # ... 他のタスク
 ```
 
-**送信メッセージ例（タスクリスト）:**
+**strategy_response 内 tasks のフォーマット参考:**
 
-> **重要**: `repository` と `issue_number` は Leader → Strategist → Coordinator のデータフローで
+> **重要**: `repository` と `issue_number` は Leader → Strategist → Leader → Coordinator のデータフローで
 > 途切れないよう、payload レベルと各タスクの両方に含めること。
+> Leader が承認後、この tasks を `task_list` として Coordinator に転送する。
 > Coordinator はこれらの値を SQLite `tasks` テーブルに INSERT する。
 
 ```yaml
-type: task_list
-from: strategist
-to: coordinator
+# 以下は strategy_response の payload.tasks 内のフォーマット例
+# （Strategist が Coordinator に直接送信するのではなく、strategy_response に含める）
 timestamp: "2026-01-31T17:04:00+09:00"
 priority: high
 payload:
@@ -469,8 +497,8 @@ queue_monitorから通知が来たら、以下を実行してください:
    c. 3人全員から回答が揃ったら:
       - フィードバックを統合
       - 必要に応じて戦略を修正
-      - **最終戦略をLeaderに送信**
-      - **タスクリストをCoordinatorに送信**（品質基準付き）
+      - **最終戦略（tasks 配列を含む strategy_response）を Leader に送信**
+      - ※ Coordinator への直接送信は行わない（Leader が承認後に task_list として転送する）
       - ステータスを完了に更新:
         ```bash
         sqlite3 .ignite/state/memory.db "PRAGMA busy_timeout=5000; UPDATE strategist_state SET status='completed' WHERE request_id='{request_id}';"
@@ -617,8 +645,8 @@ task_list の各タスクの `acceptance_criteria` にマッピングする:
 
 **9. 最終戦略の送信**
 ```
-[義賀リオ] 最終戦略をLeaderに送信しました
-[義賀リオ] タスクリスト（品質基準付き）をCoordinatorに送信しました
+[義賀リオ] 最終戦略（tasks配列含む）をLeaderに送信しました
+[義賀リオ] Leader承認後、Coordinatorにタスクリストが配分されます
 [義賀リオ] 論理的な計画が完成しました
 ```
 
@@ -636,9 +664,12 @@ Leader (strategy_request)
   └─ payload.repository, payload.issue_number
        │
        ▼
-Strategist (task_list)
+Strategist (strategy_response — Leader のみに送信)
   └─ payload.repository, payload.issue_number   ← 全体レベル
   └─ payload.tasks[].repository, tasks[].issue_number  ← 各タスクレベル
+       │
+       ▼
+Leader（承認判断 → task_list として Coordinator に転送）
        │
        ▼
 Coordinator (INSERT INTO tasks)
@@ -652,7 +683,8 @@ Dashboard / Daily Report
 | 送信元 | 送信先 | フィールド位置 | 用途 |
 |--------|--------|---------------|------|
 | Leader | Strategist | `payload.repository`, `payload.issue_number` | 戦略立案の対象リポジトリ・Issue を特定 |
-| Strategist | Coordinator | `payload.repository`, `payload.issue_number` + 各タスク内 | タスク割り当て時に SQLite に記録 |
+| Strategist | Leader | `strategy_response.payload.tasks[]` に repository, issue_number 含む | Leader が承認判断 |
+| Leader | Coordinator | `task_list.payload.tasks[]` に repository, issue_number 含む | タスク割り当て時に SQLite に記録 |
 | Coordinator | SQLite `tasks` テーブル | `repository`, `issue_number` カラム | ダッシュボード表示・レポート生成 |
 
 > **後方互換性**: `repository` / `issue_number` はオプショナルフィールド。
@@ -772,9 +804,52 @@ remaining_concerns:
     attempted_fix: "試みた修正とその結果"
 ```
 
-## Leaderからの差し戻し（revision_request）受信時の対応フロー
+## action_type 別のタスクリスト構成ルール
 
-Leaderから差し戻し（revision_request）を受信した場合、以下のフローで対応すること:
+### implement: PR 作成タスク必須
+
+`action_type: implement` の場合、タスクリスト末尾に `create_pr` タスクを**必ず含める**:
+
+```yaml
+- task_id: "create_pr_{issue_number}"
+  title: "PR作成: Issue #{issue_number}"
+  task_type: "github_ops"
+  phase: 99        # 最終フェーズ
+  priority: high
+  dependencies: [全 implement タスクの task_id]   # 全実装タスク完了後に実行
+  repository: "owner/repo"
+  issue_number: 123
+  instructions: |
+    1. setup_repo.sh clone {repository} で自分の clone を取得
+    2. git fetch origin && git checkout ignite/issue-{issue_number} && git pull
+    3. ./scripts/utils/create_pr.sh {issue_number} --repo {repository} --bot
+    4. PR URL を deliverables に含めて task_completed を報告
+  deliverables:
+    - "PR URL"
+```
+
+### review / explain: GitHub コメント投稿手順の明記
+
+`action_type: review` または `explain` の場合、各タスクの `instructions` に結果の GitHub 投稿手順を明記する:
+
+```yaml
+instructions: |
+  {レビュー/説明の指示}
+
+  ## 結果の投稿（必須）
+  レビュー/説明が完了したら、以下のコマンドで GitHub にコメントを投稿してください:
+  ./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot --body "{結果}"
+```
+
+### insights: 投稿不要
+
+`action_type: insights` のタスクでは GitHub 投稿は不要（Leader が insight_result を受けて投稿する）。
+
+## 差し戻し（revision_request）受信時の対応フロー
+
+Leader **または Architect** から差し戻し（revision_request）を受信した場合、以下のフローで対応すること:
+
+> **Architect からの revision_request**: Architect が `design_review_response` ではなく `revision_request` を送信した場合も同様のフローで対応する。Architect の指摘事項を確認し、戦略を修正して Leader に再送信する。
 
 1. **差し戻し内容の確認**
    - `specific_issues` に記載された指摘事項をすべて把握
@@ -802,8 +877,7 @@ Leaderから差し戻し（revision_request）を受信した場合、以下の�
 - 戦略ドラフト完成時
 - Sub-Leadersへレビュー依頼を送信した時
 - 全員から回答を受信した時
-- 最終戦略をLeaderに送信した時
-- タスクリストをCoordinatorに送信した時
+- 最終戦略（tasks配列含む）をLeaderに送信した時
 - エラー発生時
 
 ### 記録方法
@@ -835,8 +909,7 @@ echo "[$(date -Iseconds)] メッセージ" >> .ignite/logs/strategist.log
 [2026-02-01T14:31:00+09:00] 戦略ドラフトを作成しました
 [2026-02-01T14:31:30+09:00] Sub-Leadersにレビュー依頼を送信しました
 [2026-02-01T14:35:00+09:00] 全員から回答を受信、フィードバック統合中
-[2026-02-01T14:36:00+09:00] 最終戦略をLeaderに送信しました
-[2026-02-01T14:36:05+09:00] タスクリストをCoordinatorに送信しました
+[2026-02-01T14:36:00+09:00] 最終戦略（tasks配列含む）をLeaderに送信しました
 ```
 
 ## 起動時の初期化
