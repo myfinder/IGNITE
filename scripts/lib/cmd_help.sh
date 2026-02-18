@@ -189,9 +189,18 @@ cmd_help() {
             echo "  ./scripts/ignite notify ignitian_1 \"タスク1を実行\" -s proj-a"
             ;;
         list)
-            echo "使用方法: ./scripts/ignite list"
+            echo "使用方法: ./scripts/ignite list [オプション]"
             echo ""
             echo "実行中のIGNITEセッション一覧を表示します"
+            echo ""
+            echo "オプション:"
+            echo "  -a, --all               全ワークスペースのセッションを横断表示"
+            echo "  -w, --workspace <dir>   ワークスペースを指定"
+            echo "  -h, --help              このヘルプを表示"
+            echo ""
+            echo "例:"
+            echo "  ./scripts/ignite list             現ワークスペースのセッション一覧"
+            echo "  ./scripts/ignite list --all       全ワークスペースのセッション一覧"
             ;;
         work-on)
             echo "使用方法: ./scripts/ignite work-on <issue> [オプション]"
