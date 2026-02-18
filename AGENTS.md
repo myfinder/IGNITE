@@ -82,6 +82,38 @@ systemd サービスの起動テストや queue_monitor のプログレス表示
 - `tests/` 内のテストコード
 - `install.sh` や `cli_provider.sh` の依存関係リスト
 
+## バージョンアップ・リリースフロー
+
+### バージョンバンプ手順
+
+1. `scripts/lib/core.sh` の `VERSION="x.y.z"` を更新
+2. インストール先に同期: `cp scripts/lib/core.sh ~/.local/share/ignite/scripts/lib/core.sh`
+3. コミット: `git commit -m "chore: bump version to vX.Y.Z"`
+4. main に push
+
+### リリース作成の注意事項
+
+**リリースアーカイブ（tar.gz）は CI workflow が自動生成する。`gh release create` で手動リリースを先に作ると workflow がアセットをアップロードできなくなる。**
+
+正しい手順:
+1. バージョンバンプコミットを main に push
+2. **タグのみ作成して push**: `git tag v0.6.2 && git push origin v0.6.2`
+3. `.github/workflows/release.yml` がタグ push を検知し、自動で:
+   - `scripts/build.sh` でアーカイブをビルド
+   - `scripts/smoke_test.sh --ci` でスモークテスト
+   - `softprops/action-gh-release` でリリース作成 + アセットアップロード
+4. workflow 完了後、`gh release edit v0.6.2 --notes-file notes.md` でリリースノートを上書き
+
+**やってはいけないこと:**
+- `gh release create` でリリースを先に作成する（workflow の `softprops/action-gh-release` が既存リリースへのアセット追加で認証エラーになる）
+
+### ワークスペースへの反映
+
+`install.sh --upgrade` → `ignite init -w /path/to/workspace` の順で、最新のインストラクション・設定がワークスペースにコピーされる。
+- `install.sh --upgrade`: ソース → `~/.local/share/ignite/` にコピー
+- `ignite init`: `~/.local/share/ignite/instructions/` → `.ignite/instructions/` にコピー（上書き）
+- `ignite start`（`setup_workspace_config`）: `.ignite/instructions/` が**存在しない場合のみ**コピー（既存は上書きしない）
+
 ## 重要な注意事項
 
 - CLI プロバイダーは **OpenCode ヘッドレスモード** 専用です（`opencode serve` で HTTP API 経由で管理）
