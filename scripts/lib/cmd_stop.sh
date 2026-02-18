@@ -60,11 +60,14 @@ cmd_stop() {
     # systemd サービス状態同期（プロセス kill の前に実行し、状態不整合を防ぐ）
     _stop_systemd_service
 
-    # GitHub Watcher を停止
-    _stop_pid_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
-
-    # キューモニターを停止
+    # 停止順序: queue_monitor → watcher → agents
+    # キューモニターを先に停止（watcher 再起動ループ防止のため）
+    # queue_monitor は _check_and_recover_watcher() で watcher を自動復旧するため、
+    # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある
     _stop_pid_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
+
+    # GitHub Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
+    _stop_pid_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
 
     # エージェントプロセス停止（PID ベース → 共通 _kill_process_tree 使用）
     print_warning "エージェントプロセスを停止中..."

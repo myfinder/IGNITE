@@ -123,11 +123,13 @@ _service_install() {
     cp "$source_dir/ignite@.service" "$unit_dir/ignite@.service"
     print_success "ignite@.service をインストールしました"
 
-    # watcher テンプレートがあればコピー
-    if [[ -f "$source_dir/ignite-watcher@.service" ]]; then
-        cp "$source_dir/ignite-watcher@.service" "$unit_dir/ignite-watcher@.service"
-        print_success "ignite-watcher@.service をインストールしました"
-    fi
+    # 補助ユニットテンプレートがあればコピー
+    for _aux_unit in ignite-watcher@.service ignite-monitor@.service; do
+        if [[ -f "$source_dir/$_aux_unit" ]]; then
+            cp "$source_dir/$_aux_unit" "$unit_dir/$_aux_unit"
+            print_success "$_aux_unit をインストールしました"
+        fi
+    done
 
     print_info "systemd daemon-reload を実行中..."
     systemctl --user daemon-reload
@@ -165,7 +167,7 @@ _service_uninstall() {
     fi
 
     local removed=false
-    for f in ignite@.service ignite-watcher@.service; do
+    for f in ignite@.service ignite-watcher@.service ignite-monitor@.service; do
         if [[ -f "$unit_dir/$f" ]]; then
             rm -f "$unit_dir/$f"
             print_success "$f を削除しました"
@@ -199,6 +201,7 @@ _service_enable() {
 
     systemctl --user enable "ignite@${session}.service"
     systemctl --user enable "ignite-watcher@${session}.service" 2>/dev/null || true
+    systemctl --user enable "ignite-monitor@${session}.service" 2>/dev/null || true
     print_success "ignite@${session} を有効化しました"
 
     # linger チェック
@@ -221,6 +224,7 @@ _service_disable() {
         exit 1
     fi
 
+    systemctl --user disable "ignite-monitor@${session}.service" 2>/dev/null || true
     systemctl --user disable "ignite-watcher@${session}.service" 2>/dev/null || true
     systemctl --user disable "ignite@${session}.service"
     print_success "ignite@${session} を無効化しました"
