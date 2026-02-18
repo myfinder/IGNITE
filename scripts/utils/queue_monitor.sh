@@ -556,12 +556,12 @@ _check_and_recover_watcher() {
             local watcher_log="$IGNITE_RUNTIME_DIR/logs/github_watcher.log"
             echo "========== restart at $(date -Iseconds) ==========" >> "$watcher_log"
 
-            IGNITE_WATCHER_CONFIG="${IGNITE_CONFIG_DIR}/github-watcher.yaml" \
-            IGNITE_WORKSPACE_DIR="${WORKSPACE_DIR}" \
-            WORKSPACE_DIR="${WORKSPACE_DIR}" \
-            IGNITE_RUNTIME_DIR="${IGNITE_RUNTIME_DIR}" \
-            IGNITE_CONFIG_DIR="${IGNITE_CONFIG_DIR}" \
-            IGNITE_SESSION="${SESSION_ID}" \
+            export IGNITE_WATCHER_CONFIG="${IGNITE_CONFIG_DIR}/github-watcher.yaml"
+            export IGNITE_WORKSPACE_DIR="${WORKSPACE_DIR}"
+            export WORKSPACE_DIR
+            export IGNITE_RUNTIME_DIR
+            export IGNITE_CONFIG_DIR
+            export IGNITE_SESSION="${SESSION_ID}"
             "$SCRIPT_DIR/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local new_pid=$!
             echo "$new_pid" > "$pid_file"
