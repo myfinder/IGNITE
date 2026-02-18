@@ -30,6 +30,10 @@ DEFAULT_INTERVAL=60
 DEFAULT_STATE_FILE="workspace/state/github_watcher_state.json"
 DEFAULT_CONFIG_FILE="github-watcher.yaml"
 
+# ハートビート設定
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-10}"  # デフォルト10秒
+WATCHER_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR:-}/state/github_watcher_heartbeat.json"
+
 # SIGHUP設定リロード用フラグ（trap内では直接load_config()を呼ばない）
 _RELOAD_REQUESTED=false
 
@@ -388,6 +392,35 @@ cleanup_old_events() {
     else
         rm -f "$tmp_file"
     fi
+}
+
+# =============================================================================
+# ハートビート
+# =============================================================================
+
+# _write_watcher_heartbeat
+# queue_monitor の _write_heartbeat() と同一 JSON 形式でハートビートを書き込む
+# アトミック書き込み: 一時ファイル + mv でファイル破損を防止
+_write_watcher_heartbeat() {
+    # IGNITE_RUNTIME_DIR が未設定の場合はスキップ
+    [[ -z "${IGNITE_RUNTIME_DIR:-}" ]] && return 0
+
+    local state_dir="${IGNITE_RUNTIME_DIR}/state"
+    mkdir -p "$state_dir" 2>/dev/null || true
+
+    # ハートビートファイルパスを更新（IGNITE_RUNTIME_DIR がload_config後に変わる可能性）
+    WATCHER_HEARTBEAT_FILE="${state_dir}/github_watcher_heartbeat.json"
+
+    local timestamp
+    timestamp=$(date -Iseconds)
+
+    # queue_monitor と同一 JSON 形式: {"timestamp":"...","resume_token":"...","session":"..."}
+    local tmp_file
+    tmp_file=$(mktemp "${state_dir}/.watcher_heartbeat.XXXXXX") || return 0
+    printf '{"timestamp":"%s","resume_token":"%s","session":"%s"}\n' \
+        "$timestamp" "" "${IGNITE_SESSION:-}" \
+        > "$tmp_file"
+    mv "$tmp_file" "$WATCHER_HEARTBEAT_FILE" 2>/dev/null || rm -f "$tmp_file"
 }
 
 # =============================================================================
@@ -1209,6 +1242,11 @@ run_daemon() {
     fi
 
     local refresh_counter=0
+    local _last_heartbeat_epoch=0
+
+    # 起動直後にハートビートを書き込み
+    _write_watcher_heartbeat || true
+    _last_heartbeat_epoch=$(date +%s)
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
         # セッション/プロセス生存チェック（環境変数が設定されている場合のみ）
@@ -1252,6 +1290,14 @@ run_daemon() {
         while [[ $i -lt $POLL_INTERVAL ]] && [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
             sleep 1
             i=$((i + 1))
+
+            # ハートビート書き込み（HEARTBEAT_INTERVAL秒ごと）
+            local _now_epoch
+            _now_epoch=$(date +%s)
+            if (( _now_epoch - _last_heartbeat_epoch >= HEARTBEAT_INTERVAL )); then
+                _write_watcher_heartbeat || true
+                _last_heartbeat_epoch=$_now_epoch
+            fi
         done
     done
 

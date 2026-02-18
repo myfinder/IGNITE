@@ -57,28 +57,9 @@ cmd_stop() {
         fi
     fi
 
-    # GitHub Watcher を停止
-    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
-        local watcher_pid
-        watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
-        if kill -0 "$watcher_pid" 2>/dev/null; then
-            print_info "GitHub Watcherを停止中..."
-            kill "$watcher_pid" 2>/dev/null || true
-            # プロセス終了を最大3秒待機
-            local wait_count=0
-            while kill -0 "$watcher_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
-                sleep 0.5
-                wait_count=$((wait_count + 1))
-            done
-            if kill -0 "$watcher_pid" 2>/dev/null; then
-                kill -9 "$watcher_pid" 2>/dev/null || true
-            fi
-            print_success "GitHub Watcher停止完了"
-        fi
-        rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
-    fi
-
-    # キューモニターを停止
+    # キューモニターを先に停止（watcher 再起動ループ防止のため）
+    # queue_monitor は _check_and_recover_watcher() で watcher を自動復旧するため、
+    # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある
     if [[ -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid" ]]; then
         local queue_pid
         queue_pid=$(cat "$IGNITE_RUNTIME_DIR/queue_monitor.pid")
@@ -97,6 +78,27 @@ cmd_stop() {
             print_success "キューモニター停止完了"
         fi
         rm -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid"
+    fi
+
+    # GitHub Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
+    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+        local watcher_pid
+        watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+        if kill -0 "$watcher_pid" 2>/dev/null; then
+            print_info "GitHub Watcherを停止中..."
+            kill "$watcher_pid" 2>/dev/null || true
+            # プロセス終了を最大3秒待機
+            local wait_count=0
+            while kill -0 "$watcher_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+                sleep 0.5
+                wait_count=$((wait_count + 1))
+            done
+            if kill -0 "$watcher_pid" 2>/dev/null; then
+                kill -9 "$watcher_pid" 2>/dev/null || true
+            fi
+            print_success "GitHub Watcher停止完了"
+        fi
+        rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
     fi
 
     # エージェントプロセス停止（PID ベース）

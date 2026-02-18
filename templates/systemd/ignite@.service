@@ -14,6 +14,7 @@ EnvironmentFile=-%h/.config/ignite/env.%i
 # TUI モード (claude): tmux セッション内で動作
 ExecStart=%h/.local/share/ignite/scripts/ignite start --daemon -s %i
 ExecStop=%h/.local/share/ignite/scripts/ignite stop -y -s %i
+ExecReload=/bin/kill -HUP $MAINPID
 
 TimeoutStartSec=300
 TimeoutStopSec=30
