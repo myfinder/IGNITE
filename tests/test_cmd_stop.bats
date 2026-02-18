@@ -183,10 +183,13 @@ teardown() {
     [[ "$content" == *"setsid nohup"* ]]
 }
 
-@test "cli_start_agent_server: PGIDファイル書き込みがソースに含まれている" {
+@test "cli_start_agent_server: PGIDファイルが廃止されている（PIDファイルのみ管理）" {
     local content
     content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
-    [[ "$content" == *"agent_pgid"* ]]
+    # PGIDファイルへの書き込み・読み込みが存在しないことを確認
+    [[ "$content" != *"agent_pgid"* ]]
+    # _get_pgid ヘルパーで動的にPGIDを取得する方式に移行済み
+    [[ "$content" == *"_get_pgid"* ]]
 }
 
 # =============================================================================
