@@ -465,88 +465,36 @@ cmd_list() {
 
     local found=0
 
+    # list_all_sessions() に委譲（ロジック一元化）
+    # デフォルト: 現ワークスペースのみ、--all: 全ワークスペース横断
+    local _las_args=()
     if [[ "$scan_all" == true ]]; then
-        # --all: list_all_sessions() で全ワークスペースを横断表示
-        local _line
-        while IFS=$'\t' read -r _s_name _s_status _s_workspace; do
-            [[ -z "$_s_name" ]] && continue
-            # WORKSPACE列: フルパス表示
-            local _ws_display="$_s_workspace"
-            # AGENTS列: sessions/*.yaml から取得を試みる
-            local _agents_display="-"
-            local _session_yaml="${_s_workspace}/.ignite/sessions/${_s_name}.yaml"
-            if [[ -f "$_session_yaml" ]]; then
-                local _s_mode _s_total _s_actual
-                _s_mode=$(grep '^mode:' "$_session_yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || true)
-                _s_total=$(grep '^agents_total:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
-                _s_actual=$(grep '^agents_actual:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
-                _s_total=${_s_total:-"-"}
-                _s_actual=${_s_actual:-"-"}
-                _agents_display="${_s_actual}/${_s_total}"
-                if [[ "${_s_mode:-}" == "leader" ]]; then
-                    _agents_display="${_agents_display} (solo)"
-                fi
-            fi
-            printf "  %-16s %-10s %-8s %s\n" "$_s_name" "$_s_status" "$_agents_display" "$_ws_display"
-            found=$((found + 1))
-        done < <(list_all_sessions --all 2>/dev/null)
-    else
-        # デフォルト: 現ワークスペースのみ（既存動作を維持）
-        local session_dir="$IGNITE_CONFIG_DIR/sessions"
-        local shown_sessions=""
-
-        # sessions/*.yaml を走査
-        if [[ -d "$session_dir" ]]; then
-            for f in "$session_dir"/*.yaml; do
-                [[ -f "$f" ]] || continue
-                local s_name s_workspace s_mode s_total s_actual
-                s_name=$(grep '^session_name:' "$f" | awk '{print $2}' | tr -d '"')
-                s_workspace=$(grep '^workspace_dir:' "$f" | awk '{print $2}' | tr -d '"')
-                s_mode=$(grep '^mode:' "$f" | awk '{print $2}' | tr -d '"')
-                s_total=$(grep '^agents_total:' "$f" | awk '{print $2}')
-                s_actual=$(grep '^agents_actual:' "$f" | awk '{print $2}')
-                # 後方互換フォールバック
-                s_mode=${s_mode:-unknown}
-                s_total=${s_total:-"-"}
-                s_actual=${s_actual:-"-"}
-                # STATUS判定: Leader PID で判定
-                local s_status="stopped"
-                local _leader_pid
-                if [[ -n "$s_workspace" ]] && [[ -f "$s_workspace/.ignite/state/.agent_pid_0" ]]; then
-                    _leader_pid=$(cat "$s_workspace/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                    if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                        s_status="running"
-                    fi
-                fi
-                # AGENTS列
-                local agents_display="${s_actual}/${s_total}"
-                if [[ "$s_mode" == "leader" ]]; then
-                    agents_display="${agents_display} (solo)"
-                fi
-                # WORKSPACE列: フルパス表示
-                local ws_display="${s_workspace:-unknown}"
-                printf "  %-16s %-10s %-8s %s\n" "$s_name" "$s_status" "$agents_display" "$ws_display"
-                shown_sessions="${shown_sessions}${s_name} "
-                found=$((found + 1))
-            done
-        fi
-
-        # フォールバック（YAMLなしのセッションを補完）
-        local _ws="${WORKSPACE_DIR:-}"
-        if [[ -n "$_ws" ]] && [[ -f "$_ws/.ignite/runtime.yaml" ]]; then
-            local _rt_name
-            _rt_name=$(yaml_get "$_ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
-            if [[ -n "$_rt_name" ]] && [[ "$shown_sessions" != *"$_rt_name "* ]]; then
-                local _leader_pid
-                _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                    # WORKSPACE列: フルパス表示
-                    printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws"
-                    found=$((found + 1))
-                fi
-            fi
-        fi
+        _las_args+=(--all)
     fi
+
+    while IFS=$'\t' read -r _s_name _s_status _s_workspace; do
+        [[ -z "$_s_name" ]] && continue
+
+        # AGENTS列: sessions/*.yaml から取得を試みる
+        local _agents_display="-"
+        local _session_yaml="${_s_workspace}/.ignite/sessions/${_s_name}.yaml"
+        if [[ -f "$_session_yaml" ]]; then
+            local _s_mode _s_total _s_actual
+            _s_mode=$(grep '^mode:' "$_session_yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || true)
+            _s_total=$(grep '^agents_total:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
+            _s_actual=$(grep '^agents_actual:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
+            _s_total=${_s_total:-"-"}
+            _s_actual=${_s_actual:-"-"}
+            _agents_display="${_s_actual}/${_s_total}"
+            if [[ "${_s_mode:-}" == "leader" ]]; then
+                _agents_display="${_agents_display} (solo)"
+            fi
+        fi
+
+        # WORKSPACE列: フルパス表示
+        printf "  %-16s %-10s %-8s %s\n" "$_s_name" "$_s_status" "$_agents_display" "$_s_workspace"
+        found=$((found + 1))
+    done < <(list_all_sessions "${_las_args[@]}" 2>/dev/null)
 
     # 結果なし
     if [[ "$found" -eq 0 ]]; then
