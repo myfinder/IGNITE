@@ -715,17 +715,30 @@ EOF
     fi
 
     # キューモニター起動（エージェント間通信に必須）
-    print_info "キューモニターを起動中..."
-    local queue_log="$IGNITE_RUNTIME_DIR/logs/queue_monitor.log"
-    echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
-    export WORKSPACE_DIR="$WORKSPACE_DIR"
-    export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
-    export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
-    "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
-    local queue_pid=$!
-    echo "$queue_pid" > "$IGNITE_RUNTIME_DIR/queue_monitor.pid"
-    print_success "キューモニター起動完了 (PID: $queue_pid)"
-    print_info "ログ: $queue_log"
+    # daemon モード + systemd monitor サービスが有効な場合はスキップ
+    # （systemd の ignite-monitor@.service が管理するため二重起動を防止）
+    local _skip_monitor=false
+    if [[ "$daemon_mode" == true ]]; then
+        local _session_short="${SESSION_NAME#ignite-}"
+        if systemctl --user is-enabled "ignite-monitor@${_session_short}.service" &>/dev/null; then
+            _skip_monitor=true
+            print_info "キューモニターは systemd (ignite-monitor@${_session_short}) が管理します"
+        fi
+    fi
+
+    if [[ "$_skip_monitor" == false ]]; then
+        print_info "キューモニターを起動中..."
+        local queue_log="$IGNITE_RUNTIME_DIR/logs/queue_monitor.log"
+        echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$queue_log"
+        export WORKSPACE_DIR="$WORKSPACE_DIR"
+        export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+        export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
+        "$IGNITE_SCRIPTS_DIR/utils/queue_monitor.sh" -s "$SESSION_NAME" >> "$queue_log" 2>&1 &
+        local queue_pid=$!
+        echo "$queue_pid" > "$IGNITE_RUNTIME_DIR/queue_monitor.pid"
+        print_success "キューモニター起動完了 (PID: $queue_pid)"
+        print_info "ログ: $queue_log"
+    fi
 
     # daemonモード: PIDファイルを書き出して終了
     if [[ "$daemon_mode" == true ]]; then
