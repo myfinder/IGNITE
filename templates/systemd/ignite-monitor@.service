@@ -16,6 +16,9 @@ ExecReload=/bin/kill -HUP $MAINPID
 
 Restart=on-failure
 RestartSec=5s
+# flock取得失敗(exit 1)は「既に別インスタンスが稼働中」を意味する。
+# systemdがこれをfailureと誤認してリスタートループに入ることを防止。
+RestartPreventExitStatus=1
 
 # WatchdogSec= は意図的に設定しない。
 # 理由:

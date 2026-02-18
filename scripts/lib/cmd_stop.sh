@@ -57,6 +57,7 @@ cmd_stop() {
         fi
     fi
 
+    # 停止順序: queue_monitor → watcher → agents
     # キューモニターを先に停止（watcher 再起動ループ防止のため）
     # queue_monitor は _check_and_recover_watcher() で watcher を自動復旧するため、
     # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある

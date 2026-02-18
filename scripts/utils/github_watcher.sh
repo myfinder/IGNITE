@@ -33,6 +33,7 @@ DEFAULT_CONFIG_FILE="github-watcher.yaml"
 # ハートビート設定
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-10}"  # デフォルト10秒
 WATCHER_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR:-}/state/github_watcher_heartbeat.json"
+WATCHER_LOCK_FILE="${IGNITE_RUNTIME_DIR:-}/state/github_watcher.lock"
 
 # SIGHUP設定リロード用フラグ（trap内では直接load_config()を呼ばない）
 _RELOAD_REQUESTED=false
@@ -415,6 +416,7 @@ _write_watcher_heartbeat() {
     timestamp=$(date -Iseconds)
 
     # queue_monitor と同一 JSON 形式: {"timestamp":"...","resume_token":"...","session":"..."}
+    # resume_token は queue_monitor のハートビートとスキーマを統一するため空文字列を維持
     local tmp_file
     tmp_file=$(mktemp "${state_dir}/.watcher_heartbeat.XXXXXX") || return 0
     printf '{"timestamp":"%s","resume_token":"%s","session":"%s"}\n' \
@@ -1233,6 +1235,17 @@ process_pr_reviews() {
 # =============================================================================
 
 run_daemon() {
+    # 二重起動防止ロック（queue_monitor と同一パターン）
+    if [[ -n "${IGNITE_RUNTIME_DIR:-}" ]]; then
+        mkdir -p "${IGNITE_RUNTIME_DIR}/state" 2>/dev/null || true
+        WATCHER_LOCK_FILE="${IGNITE_RUNTIME_DIR}/state/github_watcher.lock"
+        exec 9>"$WATCHER_LOCK_FILE"
+        if ! flock -n 9; then
+            log_warn "github_watcher は既に稼働中です（flock取得失敗）"
+            exit 1
+        fi
+    fi
+
     log_info "GitHub Watcher を起動します"
     log_info "監視間隔: ${POLL_INTERVAL}秒"
     log_info "監視対象リポジトリ: ${REPOSITORIES[*]}"

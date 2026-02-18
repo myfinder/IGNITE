@@ -158,6 +158,8 @@ _load_watcher_health_config() {
         interval="${interval:-60}"
         WATCHER_HEARTBEAT_THRESHOLD=$((interval * 3))
     fi
+    # yaml_get が利用不可（yaml_utils.sh 未ロード等）の場合は
+    # グローバル定義のデフォルト値（180秒）がそのまま使用される。想定内の動作
 }
 _load_watcher_health_config
 
@@ -556,7 +558,7 @@ _check_and_recover_watcher() {
             IGNITE_RUNTIME_DIR="${IGNITE_RUNTIME_DIR}" \
             IGNITE_CONFIG_DIR="${IGNITE_CONFIG_DIR}" \
             IGNITE_SESSION="${SESSION_ID}" \
-            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            "$SCRIPT_DIR/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local new_pid=$!
             echo "$new_pid" > "$pid_file"
 
@@ -568,6 +570,7 @@ _check_and_recover_watcher() {
         echo "$((restart_count + 1))" > "$restart_count_file"
 
         # Leader に通知
+        # SESSION_ID, HEALTH_MAX_RESTART 等の変数はサブシェルで自動継承される。確認済み
         send_to_agent "leader" \
             "GitHub Watcher が停止を検知し、自動再起動を実行しました (試行 $((restart_count + 1))/${HEALTH_MAX_RESTART})。確認してください。" \
             2>/dev/null || true
@@ -1780,7 +1783,7 @@ main() {
     _ensure_state_dir
     exec 9>"$MONITOR_LOCK_FILE"
     if ! flock -n 9; then
-        log_error "queue_monitor は既に起動しています: $MONITOR_LOCK_FILE"
+        log_warn "queue_monitor は既に稼働中です（flock取得失敗）"
         exit 1
     fi
 
