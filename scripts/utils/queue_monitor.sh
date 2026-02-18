@@ -29,6 +29,11 @@ source "${LIB_DIR}/cli_provider.sh"
 source "${LIB_DIR}/health_check.sh"
 source "${LIB_DIR}/agent.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# systemd 環境変数 IGNITE_WORKSPACE → WORKSPACE_DIR 変換
+# env.%i は IGNITE_WORKSPACE を設定するが、core.sh は WORKSPACE_DIR を参照する
+if [[ -z "${WORKSPACE_DIR:-}" ]] && [[ -n "${IGNITE_WORKSPACE:-}" ]]; then
+    WORKSPACE_DIR="$IGNITE_WORKSPACE"
+fi
 [[ -n "${WORKSPACE_DIR:-}" ]] && setup_workspace_config "$WORKSPACE_DIR"
 
 # グレースフル停止用フラグ（trap内ではフラグを立てるだけ、exit()を呼ばない）
