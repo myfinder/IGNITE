@@ -231,7 +231,9 @@ _stop_systemd_service() {
     fi
 
     # 直接実行時: systemd サービスが active なら停止
-    local service_name="ignite@${SESSION_NAME}.service"
+    # SESSION_NAME は "ignite-xxx" だが、systemd インスタンス名は "xxx"（ignite- プレフィックスなし）
+    local instance_name="${SESSION_NAME#ignite-}"
+    local service_name="ignite@${instance_name}.service"
     local service_state
     service_state=$(systemctl --user is-active "$service_name" 2>/dev/null || true)
 
