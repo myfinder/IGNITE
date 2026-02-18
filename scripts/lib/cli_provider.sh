@@ -205,10 +205,10 @@ _kill_process_tree() {
     local pane_idx="$2"
     local runtime_dir="${3:-${IGNITE_RUNTIME_DIR:-}}"
     local max_wait=10  # 生存確認タイムアウト（秒）: systemd TimeoutStopSec=30 と整合
+    local pgid=""
 
     # (1) プロセス検証 + PGID kill（安全チェック付き）
     if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
-        local pgid
         pgid=$(_get_pgid "$pid")
         if [[ -n "$pgid" ]] && [[ "$pgid" == "$pid" ]]; then
             # PID == PGID: setsid 前提の正常パス → グループ全体に SIGTERM
@@ -247,7 +247,6 @@ _kill_process_tree() {
     # (5) SIGKILL エスカレーション
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         log_warn "プロセス PID=$pid が ${max_wait} 回のチェック後も生存、SIGKILL を送信します"
-        local pgid
         pgid=$(_get_pgid "$pid")
         if [[ -n "$pgid" ]] && [[ "$pgid" == "$pid" ]]; then
             kill -9 -- -"$pgid" 2>/dev/null || true

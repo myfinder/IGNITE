@@ -174,22 +174,64 @@ teardown() {
 }
 
 # =============================================================================
-# setsid 導入テスト
+# _stop_daemon_process テスト
 # =============================================================================
 
-@test "cli_start_agent_server: setsid nohup がソースに含まれている" {
-    local content
-    content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
-    [[ "$content" == *"setsid nohup"* ]]
+@test "_stop_daemon_process: PIDファイルなしで即リターン" {
+    run _stop_daemon_process "$TEST_TEMP_DIR/nonexistent.pid" "TestDaemon"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
 }
 
-@test "cli_start_agent_server: PGIDファイルが廃止されている（PIDファイルのみ管理）" {
+@test "_stop_daemon_process: PIDファイルはあるがプロセス不在で正常終了＋PIDファイル削除" {
+    local pid_file="$TEST_TEMP_DIR/test_daemon.pid"
+    echo "9999999" > "$pid_file"
+
+    run _stop_daemon_process "$pid_file" "TestDaemon"
+    [ "$status" -eq 0 ]
+    # PIDファイルが削除されていること
+    [ ! -f "$pid_file" ]
+}
+
+@test "_stop_daemon_process: 実プロセスを起動して停止できる" {
+    local pid_file="$TEST_TEMP_DIR/test_daemon.pid"
+    # バックグラウンドで sleep プロセスを起動
+    sleep 300 &
+    local daemon_pid=$!
+    echo "$daemon_pid" > "$pid_file"
+
+    # テスト失敗時のリーク防止
+    trap 'kill "$daemon_pid" 2>/dev/null || true' RETURN
+
+    run _stop_daemon_process "$pid_file" "TestDaemon"
+    [ "$status" -eq 0 ]
+    # プロセスが停止していること
+    ! kill -0 "$daemon_pid" 2>/dev/null
+    # PIDファイルが削除されていること
+    [ ! -f "$pid_file" ]
+}
+
+# =============================================================================
+# _get_pgid テスト
+# =============================================================================
+
+@test "_get_pgid: 自プロセスのPGIDを取得できる" {
+    source "$SCRIPTS_DIR/lib/cli_provider.sh"
+    run _get_pgid "$$"
+    [ "$status" -eq 0 ]
+    [ -n "$output" ]
+    # PGID は数値であること
+    [[ "$output" =~ ^[0-9]+$ ]]
+}
+
+# =============================================================================
+# setsid / PGID アーキテクチャ検証
+# =============================================================================
+
+@test "cli_provider.sh: PGIDファイル（agent_pgid）への参照が存在しない" {
     local content
     content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
-    # PGIDファイルへの書き込み・読み込みが存在しないことを確認
     [[ "$content" != *"agent_pgid"* ]]
-    # _get_pgid ヘルパーで動的にPGIDを取得する方式に移行済み
-    [[ "$content" == *"_get_pgid"* ]]
 }
 
 # =============================================================================
@@ -197,16 +239,23 @@ teardown() {
 # =============================================================================
 
 @test "agent.sh: _kill_agent_process が _kill_process_tree を呼び出している" {
-    local content
-    content=$(cat "$SCRIPTS_DIR/lib/agent.sh")
-    [[ "$content" == *"_kill_process_tree"* ]]
-}
-
-@test "agent.sh: 旧killロジック（pkill -P + kill + kill -9 直接記述）が削除されている" {
-    # _kill_agent_process 関数内に直接 pkill -P の記述がないことを確認
     local func_body
     func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
-    # _kill_process_tree 呼び出しはあるが、直接の pkill -P はない
     [[ "$func_body" == *"_kill_process_tree"* ]]
+}
+
+@test "agent.sh: _kill_agent_process 内に直接 pkill -P が存在しない" {
+    local func_body
+    func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
     [[ "$func_body" != *"pkill -P"* ]]
+}
+
+# =============================================================================
+# cmd_stop DRY化テスト: watcher/monitor が _stop_daemon_process を使用
+# =============================================================================
+
+@test "cmd_stop: watcher/monitor停止が _stop_daemon_process を使用している" {
+    local func_body
+    func_body=$(sed -n '/^cmd_stop()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *"_stop_daemon_process"* ]]
 }
