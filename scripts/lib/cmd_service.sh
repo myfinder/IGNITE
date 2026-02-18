@@ -404,6 +404,7 @@ ENVEOF
         echo "" >> "$env_file"
         echo "# ワークスペースパス（systemd 起動時に使用）" >> "$env_file"
         echo "IGNITE_WORKSPACE=${_workspace_dir}" >> "$env_file"
+        echo "WORKSPACE_DIR=${_workspace_dir}" >> "$env_file"
     fi
 
     # パーミッション設定
