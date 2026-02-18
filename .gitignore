@@ -34,3 +34,6 @@ Thumbs.db
 
 # Build output
 dist/
+
+# ignite runtime config
+.ignite/
