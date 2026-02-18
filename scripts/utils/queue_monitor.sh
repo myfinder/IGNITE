@@ -501,11 +501,15 @@ _check_and_recover_watcher() {
         restart_count=$(cat "$restart_count_file" 2>/dev/null || echo "0")
     fi
     if [[ "$restart_count" -ge "$HEALTH_MAX_RESTART" ]]; then
-        # max_restart 超過 → Leader に通知して監視停止
-        log_error "GitHub Watcher 再起動上限到達 (${restart_count}/${HEALTH_MAX_RESTART})"
-        send_to_agent "leader" \
-            "GitHub Watcher が ${HEALTH_MAX_RESTART} 回の自動再起動上限に達しました。手動での確認が必要です。" \
-            2>/dev/null || true
+        # max_restart 超過 → 初回のみ Leader に通知して以降はサイレントスキップ
+        local notified_file="$state_dir/.watcher_max_restart_notified"
+        if [[ ! -f "$notified_file" ]]; then
+            log_error "GitHub Watcher 再起動上限到達 (${restart_count}/${HEALTH_MAX_RESTART})"
+            send_to_agent "leader" \
+                "GitHub Watcher が ${HEALTH_MAX_RESTART} 回の自動再起動上限に達しました。手動での確認が必要です。" \
+                2>/dev/null || true
+            touch "$notified_file"
+        fi
         return 0
     fi
 
