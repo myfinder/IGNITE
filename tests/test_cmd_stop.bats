@@ -3,7 +3,7 @@
 # cmd_stop.sh テスト
 # テスト対象: scripts/lib/cmd_stop.sh
 # _kill_process_tree, _stop_systemd_service, _sweep_orphan_processes,
-# _check_remaining_processes, _is_workspace_process, _stop_pid_process
+# _check_remaining_processes, _is_workspace_process, _stop_daemon_process
 # =============================================================================
 
 load 'test_helper'
@@ -85,23 +85,6 @@ teardown() {
 @test "_is_workspace_process: 存在しないPIDでfalse" {
     run _is_workspace_process "9999999"
     [ "$status" -ne 0 ]
-}
-
-# =============================================================================
-# _stop_pid_process テスト
-# =============================================================================
-
-@test "_stop_pid_process: PIDファイルなしで正常終了" {
-    run _stop_pid_process "$IGNITE_RUNTIME_DIR/nonexistent.pid" "テスト"
-    [ "$status" -eq 0 ]
-}
-
-@test "_stop_pid_process: 存在しないPIDで正常終了" {
-    echo "9999999" > "$IGNITE_RUNTIME_DIR/test.pid"
-    run _stop_pid_process "$IGNITE_RUNTIME_DIR/test.pid" "テスト"
-    [ "$status" -eq 0 ]
-    # PIDファイルが削除されている
-    [ ! -f "$IGNITE_RUNTIME_DIR/test.pid" ]
 }
 
 # =============================================================================
@@ -197,6 +180,67 @@ teardown() {
 }
 
 # =============================================================================
+# _stop_daemon_process テスト
+# =============================================================================
+
+@test "_stop_daemon_process: PIDファイルなしで即リターン" {
+    run _stop_daemon_process "$TEST_TEMP_DIR/nonexistent.pid" "TestDaemon"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "_stop_daemon_process: PIDファイルはあるがプロセス不在で正常終了＋PIDファイル削除" {
+    local pid_file="$TEST_TEMP_DIR/test_daemon.pid"
+    echo "9999999" > "$pid_file"
+
+    run _stop_daemon_process "$pid_file" "TestDaemon"
+    [ "$status" -eq 0 ]
+    # PIDファイルが削除されていること
+    [ ! -f "$pid_file" ]
+}
+
+@test "_stop_daemon_process: 実プロセスを起動して停止できる" {
+    local pid_file="$TEST_TEMP_DIR/test_daemon.pid"
+    # バックグラウンドで sleep プロセスを起動
+    sleep 300 &
+    local daemon_pid=$!
+    echo "$daemon_pid" > "$pid_file"
+
+    # テスト失敗時のリーク防止
+    trap 'kill "$daemon_pid" 2>/dev/null || true' RETURN
+
+    run _stop_daemon_process "$pid_file" "TestDaemon"
+    [ "$status" -eq 0 ]
+    # プロセスが停止していること
+    ! kill -0 "$daemon_pid" 2>/dev/null
+    # PIDファイルが削除されていること
+    [ ! -f "$pid_file" ]
+}
+
+# =============================================================================
+# _get_pgid テスト
+# =============================================================================
+
+@test "_get_pgid: 自プロセスのPGIDを取得できる" {
+    source "$SCRIPTS_DIR/lib/cli_provider.sh"
+    run _get_pgid "$$"
+    [ "$status" -eq 0 ]
+    [ -n "$output" ]
+    # PGID は数値であること
+    [[ "$output" =~ ^[0-9]+$ ]]
+}
+
+# =============================================================================
+# setsid / PGID アーキテクチャ検証
+# =============================================================================
+
+@test "cli_provider.sh: PGIDファイル（agent_pgid）への参照が存在しない" {
+    local content
+    content=$(cat "$SCRIPTS_DIR/lib/cli_provider.sh")
+    [[ "$content" != *"agent_pgid"* ]]
+}
+
+# =============================================================================
 # DRY化テスト: agent.sh が _kill_process_tree を使用
 # =============================================================================
 
@@ -204,5 +248,20 @@ teardown() {
     local func_body
     func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
     [[ "$func_body" == *"_kill_process_tree"* ]]
+}
+
+@test "agent.sh: _kill_agent_process 内に直接 pkill -P が存在しない" {
+    local func_body
+    func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
     [[ "$func_body" != *"pkill -P"* ]]
+}
+
+# =============================================================================
+# cmd_stop DRY化テスト: watcher/monitor が _stop_daemon_process を使用
+# =============================================================================
+
+@test "cmd_stop: watcher/monitor停止が _stop_daemon_process を使用している" {
+    local func_body
+    func_body=$(sed -n '/^cmd_stop()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *"_stop_daemon_process"* ]]
 }

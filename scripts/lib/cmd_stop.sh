@@ -2,6 +2,39 @@
 # lib/cmd_stop.sh - stopコマンド
 [[ -n "${__LIB_CMD_STOP_LOADED:-}" ]] && return; __LIB_CMD_STOP_LOADED=1
 
+# _stop_daemon_process <pid_file> <process_name>
+# デーモンプロセス（watcher, monitor等）を安全に停止する共通ヘルパー
+# 引数:
+#   pid_file     - PIDファイルのパス
+#   process_name - ログ表示用のプロセス名
+# 処理: PIDファイル読取 → kill -0確認 → SIGTERM → wait(最大3秒) → kill -0 → SIGKILL
+_stop_daemon_process() {
+    local pid_file="$1"
+    local process_name="$2"
+
+    [[ -f "$pid_file" ]] || return 0
+
+    local daemon_pid
+    daemon_pid=$(cat "$pid_file" 2>/dev/null || true)
+
+    if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then
+        print_info "${process_name}を停止中..."
+        kill "$daemon_pid" 2>/dev/null || true
+        # プロセス終了を最大3秒待機（0.5秒 × 6回）
+        local wait_count=0
+        while kill -0 "$daemon_pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+            sleep 0.5
+            wait_count=$((wait_count + 1))
+        done
+        if kill -0 "$daemon_pid" 2>/dev/null; then
+            kill -9 "$daemon_pid" 2>/dev/null || true
+        fi
+        print_success "${process_name}停止完了"
+    fi
+
+    rm -f "$pid_file"
+}
+
 cmd_stop() {
     local skip_confirm=false
 
@@ -57,17 +90,14 @@ cmd_stop() {
         fi
     fi
 
-    # systemd サービス状態同期（プロセス kill の前に実行し、状態不整合を防ぐ）
-    _stop_systemd_service
-
     # 停止順序: queue_monitor → watcher → agents
     # キューモニターを先に停止（watcher 再起動ループ防止のため）
     # queue_monitor は _check_and_recover_watcher() で watcher を自動復旧するため、
     # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある
-    _stop_pid_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
+    _stop_daemon_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
 
     # GitHub Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
-    _stop_pid_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
+    _stop_daemon_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
 
     # エージェントプロセス停止（PID ベース → 共通 _kill_process_tree 使用）
     print_warning "エージェントプロセスを停止中..."
@@ -92,39 +122,20 @@ cmd_stop() {
     # 最終残存プロセスチェック
     _check_remaining_processes
 
+    # systemd サービス状態同期
+    # 停止順序: プロセス kill → systemd stop が正しい。
+    # 理由: ExecStop=ignite stop のため、systemd stop を先に呼ぶと
+    # ExecStop 経由で再度 ignite stop が実行され再帰呼び出しになる。
+    # INVOCATION_ID ガードで再帰は防止されるが、論理的にも
+    # 「まずプロセスを確実に停止 → systemd 状態を同期」の順序が正しい。
+    _stop_systemd_service
+
     # セッション情報ファイルを削除
     rm -f "$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml"
     rm -f "$IGNITE_RUNTIME_DIR/ignite-daemon.pid"
 
     log_info "IGNITE システム停止完了: session=$SESSION_NAME, workspace=$WORKSPACE_DIR"
     print_success "IGNITE システムを停止しました"
-}
-
-# _stop_pid_process <pid_file> <label>
-# PIDファイルベースのプロセス停止（SIGTERM → 待機 → SIGKILL）
-_stop_pid_process() {
-    local pid_file="$1"
-    local label="$2"
-
-    [[ -f "$pid_file" ]] || return 0
-
-    local pid
-    pid=$(cat "$pid_file" 2>/dev/null || true)
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        print_info "${label}を停止中..."
-        kill "$pid" 2>/dev/null || true
-        # プロセス終了を最大3秒待機（0.5秒 × 6回）
-        local attempt=0
-        while kill -0 "$pid" 2>/dev/null && [[ $attempt -lt 6 ]]; do
-            sleep 0.5
-            attempt=$((attempt + 1))
-        done
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-        print_success "${label}停止完了"
-    fi
-    rm -f "$pid_file"
 }
 
 # _is_workspace_process <pid>
@@ -141,6 +152,15 @@ _is_workspace_process() {
     # (2) macOS フォールバック: ps eww で環境変数を取得
     if command -v ps &>/dev/null; then
         if ps eww -p "$pid" 2>/dev/null | grep -qsF "$WORKSPACE_DIR"; then
+            return 0
+        fi
+    fi
+
+    # (3) 追加フォールバック: lsof でワークスペースの .ignite ディレクトリ参照を確認
+    # WORKSPACE_DIR だけだと偶然の一致で false positive が出うるため、
+    # .ignite サブディレクトリへの参照で判定精度を高める
+    if command -v lsof &>/dev/null; then
+        if lsof -p "$pid" 2>/dev/null | grep -qsF "${WORKSPACE_DIR}/.ignite"; then
             return 0
         fi
     fi

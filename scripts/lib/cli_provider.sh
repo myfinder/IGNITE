@@ -154,13 +154,13 @@ _validate_pid() {
         fi
     fi
     if [[ -f "/proc/$pid/cmdline" ]]; then
-        if ! tr '\0' ' ' < "/proc/$pid/cmdline" | grep -qw "$expected_pattern"; then
+        if ! tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "$expected_pattern"; then
             log_warn "_validate_pid: PID=$pid の cmdline が期待パターン '$expected_pattern' にマッチしません"
             return 1
         fi
     else
         # macOS フォールバック
-        if ! ps -p "$pid" -o args= 2>/dev/null | grep -qw "$expected_pattern"; then
+        if ! ps -p "$pid" -o args= 2>/dev/null | grep -q "$expected_pattern"; then
             log_warn "_validate_pid: PID=$pid の args が期待パターン '$expected_pattern' にマッチしません (macOS)"
             return 1
         fi
@@ -168,49 +168,87 @@ _validate_pid() {
     return 0
 }
 
+# _get_pgid <pid>
+# PID からプロセスグループ ID (PGID) を取得する
+# setsid 前提: PID == PGID が不変条件として成立
+# 優先順位: (1) /proc/$pid/stat field 5 (Linux) → (2) ps -o pgid= (macOS) → (3) $pid (最終FB)
+_get_pgid() {
+    local pid="$1"
+    local pgid=""
+
+    # (1) Linux: /proc/$pid/stat の field 5 から PGID 取得
+    if [[ -f "/proc/$pid/stat" ]]; then
+        pgid=$(awk '{print $5}' "/proc/$pid/stat" 2>/dev/null || true)
+        if [[ -n "$pgid" ]]; then
+            echo "$pgid"
+            return 0
+        fi
+    fi
+
+    # (2) macOS フォールバック: ps -o pgid=
+    pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [[ -n "$pgid" ]]; then
+        echo "$pgid"
+        return 0
+    fi
+
+    # (3) 最終フォールバック: setsid 前提で PID == PGID
+    echo "$pid"
+    return 0
+}
+
 # _kill_process_tree <pid> <pane_idx> [runtime_dir]
 # プロセスツリーを安全に停止する共通ユーティリティ
-# kill順序: (1) PGID kill → (2) pkill -P → (3) kill PID → (4) 生存確認ループ → (5) SIGKILL
+# kill順序: (1) _validate_pid → _get_pgid → PGID kill → (2) pkill -P → (3) kill PID → (4) 生存確認ループ → (5) SIGKILL
 _kill_process_tree() {
     local pid="$1"
     local pane_idx="$2"
     local runtime_dir="${3:-${IGNITE_RUNTIME_DIR:-}}"
-    local pgid_file="${runtime_dir}/state/.agent_pgid_${pane_idx}"
-    local max_attempts=10  # 生存確認回数（0.5秒 × 10 = 最大5秒）
+    local max_wait=10  # 生存確認タイムアウト（秒）: systemd TimeoutStopSec=30 と整合
     local pgid=""
 
-    # PGID ファイルから読み込み（SIGTERM / SIGKILL 両方で使用）
-    if [[ -f "$pgid_file" ]]; then
-        pgid=$(cat "$pgid_file" 2>/dev/null || true)
+    # (1) プロセス検証 + PGID kill（安全チェック付き）
+    if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+        pgid=$(_get_pgid "$pid")
+        if [[ -n "$pgid" ]] && [[ "$pgid" == "$pid" ]]; then
+            # PID == PGID: setsid 前提の正常パス → グループ全体に SIGTERM
+            kill -- -"$pgid" 2>/dev/null || true
+        elif [[ -n "$pgid" ]]; then
+            # PID != PGID: 想定外 → 警告ログ + pkill -P フォールバック
+            log_warn "_kill_process_tree: PID=$pid と PGID=$pgid が不一致（setsid 前提違反）、pkill -P にフォールバック"
+            pkill -P "$pid" 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+        fi
+    else
+        # _validate_pid 失敗: stale PID → PGID kill せず pkill -P フォールバック
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            pkill -P "$pid" 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+        fi
     fi
 
-    # (1) PGID kill（_validate_pid で検証してから実行）
-    if [[ -n "$pgid" ]] && _validate_pid "$pgid" "opencode"; then
-        kill -- -"$pgid" 2>/dev/null || true
-    fi
-
-    # (2) pkill -P（フォールバック: 子プロセスを停止）
+    # (2) pkill -P（フォールバック: 子プロセスが残っていれば停止）
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         pkill -P "$pid" 2>/dev/null || true
     fi
 
-    # (3) kill PID
+    # (3) kill PID（まだ生存していれば個別に SIGTERM）
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         kill "$pid" 2>/dev/null || true
     fi
 
-    # (4) 生存確認ループ（0.5秒 × max_attempts 回）
+    # (4) 生存確認ループ（0.5秒 × max_wait 回）
     local attempt=0
-    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $attempt -lt $max_attempts ]]; do
+    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $attempt -lt $max_wait ]]; do
         sleep 0.5
         attempt=$((attempt + 1))
     done
 
     # (5) SIGKILL エスカレーション
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        log_warn "プロセス PID=$pid が ${max_attempts} 回のチェック後も生存、SIGKILL を送信します"
-        # PGID kill (SIGKILL) — 検証済みの pgid を再利用
-        if [[ -n "$pgid" ]] && kill -0 "$pgid" 2>/dev/null; then
+        log_warn "プロセス PID=$pid が ${max_wait} 回のチェック後も生存、SIGKILL を送信します"
+        pgid=$(_get_pgid "$pid")
+        if [[ -n "$pgid" ]] && [[ "$pgid" == "$pid" ]]; then
             kill -9 -- -"$pgid" 2>/dev/null || true
         fi
         pkill -9 -P "$pid" 2>/dev/null || true
@@ -270,8 +308,6 @@ cli_start_agent_server() {
         mv "$log_file" "${log_file%.log}_prev.log"
     fi
 
-    local pgid_file="${runtime_dir}/state/.agent_pgid_${pane_idx}"
-
     # opencode serve をバックグラウンド起動（setsid でプロセスグループ分離）
     (
         cd "$workspace_dir" || exit 1
@@ -282,12 +318,6 @@ cli_start_agent_server() {
         setsid nohup opencode serve --port 0 --print-logs >> "$log_file" 2>&1 &
         local child_pid=$!
         echo "$child_pid" > "$pid_file"
-        # /proc から実際の PGID を取得（setsid が fork した場合に $! と異なる可能性）
-        local actual_pgid=""
-        if [[ -f "/proc/$child_pid/stat" ]]; then
-            actual_pgid=$(awk '{print $5}' "/proc/$child_pid/stat" 2>/dev/null || true)
-        fi
-        echo "${actual_pgid:-$child_pid}" > "$pgid_file"
     )
 
     # PID ファイルが書き込まれるまで少し待つ
@@ -460,7 +490,6 @@ cli_cleanup_agent_state() {
     local state_dir="${runtime_dir}/state"
 
     rm -f "${state_dir}/.agent_pid_${pane_idx}"
-    rm -f "${state_dir}/.agent_pgid_${pane_idx}"
     rm -f "${state_dir}/.agent_port_${pane_idx}"
     rm -f "${state_dir}/.agent_session_${pane_idx}"
     rm -f "${state_dir}/.agent_name_${pane_idx}"
