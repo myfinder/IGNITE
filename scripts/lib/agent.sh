@@ -143,7 +143,7 @@ _start_ignitian_headless() {
 # =============================================================================
 
 # _kill_agent_process <pane_idx> [session_pane (unused)]
-# PID ファイルからプロセスを停止
+# PID ファイルからプロセスを停止（共通 _kill_process_tree を使用）
 _kill_agent_process() {
     local pane_idx="$1"
 
@@ -152,18 +152,7 @@ _kill_agent_process() {
     pid=$(cat "$pid_file" 2>/dev/null || true)
 
     if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
-        # 子プロセス（opencode バイナリ）も含めてプロセスツリーごと停止
-        pkill -P "$pid" 2>/dev/null || true
-        kill "$pid" 2>/dev/null || true
-        local i
-        for i in {1..6}; do
-            kill -0 "$pid" 2>/dev/null || break
-            sleep 0.5
-        done
-        if kill -0 "$pid" 2>/dev/null; then
-            pkill -9 -P "$pid" 2>/dev/null || true
-            kill -9 "$pid" 2>/dev/null || true
-        fi
+        _kill_process_tree "$pid" "$pane_idx" "$IGNITE_RUNTIME_DIR"
     fi
 
     cli_cleanup_agent_state "$pane_idx"

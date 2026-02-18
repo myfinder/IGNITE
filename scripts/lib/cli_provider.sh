@@ -129,18 +129,92 @@ cli_get_required_commands() {
 # ヘッドレスモード: opencode serve 管理関数群
 # =============================================================================
 
-# _validate_pid <pid> <expected_pattern>
+# _validate_pid <pid> <expected_pattern> [expected_starttime]
 # PID が生存しており、cmdline が期待パターンにマッチするか検証
+# expected_starttime が指定された場合、PIDリサイクルを検出する（Linux のみ）
 _validate_pid() {
     local pid="$1"
     local expected_pattern="$2"
-    [[ -n "$pid" ]] || return 1
-    kill -0 "$pid" 2>/dev/null || return 1
+    local expected_starttime="${3:-}"
+    if [[ -z "$pid" ]]; then
+        log_warn "_validate_pid: PID が空です"
+        return 1
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+        log_warn "_validate_pid: PID=$pid は生存していません"
+        return 1
+    fi
+    # PIDリサイクル検出（Linux環境のみ）
+    if [[ -n "$expected_starttime" ]] && [[ -f "/proc/$pid/stat" ]]; then
+        local current_starttime
+        current_starttime=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)
+        if [[ -n "$current_starttime" ]] && [[ "$current_starttime" != "$expected_starttime" ]]; then
+            log_warn "_validate_pid: PID=$pid はリサイクルされています (starttime: expected=$expected_starttime, actual=$current_starttime)"
+            return 1
+        fi
+    fi
     if [[ -f "/proc/$pid/cmdline" ]]; then
-        tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "$expected_pattern"
+        if ! tr '\0' ' ' < "/proc/$pid/cmdline" | grep -qw "$expected_pattern"; then
+            log_warn "_validate_pid: PID=$pid の cmdline が期待パターン '$expected_pattern' にマッチしません"
+            return 1
+        fi
     else
         # macOS フォールバック
-        ps -p "$pid" -o args= 2>/dev/null | grep -q "$expected_pattern"
+        if ! ps -p "$pid" -o args= 2>/dev/null | grep -qw "$expected_pattern"; then
+            log_warn "_validate_pid: PID=$pid の args が期待パターン '$expected_pattern' にマッチしません (macOS)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# _kill_process_tree <pid> <pane_idx> [runtime_dir]
+# プロセスツリーを安全に停止する共通ユーティリティ
+# kill順序: (1) PGID kill → (2) pkill -P → (3) kill PID → (4) 生存確認ループ → (5) SIGKILL
+_kill_process_tree() {
+    local pid="$1"
+    local pane_idx="$2"
+    local runtime_dir="${3:-${IGNITE_RUNTIME_DIR:-}}"
+    local pgid_file="${runtime_dir}/state/.agent_pgid_${pane_idx}"
+    local max_attempts=10  # 生存確認回数（0.5秒 × 10 = 最大5秒）
+    local pgid=""
+
+    # PGID ファイルから読み込み（SIGTERM / SIGKILL 両方で使用）
+    if [[ -f "$pgid_file" ]]; then
+        pgid=$(cat "$pgid_file" 2>/dev/null || true)
+    fi
+
+    # (1) PGID kill（_validate_pid で検証してから実行）
+    if [[ -n "$pgid" ]] && _validate_pid "$pgid" "opencode"; then
+        kill -- -"$pgid" 2>/dev/null || true
+    fi
+
+    # (2) pkill -P（フォールバック: 子プロセスを停止）
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        pkill -P "$pid" 2>/dev/null || true
+    fi
+
+    # (3) kill PID
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+    fi
+
+    # (4) 生存確認ループ（0.5秒 × max_attempts 回）
+    local attempt=0
+    while [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ $attempt -lt $max_attempts ]]; do
+        sleep 0.5
+        attempt=$((attempt + 1))
+    done
+
+    # (5) SIGKILL エスカレーション
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        log_warn "プロセス PID=$pid が ${max_attempts} 回のチェック後も生存、SIGKILL を送信します"
+        # PGID kill (SIGKILL) — 検証済みの pgid を再利用
+        if [[ -n "$pgid" ]] && kill -0 "$pgid" 2>/dev/null; then
+            kill -9 -- -"$pgid" 2>/dev/null || true
+        fi
+        pkill -9 -P "$pid" 2>/dev/null || true
+        kill -9 "$pid" 2>/dev/null || true
     fi
 }
 
@@ -196,15 +270,24 @@ cli_start_agent_server() {
         mv "$log_file" "${log_file%.log}_prev.log"
     fi
 
-    # opencode serve をバックグラウンド起動
+    local pgid_file="${runtime_dir}/state/.agent_pgid_${pane_idx}"
+
+    # opencode serve をバックグラウンド起動（setsid でプロセスグループ分離）
     (
         cd "$workspace_dir" || exit 1
         ${extra_env:+eval "$extra_env"}
         WORKSPACE_DIR="$workspace_dir" \
         IGNITE_RUNTIME_DIR="$runtime_dir" \
         OPENCODE_CONFIG=".ignite/${config_name}" \
-        nohup opencode serve --port 0 --print-logs >> "$log_file" 2>&1 &
-        echo $! > "$pid_file"
+        setsid nohup opencode serve --port 0 --print-logs >> "$log_file" 2>&1 &
+        local child_pid=$!
+        echo "$child_pid" > "$pid_file"
+        # /proc から実際の PGID を取得（setsid が fork した場合に $! と異なる可能性）
+        local actual_pgid=""
+        if [[ -f "/proc/$child_pid/stat" ]]; then
+            actual_pgid=$(awk '{print $5}' "/proc/$child_pid/stat" 2>/dev/null || true)
+        fi
+        echo "${actual_pgid:-$child_pid}" > "$pgid_file"
     )
 
     # PID ファイルが書き込まれるまで少し待つ
@@ -377,6 +460,7 @@ cli_cleanup_agent_state() {
     local state_dir="${runtime_dir}/state"
 
     rm -f "${state_dir}/.agent_pid_${pane_idx}"
+    rm -f "${state_dir}/.agent_pgid_${pane_idx}"
     rm -f "${state_dir}/.agent_port_${pane_idx}"
     rm -f "${state_dir}/.agent_session_${pane_idx}"
     rm -f "${state_dir}/.agent_name_${pane_idx}"
