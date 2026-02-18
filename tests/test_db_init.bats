@@ -55,13 +55,13 @@ teardown() {
     [[ "$columns" == *"issue_number"* ]]
 }
 
-@test "新規DB: user_version = 3" {
+@test "新規DB: user_version = 4" {
     init_db_production_sequence "$DB_PATH"
 
     local version
     version=$(get_user_version "$DB_PATH")
 
-    [[ "$version" -eq 3 ]]
+    [[ "$version" -eq 4 ]]
 }
 
 @test "新規DB: インデックス全7個が作成される" {

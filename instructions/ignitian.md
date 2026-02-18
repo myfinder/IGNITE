@@ -52,6 +52,7 @@ payload:
   task_id: "task_001"
   title: "README骨組み作成"
   description: "基本的なMarkdown構造を作成"
+  task_type: "implement"   # implement / analyze / document / review / github_ops
   instructions: |
     以下の構造でREADME.mdを作成してください:
     - プロジェクト名: IGNITE
@@ -79,6 +80,14 @@ payload:
 > acceptance_criteria が空配列（`must: [], should: []`）の場合は基準未設定と同義とし、従来通りのセルフレビューで動作します。
 > acceptance_criteria がある場合は、セルフレビュー Round 1 で各項目を必ずチェックし、
 > task_completed に `acceptance_criteria_check` を含めてください。
+
+> **task_type について**: Strategist→Coordinator 経由で伝搬される意図分類。
+> - `implement`: コードファイルの作成/編集が期待される
+> - `analyze`: 分析結果のテキスト出力が期待される
+> - `document`: ドキュメント/説明文の作成が期待される
+> - `review`: レビューコメントの作成が期待される
+> - `github_ops`: GitHub API操作（gh コマンドの実行）が期待される
+> `task_type` がない場合は `instructions` から推測して従来通り動作する（後方互換）。
 
 **送信メッセージ例（完了レポート）:**
 ```yaml
