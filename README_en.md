@@ -1041,6 +1041,7 @@ The following settings are available in `config/system.yaml`:
 - **Architecture**: [docs/architecture.md](docs/architecture.md) - Detailed system structure
 - **Protocol Specification**: [docs/protocol.md](docs/protocol.md) - Message formats and communication flows
 - **Implementation Status**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - List of implemented features
+- **Setting Up in Existing Repo**: [docs/setup-existing-repo_en.md](docs/setup-existing-repo_en.md) - Integrate IGNITE into an existing product repository
 - **GitHub App Installation**: [docs/github-app-installation_en.md](docs/github-app-installation_en.md) - Installing ignite-gh-app (GitHub App)
 - **GitHub App Setup**: [docs/github-app-setup_en.md](docs/github-app-setup_en.md) - Creating GitHub App for Bot (for developers)
 - **GitHub Watcher**: [docs/github-watcher_en.md](docs/github-watcher_en.md) - GitHub event monitoring system usage

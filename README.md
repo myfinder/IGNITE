@@ -1034,6 +1034,7 @@ GitHub の Issue やPR のコメントで：
 - **アーキテクチャ**: [docs/architecture.md](docs/architecture.md) - システム構造の詳細
 - **プロトコル仕様**: [docs/protocol.md](docs/protocol.md) - メッセージフォーマットと通信フロー
 - **実装状況**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - 実装済み機能の一覧
+- **既存リポジトリへの導入**: [docs/setup-existing-repo.md](docs/setup-existing-repo.md) - 既存プロダクトリポジトリに IGNITE を導入する手順
 - **GitHub App導入**: [docs/github-app-installation.md](docs/github-app-installation.md) - GitHub App（ignite-gh-app）のインストール手順
 - **GitHub App設定**: [docs/github-app-setup.md](docs/github-app-setup.md) - Bot用GitHub Appの作成手順（開発者向け）
 - **GitHub Watcher**: [docs/github-watcher.md](docs/github-watcher.md) - GitHubイベント監視システムの使い方
