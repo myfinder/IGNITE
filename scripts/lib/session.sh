@@ -143,11 +143,11 @@ register_workspace() {
     # flock + mktemp + mv によるアトミック書込
     local lock_file="${list_file}.lock"
     (
-        flock -w 5 200 || { echo "[WARN] register_workspace: ロック取得失敗" >&2; return 1; }
+        flock -w 5 200 || { echo "[WARN] register_workspace: ロック取得失敗" >&2; exit 1; }
 
         # flock 内で再度重複チェック（競合対策）
         if [[ -f "$list_file" ]] && grep -qxF "$ws_path" "$list_file" 2>/dev/null; then
-            return 0
+            exit 0
         fi
 
         local tmp_file
@@ -279,6 +279,18 @@ list_all_sessions() {
                 # パス正規化
                 _s_workspace="$(realpath "$_s_workspace" 2>/dev/null || echo "$_s_workspace")"
 
+                # AGENTS列: mode, agents_total, agents_actual を取得
+                local _s_mode _s_total _s_actual _agents_display="-"
+                _s_mode="$(grep '^mode:' "$_yaml_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)"
+                _s_total="$(grep '^agents_total:' "$_yaml_file" 2>/dev/null | head -1 | awk '{print $2}' || true)"
+                _s_actual="$(grep '^agents_actual:' "$_yaml_file" 2>/dev/null | head -1 | awk '{print $2}' || true)"
+                if [[ -n "$_s_total" ]] && [[ -n "$_s_actual" ]]; then
+                    _agents_display="${_s_actual}/${_s_total}"
+                    if [[ "${_s_mode:-}" == "leader" ]]; then
+                        _agents_display="${_agents_display} (solo)"
+                    fi
+                fi
+
                 # STATUS判定: Leader PID (.agent_pid_0) の生存チェック
                 # stale セッションは STATUS='stopped' として出力（スキップしない）
                 local _s_status="stopped"
@@ -294,8 +306,8 @@ list_all_sessions() {
                     fi
                 fi
 
-                # 出力: session_name<TAB>status<TAB>workspace_dir
-                printf '%s\t%s\t%s\n' "$_s_name" "$_s_status" "$_s_workspace"
+                # 出力: session_name<TAB>status<TAB>agents<TAB>workspace_dir
+                printf '%s\t%s\t%s\t%s\n' "$_s_name" "$_s_status" "$_agents_display" "$_s_workspace"
                 found=$((found + 1))
                 _ws_found=$((_ws_found + 1))
             done
@@ -316,7 +328,7 @@ list_all_sessions() {
                         _rt_status="running"
                     fi
                 fi
-                printf '%s\t%s\t%s\n' "$_rt_name" "$_rt_status" "$_ws"
+                printf '%s\t%s\t%s\t%s\n' "$_rt_name" "$_rt_status" "-" "$_ws"
                 found=$((found + 1))
             fi
         fi

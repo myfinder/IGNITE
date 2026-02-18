@@ -430,11 +430,11 @@ EOF
     WORKSPACE_DIR="$ws"
     run list_all_sessions
     [ "$status" -eq 0 ]
-    # TAB区切りで3カラムであることを検証
+    # TAB区切りで4カラムであることを検証（session_name, status, agents, workspace_dir）
     local line="$output"
     local col_count
     col_count=$(echo "$line" | awk -F'\t' '{print NF}')
-    [ "$col_count" -eq 3 ]
+    [ "$col_count" -eq 4 ]
 }
 
 @test "list_all_sessions: ワークスペースパスがフルパスで出力される" {

@@ -472,27 +472,9 @@ cmd_list() {
         _las_args+=(--all)
     fi
 
-    while IFS=$'\t' read -r _s_name _s_status _s_workspace; do
+    while IFS=$'\t' read -r _s_name _s_status _agents_display _s_workspace; do
         [[ -z "$_s_name" ]] && continue
-
-        # AGENTS列: sessions/*.yaml から取得を試みる
-        local _agents_display="-"
-        local _session_yaml="${_s_workspace}/.ignite/sessions/${_s_name}.yaml"
-        if [[ -f "$_session_yaml" ]]; then
-            local _s_mode _s_total _s_actual
-            _s_mode=$(grep '^mode:' "$_session_yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || true)
-            _s_total=$(grep '^agents_total:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
-            _s_actual=$(grep '^agents_actual:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
-            _s_total=${_s_total:-"-"}
-            _s_actual=${_s_actual:-"-"}
-            _agents_display="${_s_actual}/${_s_total}"
-            if [[ "${_s_mode:-}" == "leader" ]]; then
-                _agents_display="${_agents_display} (solo)"
-            fi
-        fi
-
-        # WORKSPACE列: フルパス表示
-        printf "  %-16s %-10s %-8s %s\n" "$_s_name" "$_s_status" "$_agents_display" "$_s_workspace"
+        printf "  %-16s %-10s %-8s %s\n" "$_s_name" "$_s_status" "${_agents_display:--}" "$_s_workspace"
         found=$((found + 1))
     done < <(list_all_sessions "${_las_args[@]}" 2>/dev/null)
 
