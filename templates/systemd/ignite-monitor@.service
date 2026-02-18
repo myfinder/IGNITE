@@ -1,0 +1,45 @@
+[Unit]
+Description=IGNITE Queue Monitor for %i
+Documentation=https://github.com/myfinder/IGNITE
+After=ignite@%i.service
+PartOf=ignite@%i.service
+
+# PartOf= により ignite@%i.service 停止時にこのユニットも自動停止する
+
+[Service]
+Type=simple
+
+EnvironmentFile=-%h/.config/ignite/env.%i
+
+ExecStart=%h/.local/share/ignite/scripts/utils/queue_monitor.sh -s %i
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=5s
+# flock取得失敗(exit 1)は「既に別インスタンスが稼働中」を意味する。
+# systemdがこれをfailureと誤認してリスタートループに入ることを防止。
+RestartPreventExitStatus=1
+
+# WatchdogSec= は意図的に設定しない。
+# 理由:
+#   1. queue_monitor は自前でハートビート書き込み + エージェント/Watcher の
+#      ヘルスチェック・自動復旧ロジックを実装済み（_check_and_recover_agents,
+#      _check_and_recover_watcher）。
+#   2. WatchdogSec= を有効にすると、queue_monitor 内で sd_notify("WATCHDOG=1")
+#      を定期呼び出しする必要があり、bash スクリプトから systemd-notify を
+#      定期的に呼ぶのは複雑かつ脆弱（sleep 中のタイミング問題等）。
+#   3. Restart=on-failure により、プロセスクラッシュ時は systemd が自動復旧する。
+#      ハング（プロセス生存だが無応答）のケースは、上位の ignite@.service から
+#      ExecReload（SIGHUP）で対処可能。
+#   4. 二重監視（systemd WatchdogSec + 自前ヘルスチェック）はデバッグを複雑化し、
+#      意図しない再起動の切り分けが困難になる。
+#
+# 将来的に sd_notify 対応を追加する場合は、WatchdogSec=180s（ハートビート閾値と
+# 同等）を設定し、メインループ内で systemd-notify --pid=$$ WATCHDOG=1 を
+# 呼び出す実装を検討する。
+
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+[Install]
+WantedBy=ignite@%i.service

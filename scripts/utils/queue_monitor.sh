@@ -147,6 +147,21 @@ _load_health_config() {
 }
 _load_health_config
 
+# GitHub Watcher ヘルスチェック設定
+# 閾値: github-watcher.yaml の poll_interval * 3（デフォルト 60*3=180秒）
+WATCHER_HEARTBEAT_THRESHOLD=180
+_load_watcher_health_config() {
+    local watcher_yaml="${IGNITE_CONFIG_DIR}/github-watcher.yaml"
+    if [[ -f "$watcher_yaml" ]] && declare -f yaml_get &>/dev/null; then
+        local interval
+        interval=$(yaml_get "$watcher_yaml" 'interval' 2>/dev/null || true)
+        interval="${interval:-60}"
+        WATCHER_HEARTBEAT_THRESHOLD=$((interval * 3))
+    fi
+    # yaml_get が利用不可（yaml_utils.sh 未ロード等）の場合は
+    # グローバル定義のデフォルト値（180秒）がそのまま使用される。想定内の動作
+}
+_load_watcher_health_config
 
 # task_timeout を system.yaml から動的取得（デフォルト: 300秒）
 _TASK_TIMEOUT=""
@@ -186,6 +201,8 @@ _resolve_role_from_pane() {
 # エージェントのヘルスチェックと自動リカバリ
 _check_and_recover_agents() {
     [[ "$HEALTH_RECOVERY_ENABLED" == "true" ]] || return 0
+    # シャットダウン中はエージェントの復旧を試みない（再起動ループ防止）
+    [[ "$_SHUTDOWN_REQUESTED" != true ]] || return 0
 
     # SESSION_NAME を設定（リカバリ関数が参照する）
     SESSION_NAME="$SESSION_ID"
@@ -417,6 +434,152 @@ _mark_agent_initialized() {
         touch "$flag_file"
         log_info "pane ${pane_idx} 初期化フラグを作成しました"
     fi
+}
+
+# =============================================================================
+# GitHub Watcher ヘルスチェック・自動リカバリ
+# =============================================================================
+
+# _check_and_recover_watcher
+# PIDファイル + ハートビートファイルの二重チェックで watcher の死活を判定し、
+# 必要に応じて自動再起動する（_check_and_recover_agents と同等のパターン）
+_check_and_recover_watcher() {
+    [[ "$HEALTH_RECOVERY_ENABLED" == "true" ]] || return 0
+    # シャットダウン中は watcher の復旧を試みない（再起動ループ防止）
+    [[ "$_SHUTDOWN_REQUESTED" != true ]] || return 0
+
+    local pid_file="$IGNITE_RUNTIME_DIR/github_watcher.pid"
+    local heartbeat_file="$IGNITE_RUNTIME_DIR/state/github_watcher_heartbeat.json"
+    local state_dir="$IGNITE_RUNTIME_DIR/state"
+    local restart_count_file="$state_dir/.restart_count_watcher"
+    local lock_file="$state_dir/.recovery_watcher.lock"
+
+    # PIDファイルが存在しない → watcher 未起動（起動対象外）
+    [[ -f "$pid_file" ]] || return 0
+
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || true)
+
+    # --- 死活判定: PID + ハートビートの二重チェック ---
+    local needs_restart=false
+
+    # (1) PID チェック
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+        log_warn "GitHub Watcher PID=$pid が生存していません"
+        needs_restart=true
+    fi
+
+    # (2) ハートビート鮮度チェック（PIDが有効でもスタックしている場合を検出）
+    if [[ "$needs_restart" == false ]] && [[ -f "$heartbeat_file" ]]; then
+        local hb_timestamp
+        hb_timestamp=$(jq -r '.timestamp // empty' "$heartbeat_file" 2>/dev/null || true)
+        if [[ -n "$hb_timestamp" ]]; then
+            local hb_epoch now_epoch
+            hb_epoch=$(date -d "$hb_timestamp" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$hb_timestamp" +%s 2>/dev/null || echo 0)
+            now_epoch=$(date +%s)
+            local elapsed=$((now_epoch - hb_epoch))
+            if [[ $elapsed -ge $WATCHER_HEARTBEAT_THRESHOLD ]]; then
+                log_warn "GitHub Watcher ハートビートが古い: ${elapsed}秒経過 (閾値: ${WATCHER_HEARTBEAT_THRESHOLD}秒)"
+                needs_restart=true
+            fi
+        fi
+    elif [[ "$needs_restart" == false ]] && [[ ! -f "$heartbeat_file" ]]; then
+        # ハートビートファイルが存在しない → まだ起動直後の可能性があるのでスキップ
+        log_info "GitHub Watcher ハートビートファイルが未生成（起動直後の可能性）"
+    fi
+
+    [[ "$needs_restart" == true ]] || return 0
+
+    # --- 並行リカバリ防止 ---
+    if [[ -f "$lock_file" ]]; then
+        return 0
+    fi
+
+    # --- 再起動カウンタ確認 ---
+    local restart_count=0
+    if [[ -f "$restart_count_file" ]]; then
+        restart_count=$(cat "$restart_count_file" 2>/dev/null || echo "0")
+    fi
+    if [[ "$restart_count" -ge "$HEALTH_MAX_RESTART" ]]; then
+        # max_restart 超過 → 初回のみ Leader に通知して以降はサイレントスキップ
+        local notified_file="$state_dir/.watcher_max_restart_notified"
+        if [[ ! -f "$notified_file" ]]; then
+            log_error "GitHub Watcher 再起動上限到達 (${restart_count}/${HEALTH_MAX_RESTART})"
+            send_to_agent "leader" \
+                "GitHub Watcher が ${HEALTH_MAX_RESTART} 回の自動再起動上限に達しました。手動での確認が必要です。" \
+                2>/dev/null || true
+            touch "$notified_file"
+        fi
+        return 0
+    fi
+
+    # --- 指数バックオフ: 初回即時、2回目 5秒、3回目 15秒 ---
+    local backoff_secs=0
+    case "$restart_count" in
+        0) backoff_secs=0 ;;
+        1) backoff_secs=5 ;;
+        *) backoff_secs=15 ;;
+    esac
+
+    # --- バックグラウンドで再起動実行 ---
+    (
+        touch "$lock_file"
+        trap 'rm -f "$lock_file"' EXIT
+
+        if [[ $backoff_secs -gt 0 ]]; then
+            log_info "GitHub Watcher 再起動バックオフ: ${backoff_secs}秒待機"
+            sleep "$backoff_secs"
+        fi
+
+        log_warn "GitHub Watcher を再起動します (試行 $((restart_count + 1))/${HEALTH_MAX_RESTART})"
+
+        # 既存プロセスを停止
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            local wait_count=0
+            while kill -0 "$pid" 2>/dev/null && [[ $wait_count -lt 6 ]]; do
+                sleep 0.5
+                wait_count=$((wait_count + 1))
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        fi
+        rm -f "$pid_file"
+
+        # flock で二重起動防止
+        local watcher_lock_file="$state_dir/.watcher_restart.lock"
+        (
+            flock -n 200 || { log_warn "Watcher 再起動ロック取得失敗（他プロセスが再起動中）"; exit 0; }
+
+            # watcher 再起動
+            local watcher_log="$IGNITE_RUNTIME_DIR/logs/github_watcher.log"
+            echo "========== restart at $(date -Iseconds) ==========" >> "$watcher_log"
+
+            export IGNITE_WATCHER_CONFIG="${IGNITE_CONFIG_DIR}/github-watcher.yaml"
+            export IGNITE_WORKSPACE_DIR="${WORKSPACE_DIR}"
+            export WORKSPACE_DIR
+            export IGNITE_RUNTIME_DIR
+            export IGNITE_CONFIG_DIR
+            export IGNITE_SESSION="${SESSION_ID}"
+            "$SCRIPT_DIR/github_watcher.sh" >> "$watcher_log" 2>&1 &
+            local new_pid=$!
+            echo "$new_pid" > "$pid_file"
+
+            log_info "GitHub Watcher 再起動完了: PID=$new_pid"
+
+        ) 200>"$watcher_lock_file"
+
+        # 再起動カウント更新
+        echo "$((restart_count + 1))" > "$restart_count_file"
+
+        # Leader に通知
+        # SESSION_ID, HEALTH_MAX_RESTART 等の変数はサブシェルで自動継承される。確認済み
+        send_to_agent "leader" \
+            "GitHub Watcher が停止を検知し、自動再起動を実行しました (試行 $((restart_count + 1))/${HEALTH_MAX_RESTART})。確認してください。" \
+            2>/dev/null || true
+
+    ) &
 }
 
 # =============================================================================
@@ -1524,6 +1687,7 @@ monitor_queues() {
             last_health_check_epoch=$now_epoch
             _check_and_recover_agents || true
             _check_init_and_stale_agents || true
+            _check_and_recover_watcher || true
         fi
 
         # heartbeat / progress
@@ -1549,6 +1713,7 @@ monitor_queues() {
             log_info "設定リロード実行中..."
             load_config || log_warn "設定リロード失敗"
             _load_health_config
+            _load_watcher_health_config
             log_info "設定リロード完了"
         fi
 
@@ -1622,7 +1787,7 @@ main() {
     _ensure_state_dir
     exec 9>"$MONITOR_LOCK_FILE"
     if ! flock -n 9; then
-        log_error "queue_monitor は既に起動しています: $MONITOR_LOCK_FILE"
+        log_warn "queue_monitor は既に稼働中です（flock取得失敗）"
         exit 1
     fi
 
