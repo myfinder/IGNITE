@@ -107,6 +107,10 @@ systemd サービスの起動テストや queue_monitor のプログレス表示
 **やってはいけないこと:**
 - `gh release create` でリリースを先に作成する（workflow の `softprops/action-gh-release` が既存リリースへのアセット追加で認証エラーになる）
 
+**タグ打ち直し時の注意:**
+- タグを削除→再作成した場合、CI の `softprops/action-gh-release` がリリースを再作成し、**リリースノートが自動生成ノートで上書きされる**
+- タグ打ち直し時は必ず workflow 完了後に `gh release edit` でリリースノートを再適用すること
+
 ### ワークスペースへの反映
 
 `install.sh --upgrade` → `ignite init -w /path/to/workspace` の順で、最新のインストラクション・設定がワークスペースにコピーされる。
