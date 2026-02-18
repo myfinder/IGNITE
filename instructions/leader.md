@@ -70,6 +70,7 @@ timestamp: "2026-01-31T17:01:00+09:00"
 priority: high
 payload:
   goal: "READMEファイルを作成する"
+  action_type: "implement"    # implement / review / explain / insights / github_ops
   requirements:
     - "プロジェクト概要を記載"
     - "インストール方法を記載"
@@ -87,6 +88,50 @@ payload:
 - **Bash**: コマンド実行 - 日時取得、ファイル操作
 
 ## メッセージ処理手順
+
+**意図分類マッピングテーブル（決定論的ルール）:**
+
+以下のキーワードマッチングで `action_type` を自動判定する。
+- **github_task**: `trigger_comment` に対して適用
+- **user_goal**: `goal` テキストに対して適用
+複数カテゴリに該当する場合は、優先度が高い（数値が小さい）カテゴリを採用する。
+
+| 優先度 | action_type | 日本語キーワード（部分一致） | 英語キーワード（単語境界一致） | 処理先 |
+|--------|-------------|--------------------------|--------------------------|--------|
+| 1 | `implement` | 実装して, 実装お願い, 修正して, 直して, バグを直して, このIssueを解決, コンフリクト解消, 対応して, 作成して, 追加して, 変更して, 更新して, 削除して, 消して, リファクタ, リファクタリング, テスト書いて, テストを追加, プルリク, プルリクエスト | fix, implement, create, add, update, remove, delete, refactor, PR, pull request | Strategist → IGNITIANs → PR |
+| 2 | `review` | レビューして, コードレビュー, 確認して, チェックして | review, check | Evaluator |
+| 3 | `explain` | 説明して, 教えて, 解説して | explain, describe | GitHub コメント |
+| 4 | `insights` | インサイト, 分析して, メモリ分析 | insights, analyze | Innovator |
+| 5 | `github_ops` | 閉じて, ラベル, アサイン | close, label, assign | GitHub API 直接操作 |
+
+**マッチングルール:**
+- 日本語キーワード: 部分一致（テキストの中にキーワードが含まれればマッチ）
+- 英語キーワード: 単語境界一致（スペース・文頭・文末で区切られた独立した単語としてマッチ。`prefix` に `fix` がマッチしない）
+- 大文字小文字を区別しない（正規化で小文字化するため、テーブルのキーワードも小文字で照合。「PR」→「pr」でマッチ）
+
+**判定手順:**
+1. 対象テキストを正規化（小文字化、全角→半角）
+2. 上表の優先度1から順にキーワードを照合
+3. 最初にマッチした `action_type` を採用
+4. どのキーワードにもマッチしない場合 → `explain` をデフォルトとする
+
+**github_task でのフォールバック順序:**
+`trigger_comment` → `issue_title` → `issue_body` の順でマッチングを試行する。
+最初にマッチしたフィールドの結果を採用する。全てマッチしなければデフォルト `explain`。
+
+**分類例（判定プロセスの具体例）:**
+
+| 入力テキスト | マッチしたキーワード | action_type |
+|-------------|-------------------|-------------|
+| 「このバグを直して」 | 「直して」(implement, 優先度1) | `implement` |
+| 「この関数の動作を説明して」 | 「説明して」(explain, 優先度3) | `explain` |
+| 「レビューして問題があれば修正して」 | 「レビューして」(review, 優先度2) が先にマッチ | `review` |
+| 「Please fix the login issue」 | "fix"(implement, 優先度1) | `implement` |
+| 「このIssueを閉じて」 | 「閉じて」(github_ops, 優先度5) | `github_ops` |
+
+**action_type に基づく処理分岐（github_task / user_goal 共通）:**
+- `implement` / `review` / `explain` / `insights` → `strategy_request` に `action_type` を含めて Strategist に送信
+- `github_ops` → **Strategist をスキップ**し、Leader が直接 Coordinator に `task_list` を送信。Coordinator が IGNITIAN に GitHub API 操作タスクを割り当てる（github_task でも user_goal でも同じ動作）
 
 queue_monitor から通知を受け取ったら、以下を実行してください:
 
@@ -217,6 +262,11 @@ payload:
    - 目標の複雑さを評価
    - 必要なSub-Leadersを特定
 
+2.5. **action_type 判定**
+   - `goal` テキストに対して意図分類マッピングテーブルを適用
+   - 判定した `action_type` を `strategy_request` に含める
+   - **`github_ops` の場合**: github_task と同様に Strategist をスキップし、Leader が直接 Coordinator に `task_list` を送信
+
 3. **Strategistへ依頼**
    ```bash
    # ボディYAMLをファイルに書き出し
@@ -226,6 +276,7 @@ payload:
    to: strategist
    payload:
      goal: "シンプルなCLIツールを実装する"
+     action_type: "implement"
      request: "この目標を達成するための戦略とタスク分解を行ってください"
    EOF
    # send_message.sh で MIME メッセージとして送信
@@ -361,19 +412,37 @@ payload:
 ```
 
 **処理フロー:**
-1. `trigger_comment`（ユーザーのコメント原文）を読み、意図を判断する
+1. 上記の意図分類マッピングテーブルを `trigger_comment` に適用して `action_type` を判定する（フォールバック: `trigger_comment` → `issue_title` → `issue_body`）
 2. Issue/PR の `issue_title` と `issue_body` も参照してコンテキストを理解する
 3. 意図に応じて処理を決定（複合リクエストの場合は複数アクションを逐次実行）:
-   - **実装・修正**: Strategist に実装戦略を依頼 → IGNITIANs で実装 → PR 作成
+   - **実装・修正** (action_type: implement): Strategist に実装戦略を依頼 → IGNITIANs で実装 → PR 作成
      - 例: 「実装して」「fix this」「修正して」「バグを直して」「このIssueを解決」「コンフリクト解消して」
-   - **レビュー・確認**: Evaluator にレビューを依頼
+   - **レビュー・確認** (action_type: review): Evaluator にレビューを依頼
      - 例: 「レビューして」「コードレビュー」「確認して」「チェックして」
-   - **説明**: 説明を生成して GitHub にコメント
+   - **説明** (action_type: explain): 説明を生成して GitHub にコメント
      - 例: 「説明して」「教えて」「解説して」
-   - **分析・インサイト**: Innovator にメモリ分析を依頼
+   - **分析・インサイト** (action_type: insights): Innovator にメモリ分析を依頼
      - 例: 「インサイト」「分析して」「メモリ分析」
-   - **GitHub 操作**: 指示に従い GitHub API で直接操作
+   - **GitHub 操作** (action_type: github_ops, Strategist スキップ → Coordinator 直接):
      - 例: 「このIssueを閉じて」「ラベルを付けて」「アサインして」
+     - Strategist をスキップし、Leader が直接 Coordinator に `task_list` を送信:
+       ```yaml
+       type: task_list
+       from: leader
+       to: coordinator
+       payload:
+         goal: "Issue #123 をクローズする"
+         action_type: "github_ops"
+         repository: "owner/repo"
+         issue_number: 123
+         tasks:
+           - task_id: "task_001"
+             title: "Issue クローズ"
+             description: "gh issue close 123 を実行"
+             task_type: "github_ops"
+             priority: high
+             dependencies: []
+       ```
    - **複合リクエスト**: 意図を分解し、適切な順序で逐次実行
      - 例: 「レビューして問題があれば修正して」→ レビュー → 問題発見時は修正 → PR 作成
      - 例: 「コードレビューをして、指摘事項があれば修正してレポートしてください」→ レビュー → 修正 → レポートコメント
