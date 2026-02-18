@@ -107,12 +107,70 @@ session_exists() {
 }
 
 # =============================================================================
+# 関数名: get_workspaces_list_path
+# 目的: workspaces.list ファイルのパスを返す
+# 戻り値: workspaces.list の絶対パス
+# =============================================================================
+get_workspaces_list_path() {
+    echo "${XDG_DATA_HOME:-$HOME/.local/share}/ignite/workspaces.list"
+}
+
+# =============================================================================
+# 関数名: register_workspace
+# 目的: ワークスペースを workspaces.list に登録する（重複排除・アトミック書込）
+# 引数: [path] 登録するワークスペースの絶対パス（省略時は WORKSPACE_DIR）
+# 戻り値: 0=成功
+# 備考: flock + mktemp + mv によるアトミック書込
+# =============================================================================
+register_workspace() {
+    local ws_path="${1:-${WORKSPACE_DIR:-}}"
+    [[ -z "$ws_path" ]] && return 0
+
+    # パス正規化
+    ws_path="$(realpath "$ws_path" 2>/dev/null || echo "$ws_path")"
+
+    local list_file
+    list_file="$(get_workspaces_list_path)"
+
+    # ディレクトリ自動作成
+    mkdir -p "$(dirname "$list_file")"
+
+    # ファイルが存在し、既に登録済みならスキップ
+    if [[ -f "$list_file" ]] && grep -qxF "$ws_path" "$list_file" 2>/dev/null; then
+        return 0
+    fi
+
+    # flock + mktemp + mv によるアトミック書込
+    local lock_file="${list_file}.lock"
+    (
+        flock -w 5 200 || { echo "[WARN] register_workspace: ロック取得失敗" >&2; return 1; }
+
+        # flock 内で再度重複チェック（競合対策）
+        if [[ -f "$list_file" ]] && grep -qxF "$ws_path" "$list_file" 2>/dev/null; then
+            return 0
+        fi
+
+        local tmp_file
+        tmp_file="$(mktemp "${list_file}.XXXXXX")"
+
+        # 既存内容をコピー + 新規行を追加
+        if [[ -f "$list_file" ]]; then
+            cat "$list_file" > "$tmp_file"
+        fi
+        echo "$ws_path" >> "$tmp_file"
+
+        mv "$tmp_file" "$list_file"
+    ) 200>"$lock_file"
+}
+
+# =============================================================================
 # 関数名: list_all_sessions
 # 目的: 全ワークスペースまたは現ワークスペースのセッション一覧を出力する
 # 引数: [--all] 全ワークスペースを走査（省略時は現WSのみ）
-# 出力: 1行1セッション形式 "session_name<TAB>status<TAB>workspace_dir"
+# 出力: 1行1セッション形式 "session_name<TAB>status<TAB>agents<TAB>workspace_dir"
 # 戻り値: 0=セッションが1件以上見つかった, 1=セッションなし
 # 備考: WORKSPACE_DIR グローバル変数は走査中に書き換えない
+#        workspaces.list を唯一のソースとして使用（親ディレクトリ推測なし）
 # =============================================================================
 list_all_sessions() {
     local scan_all=false
@@ -129,35 +187,36 @@ list_all_sessions() {
     local -a ws_dirs=()
 
     if [[ "$scan_all" == true ]]; then
-        # 3段階フォールバックで IGNITE_WORKSPACES_DIR を検出
-        local workspaces_dir=""
+        local list_file
+        list_file="$(get_workspaces_list_path)"
 
-        # (1) 環境変数 IGNITE_WORKSPACES_DIR
-        if [[ -n "${IGNITE_WORKSPACES_DIR:-}" ]] && [[ -d "$IGNITE_WORKSPACES_DIR" ]]; then
-            workspaces_dir="$IGNITE_WORKSPACES_DIR"
+        if [[ -f "$list_file" ]]; then
+            # workspaces.list を唯一のソースとして使用
+            local _line
+            while IFS= read -r _line || [[ -n "$_line" ]]; do
+                # 空行スキップ
+                [[ -z "$_line" ]] && continue
+                # コメント行スキップ
+                [[ "$_line" == \#* ]] && continue
+
+                # パス正規化
+                local _normalized
+                _normalized="$(realpath "$_line" 2>/dev/null || echo "$_line")"
+
+                # 無効パスチェック
+                if [[ ! -d "$_normalized/.ignite" ]]; then
+                    echo "[WARN] list_all_sessions: 無効なワークスペースパスをスキップ: $_normalized" >&2
+                    continue
+                fi
+
+                ws_dirs+=("$_normalized")
+            done < "$list_file"
         fi
 
-        # (2) 現ワークスペースの親ディレクトリから .ignite を持つサブディレクトリを検索
-        if [[ -z "$workspaces_dir" ]] && [[ -n "${WORKSPACE_DIR:-}" ]]; then
-            local parent_dir
-            # realpath でパス正規化（末尾 '/.' 対応）
-            parent_dir="$(realpath "${WORKSPACE_DIR}/.." 2>/dev/null || dirname "$WORKSPACE_DIR")"
-            if [[ -d "$parent_dir" ]]; then
-                # 親ディレクトリに .ignite を持つサブディレクトリが存在するか確認
-                local _check_dir
-                for _check_dir in "$parent_dir"/*/; do
-                    if [[ -d "${_check_dir}.ignite" ]]; then
-                        workspaces_dir="$parent_dir"
-                        break
-                    fi
-                done
-            fi
-        fi
-
-        # (3) フォールバック: 現ワークスペースのみ
-        if [[ -n "$workspaces_dir" ]]; then
+        # セカンダリフォールバック: IGNITE_WORKSPACES_DIR 環境変数
+        if [[ ${#ws_dirs[@]} -eq 0 ]] && [[ -n "${IGNITE_WORKSPACES_DIR:-}" ]] && [[ -d "$IGNITE_WORKSPACES_DIR" ]]; then
             local _ws_candidate
-            for _ws_candidate in "$workspaces_dir"/*/; do
+            for _ws_candidate in "$IGNITE_WORKSPACES_DIR"/*/; do
                 [[ -d "$_ws_candidate" ]] || continue
                 local _normalized
                 _normalized="$(realpath "$_ws_candidate" 2>/dev/null || echo "$_ws_candidate")"
@@ -165,8 +224,10 @@ list_all_sessions() {
                     ws_dirs+=("$_normalized")
                 fi
             done
-        else
-            # フォールバック: 現ワークスペースのみ
+        fi
+
+        # 最終フォールバック: 現ワークスペースのみ
+        if [[ ${#ws_dirs[@]} -eq 0 ]]; then
             if [[ -n "${WORKSPACE_DIR:-}" ]]; then
                 local _norm_ws
                 _norm_ws="$(realpath "$WORKSPACE_DIR" 2>/dev/null || echo "$WORKSPACE_DIR")"
@@ -219,6 +280,7 @@ list_all_sessions() {
                 _s_workspace="$(realpath "$_s_workspace" 2>/dev/null || echo "$_s_workspace")"
 
                 # STATUS判定: Leader PID (.agent_pid_0) の生存チェック
+                # stale セッションは STATUS='stopped' として出力（スキップしない）
                 local _s_status="stopped"
                 local _pid_file="${_s_workspace}/.ignite/state/.agent_pid_0"
                 if [[ -f "$_pid_file" ]]; then
@@ -227,11 +289,8 @@ list_all_sessions() {
                     if [[ -n "$_leader_pid" ]]; then
                         if kill -0 "$_leader_pid" 2>/dev/null; then
                             _s_status="running"
-                        else
-                            echo "[WARN] list_all_sessions: staleセッション検出 (PID=$_leader_pid は無効): $_s_name" >&2
-                            _s_status="stale"
-                            continue
                         fi
+                        # PID 無効 → stopped のまま（stale をスキップしない）
                     fi
                 fi
 

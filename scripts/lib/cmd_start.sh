@@ -663,6 +663,9 @@ agents_total: $((1 + ${#SUB_LEADERS[@]} + worker_count))
 agents_actual: $((1 + ${#SUB_LEADERS[@]} + actual_ignitian_count))
 EOF
 
+    # ワークスペースを workspaces.list に登録（cross-workspace list 用）
+    register_workspace "$WORKSPACE_DIR"
+
     echo ""
     print_header "起動完了"
     echo ""

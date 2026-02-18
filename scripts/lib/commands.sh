@@ -470,8 +470,8 @@ cmd_list() {
         local _line
         while IFS=$'\t' read -r _s_name _s_status _s_workspace; do
             [[ -z "$_s_name" ]] && continue
-            local _ws_display
-            _ws_display="$(basename "$_s_workspace")"
+            # WORKSPACE列: フルパス表示
+            local _ws_display="$_s_workspace"
             # AGENTS列: sessions/*.yaml から取得を試みる
             local _agents_display="-"
             local _session_yaml="${_s_workspace}/.ignite/sessions/${_s_name}.yaml"
@@ -523,8 +523,8 @@ cmd_list() {
                 if [[ "$s_mode" == "leader" ]]; then
                     agents_display="${agents_display} (solo)"
                 fi
-                local ws_display
-                ws_display="$(basename "${s_workspace:-unknown}")"
+                # WORKSPACE列: フルパス表示
+                local ws_display="${s_workspace:-unknown}"
                 printf "  %-16s %-10s %-8s %s\n" "$s_name" "$s_status" "$agents_display" "$ws_display"
                 shown_sessions="${shown_sessions}${s_name} "
                 found=$((found + 1))
@@ -540,9 +540,8 @@ cmd_list() {
                 local _leader_pid
                 _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
                 if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                    local _ws_display
-                    _ws_display="$(basename "$_ws")"
-                    printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws_display"
+                    # WORKSPACE列: フルパス表示
+                    printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws"
                     found=$((found + 1))
                 fi
             fi
