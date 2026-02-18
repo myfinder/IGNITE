@@ -430,9 +430,12 @@ cmd_clean() {
 # =============================================================================
 
 cmd_list() {
+    local scan_all=false
+
     # オプション解析
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            -a|--all) scan_all=true; shift ;;
             -w|--workspace)
                 WORKSPACE_DIR="$2"
                 if [[ ! "$WORKSPACE_DIR" = /* ]]; then
@@ -449,68 +452,104 @@ cmd_list() {
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
 
-    print_header "IGNITEセッション一覧"
+    if [[ "$scan_all" == true ]]; then
+        print_header "IGNITEセッション一覧（全ワークスペース）"
+    else
+        print_header "IGNITEセッション一覧"
+    fi
     echo ""
-
-    local session_dir="$IGNITE_CONFIG_DIR/sessions"
-    local found=0
-    local shown_sessions=""
 
     # テーブルヘッダー
     printf "  %-16s %-10s %-8s %s\n" "SESSION" "STATUS" "AGENTS" "WORKSPACE"
     printf "  %-16s %-10s %-8s %s\n" "────────────────" "──────────" "────────" "─────────────────"
 
-    # Step 2: sessions/*.yaml を走査
-    if [[ -d "$session_dir" ]]; then
-        for f in "$session_dir"/*.yaml; do
-            [[ -f "$f" ]] || continue
-            local s_name s_workspace s_mode s_total s_actual
-            s_name=$(grep '^session_name:' "$f" | awk '{print $2}' | tr -d '"')
-            s_workspace=$(grep '^workspace_dir:' "$f" | awk '{print $2}' | tr -d '"')
-            s_mode=$(grep '^mode:' "$f" | awk '{print $2}' | tr -d '"')
-            s_total=$(grep '^agents_total:' "$f" | awk '{print $2}')
-            s_actual=$(grep '^agents_actual:' "$f" | awk '{print $2}')
-            # 後方互換フォールバック
-            s_mode=${s_mode:-unknown}
-            s_total=${s_total:-"-"}
-            s_actual=${s_actual:-"-"}
-            # STATUS判定: Leader PID で判定
-            local s_status="stopped"
-            local _leader_pid
-            if [[ -n "$s_workspace" ]] && [[ -f "$s_workspace/.ignite/state/.agent_pid_0" ]]; then
-                _leader_pid=$(cat "$s_workspace/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-                if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                    s_status="running"
+    local found=0
+
+    if [[ "$scan_all" == true ]]; then
+        # --all: list_all_sessions() で全ワークスペースを横断表示
+        local _line
+        while IFS=$'\t' read -r _s_name _s_status _s_workspace; do
+            [[ -z "$_s_name" ]] && continue
+            local _ws_display
+            _ws_display="$(basename "$_s_workspace")"
+            # AGENTS列: sessions/*.yaml から取得を試みる
+            local _agents_display="-"
+            local _session_yaml="${_s_workspace}/.ignite/sessions/${_s_name}.yaml"
+            if [[ -f "$_session_yaml" ]]; then
+                local _s_mode _s_total _s_actual
+                _s_mode=$(grep '^mode:' "$_session_yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || true)
+                _s_total=$(grep '^agents_total:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
+                _s_actual=$(grep '^agents_actual:' "$_session_yaml" 2>/dev/null | awk '{print $2}' || true)
+                _s_total=${_s_total:-"-"}
+                _s_actual=${_s_actual:-"-"}
+                _agents_display="${_s_actual}/${_s_total}"
+                if [[ "${_s_mode:-}" == "leader" ]]; then
+                    _agents_display="${_agents_display} (solo)"
                 fi
             fi
-            # AGENTS列
-            local agents_display="${s_actual}/${s_total}"
-            if [[ "$s_mode" == "leader" ]]; then
-                agents_display="${agents_display} (solo)"
-            fi
-            printf "  %-16s %-10s %-8s %s\n" "$s_name" "$s_status" "$agents_display" "$s_workspace"
-            shown_sessions="${shown_sessions}${s_name} "
+            printf "  %-16s %-10s %-8s %s\n" "$_s_name" "$_s_status" "$_agents_display" "$_ws_display"
             found=$((found + 1))
-        done
-    fi
+        done < <(list_all_sessions --all 2>/dev/null)
+    else
+        # デフォルト: 現ワークスペースのみ（既存動作を維持）
+        local session_dir="$IGNITE_CONFIG_DIR/sessions"
+        local shown_sessions=""
 
-    # Step 3: フォールバック（YAMLなしのセッションを補完）
-    # runtime.yaml ベースで補完
-    local _ws="${WORKSPACE_DIR:-}"
-    if [[ -n "$_ws" ]] && [[ -f "$_ws/.ignite/runtime.yaml" ]]; then
-        local _rt_name
-        _rt_name=$(yaml_get "$_ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
-        if [[ -n "$_rt_name" ]] && [[ "$shown_sessions" != *"$_rt_name "* ]]; then
-            local _leader_pid
-            _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-            if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
-                printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws"
+        # sessions/*.yaml を走査
+        if [[ -d "$session_dir" ]]; then
+            for f in "$session_dir"/*.yaml; do
+                [[ -f "$f" ]] || continue
+                local s_name s_workspace s_mode s_total s_actual
+                s_name=$(grep '^session_name:' "$f" | awk '{print $2}' | tr -d '"')
+                s_workspace=$(grep '^workspace_dir:' "$f" | awk '{print $2}' | tr -d '"')
+                s_mode=$(grep '^mode:' "$f" | awk '{print $2}' | tr -d '"')
+                s_total=$(grep '^agents_total:' "$f" | awk '{print $2}')
+                s_actual=$(grep '^agents_actual:' "$f" | awk '{print $2}')
+                # 後方互換フォールバック
+                s_mode=${s_mode:-unknown}
+                s_total=${s_total:-"-"}
+                s_actual=${s_actual:-"-"}
+                # STATUS判定: Leader PID で判定
+                local s_status="stopped"
+                local _leader_pid
+                if [[ -n "$s_workspace" ]] && [[ -f "$s_workspace/.ignite/state/.agent_pid_0" ]]; then
+                    _leader_pid=$(cat "$s_workspace/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+                    if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
+                        s_status="running"
+                    fi
+                fi
+                # AGENTS列
+                local agents_display="${s_actual}/${s_total}"
+                if [[ "$s_mode" == "leader" ]]; then
+                    agents_display="${agents_display} (solo)"
+                fi
+                local ws_display
+                ws_display="$(basename "${s_workspace:-unknown}")"
+                printf "  %-16s %-10s %-8s %s\n" "$s_name" "$s_status" "$agents_display" "$ws_display"
+                shown_sessions="${shown_sessions}${s_name} "
                 found=$((found + 1))
+            done
+        fi
+
+        # フォールバック（YAMLなしのセッションを補完）
+        local _ws="${WORKSPACE_DIR:-}"
+        if [[ -n "$_ws" ]] && [[ -f "$_ws/.ignite/runtime.yaml" ]]; then
+            local _rt_name
+            _rt_name=$(yaml_get "$_ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
+            if [[ -n "$_rt_name" ]] && [[ "$shown_sessions" != *"$_rt_name "* ]]; then
+                local _leader_pid
+                _leader_pid=$(cat "$_ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
+                if [[ -n "$_leader_pid" ]] && kill -0 "$_leader_pid" 2>/dev/null; then
+                    local _ws_display
+                    _ws_display="$(basename "$_ws")"
+                    printf "  %-16s %-10s %-8s %s\n" "$_rt_name" "running" "-" "$_ws_display"
+                    found=$((found + 1))
+                fi
             fi
         fi
     fi
 
-    # Step 4: 結果なし
+    # 結果なし
     if [[ "$found" -eq 0 ]]; then
         echo ""
         print_warning "実行中のIGNITEセッションはありません"
@@ -520,6 +559,9 @@ cmd_list() {
         echo ""
         echo -e "セッションに接続: ${YELLOW}./scripts/ignite attach -s <session-id>${NC}"
         echo -e "セッションを停止: ${YELLOW}./scripts/ignite stop -s <session-id>${NC}"
+        if [[ "$scan_all" != true ]]; then
+            echo -e "全ワークスペース表示: ${YELLOW}./scripts/ignite list --all${NC}"
+        fi
     fi
 }
 
