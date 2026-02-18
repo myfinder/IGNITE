@@ -130,3 +130,72 @@ EOF
     cmds=$(cli_get_required_commands)
     [[ "$cmds" == "opencode curl jq" ]]
 }
+
+# =============================================================================
+# cli_load_config: log_level
+# =============================================================================
+
+@test "cli_load_config: log_level を正しく読み込み" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+  log_level: WARN
+EOF
+    cli_load_config
+    [ "$CLI_LOG_LEVEL" = "WARN" ]
+}
+
+@test "cli_load_config: log_level 未設定で空文字" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+EOF
+    cli_load_config
+    [ -z "$CLI_LOG_LEVEL" ]
+}
+
+@test "cli_load_config: 不正な log_level で警告+空にフォールバック" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+  log_level: TRACE
+EOF
+    run cli_load_config
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"不正な cli.log_level"* ]]
+    # フォールバック後の値を確認
+    cli_load_config 2>/dev/null
+    [ -z "$CLI_LOG_LEVEL" ]
+}
+
+# =============================================================================
+# cli_build_server_command: log_level
+# =============================================================================
+
+@test "cli_build_server_command: log_level 設定時に --log-level が含まれる" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+  log_level: ERROR
+EOF
+    cli_load_config
+    local cmd
+    cmd=$(cli_build_server_command "$TEST_TEMP_DIR" "leader")
+    [[ "$cmd" == *"--log-level ERROR"* ]]
+}
+
+@test "cli_build_server_command: log_level 未設定時に --log-level が含まれない" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+EOF
+    cli_load_config
+    local cmd
+    cmd=$(cli_build_server_command "$TEST_TEMP_DIR" "leader")
+    [[ "$cmd" != *"--log-level"* ]]
+}

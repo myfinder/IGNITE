@@ -6,6 +6,7 @@
 CLI_PROVIDER=""
 CLI_MODEL=""
 CLI_COMMAND=""
+CLI_LOG_LEVEL=""
 
 # =============================================================================
 # cli_load_config - system.yaml の cli: セクション読み込み
@@ -21,6 +22,18 @@ cli_load_config() {
     fi
 
     CLI_COMMAND="opencode"
+
+    # opencode serve のログレベル（空=opencode デフォルト）
+    CLI_LOG_LEVEL=$(get_config cli log_level "")
+    if [[ -n "$CLI_LOG_LEVEL" ]]; then
+        case "$CLI_LOG_LEVEL" in
+            DEBUG|INFO|WARN|ERROR) ;;
+            *)
+                log_warn "不正な cli.log_level: $CLI_LOG_LEVEL（有効値: DEBUG/INFO/WARN/ERROR）。無視します"
+                CLI_LOG_LEVEL=""
+                ;;
+        esac
+    fi
 }
 
 # =============================================================================
@@ -275,6 +288,9 @@ cli_build_server_command() {
     cmd+="export WORKSPACE_DIR='${workspace_dir}' IGNITE_RUNTIME_DIR='${workspace_dir}/.ignite' && "
     cmd+="cd '${workspace_dir}' && "
     cmd+="OPENCODE_CONFIG='.ignite/${config_name}' opencode serve --port 0 --print-logs"
+    if [[ -n "$CLI_LOG_LEVEL" ]]; then
+        cmd+=" --log-level $CLI_LOG_LEVEL"
+    fi
 
     echo "$cmd"
 }
@@ -315,7 +331,7 @@ cli_start_agent_server() {
         WORKSPACE_DIR="$workspace_dir" \
         IGNITE_RUNTIME_DIR="$runtime_dir" \
         OPENCODE_CONFIG=".ignite/${config_name}" \
-        setsid nohup opencode serve --port 0 --print-logs >> "$log_file" 2>&1 &
+        setsid nohup opencode serve --port 0 --print-logs${CLI_LOG_LEVEL:+ --log-level $CLI_LOG_LEVEL} >> "$log_file" 2>&1 &
         local child_pid=$!
         echo "$child_pid" > "$pid_file"
     )

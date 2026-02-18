@@ -15,6 +15,7 @@
 cli:
   provider: opencode
   model: openai/gpt-5.2-codex
+  # log_level: INFO   # opencode serve のログレベル (DEBUG/INFO/WARN/ERROR)
 
 # 起動タイミング制御の遅延値（get_delay() で読み取り）
 delays:
