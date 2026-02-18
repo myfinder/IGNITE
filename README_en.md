@@ -429,8 +429,8 @@ sequenceDiagram
     A->>S: design_review_response
     E->>S: quality_plan_response
     I->>S: insight_response
-    S->>L: strategy_response
-    S->>C: task_list
+    S->>L: strategy_response (includes tasks)
+    L->>C: task_list (after approval)
     C->>IG: task_assignment
     IG->>C: task_completed
     C->>E: evaluation_request
@@ -459,6 +459,8 @@ IGNITE manages data across two complementary layers: **YAML file queues** and a 
 - **SQLite**: Uses WAL mode for concurrent access. All agents record learnings, decisions, and task states across sessions, enabling state restoration on restart and Memory Insights analysis
 
 See the "Data Storage Architecture" section in [docs/architecture.md](docs/architecture.md) for details.
+
+For detailed agent communication flows (implement/review/help_request, etc.), see [docs/communication-flow_en.md](docs/communication-flow_en.md).
 
 ## 📂 Project Structure
 

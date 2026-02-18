@@ -807,9 +807,9 @@ echo "[$(date -Iseconds)] メッセージ" >> .ignite/logs/ignitian_{n}.log
 
 ## 外部リポジトリでの作業
 
-### タスクメッセージに `repo_path` が含まれている場合
+### タスクメッセージに `repository` が含まれている場合
 
-タスクに `payload.repo_path` がある場合は、そのパスのリポジトリで作業します。
+タスクに `payload.repository` がある場合は、per-IGNITIAN clone で作業します。
 
 **受信メッセージ例（外部リポジトリでのタスク）:**
 ```yaml
@@ -822,7 +822,7 @@ payload:
   task_id: "task_001"
   title: "ログイン機能のバグ修正"
   description: "エラーハンドリングを追加"
-  repo_path: "/home/user/ignite/.ignite/repos/owner_repo"
+  repository: "owner/repo"
   issue_number: 123
   instructions: |
     src/auth/login.ts のエラーハンドリングを改善してください。
@@ -833,69 +833,117 @@ payload:
 
 ### 外部リポジトリでの作業手順
 
-1. **作業ディレクトリを確認**
+1. **per-IGNITIAN clone を取得**
    ```bash
-   cd {repo_path}
-   ls -la
-   pwd
+   REPO_PATH=$(./scripts/utils/setup_repo.sh clone {repository})
    ```
+   `IGNITE_WORKER_ID` が自動設定されているため、per-IGNITIAN パス（例: `.ignite/repos/owner_repo_ignitian_1`）が返される。
 
-2. **現在のブランチを確認**
+2. **作業ブランチをチェックアウト**
    ```bash
-   git branch
-   git status
+   ./scripts/utils/setup_repo.sh branch "$REPO_PATH" {issue_number}
    ```
+   これにより `ignite/issue-{issue_number}` ブランチにチェックアウトされる。
+   他の IGNITIAN が先に push している場合は、リモートブランチの最新が取得される。
 
 3. **ファイルの編集**
    - `Write` / `Edit` ツールで**絶対パス**を指定
-   - 例: `{repo_path}/src/main.py`
-   - **注意**: 必ず `repo_path` 内のファイルを編集すること
+   - 例: `{REPO_PATH}/src/main.py`
+   - **注意**: 必ず per-IGNITIAN clone 内のファイルを編集すること
 
-4. **変更のステージング**
+4. **タスク完了時に commit+push**
    ```bash
-   cd {repo_path}
+   cd "$REPO_PATH"
    git add -A
-   git status
+   git commit -m "feat: {task_title} (Issue #{issue_number})"
+   git push -u origin ignite/issue-{issue_number}
    ```
 
-5. **コミットはPR作成スクリプトに任せる**
-   - IGNITIANはファイル編集のみを行う
-   - コミット・プッシュは `create_pr.sh` がLeader/Coordinatorの指示で実行
+5. **push 失敗時のリカバリ**
+   他の IGNITIAN が先に push している場合:
+   ```bash
+   git pull --rebase origin ignite/issue-{issue_number}
+   git push -u origin ignite/issue-{issue_number}
+   ```
+
+### 後方互換: `repo_path` が含まれている場合
+
+`payload.repo_path` がある場合は、そのパスのリポジトリで直接作業する（従来の動作）。
+新規フローでは `repository` フィールドを使用する。
+
+### create_pr タスクの実行ガイド
+
+`task_type: "github_ops"` で `create_pr` タスクを受信した場合:
+
+1. **per-IGNITIAN clone を取得**
+   ```bash
+   REPO_PATH=$(./scripts/utils/setup_repo.sh clone {repository})
+   ```
+
+2. **最新のブランチを取得**
+   ```bash
+   cd "$REPO_PATH"
+   git fetch origin
+   git checkout ignite/issue-{issue_number}
+   git pull origin ignite/issue-{issue_number}
+   ```
+
+3. **PR を作成**
+   ```bash
+   ./scripts/utils/create_pr.sh {issue_number} --repo {repository} --bot
+   ```
+
+4. **PR URL を deliverables に含めて task_completed を報告**
+   ```yaml
+   payload:
+     task_id: "create_pr_{issue_number}"
+     status: success
+     deliverables:
+       - description: "PR を作成しました"
+         pr_url: "https://github.com/owner/repo/pull/456"
+   ```
+
+### review / explain タスクの GitHub 出力ガイド
+
+`task_type: "review"` または `instructions` に GitHub コメント投稿が指定されている場合:
+
+1. **レビュー/説明を実施**
+2. **GitHub にコメントを投稿**
+   ```bash
+   ./scripts/utils/comment_on_issue.sh {issue_number} --repo {repository} --bot --body "結果"
+   ```
+3. **投稿したコメント内容を deliverables に記載**
 
 ### 注意事項
 
-1. **必ず `repo_path` のディレクトリ内で作業する**
-   - ファイル操作は常に `{repo_path}/` プレフィックスを使用
+1. **必ず per-IGNITIAN clone 内で作業する**
+   - ファイル操作は常に `{REPO_PATH}/` プレフィックスを使用
    - 絶対パスで明示的に指定する
 
 2. **IGNITEシステム本体のファイルを編集しない**
-   - `repo_path` 以外のファイルは触らない
+   - per-IGNITIAN clone 以外のファイルは触らない
    - 特に `PROJECT_ROOT` 直下のファイルは対象外
 
-3. **ブランチは既に作成されている**
-   - Leaderが `setup_repo.sh branch` を実行済み
-   - ブランチ操作は不要（既に正しいブランチにいる）
-
-4. **レポートには `repo_path` を含める**
+3. **レポートには repository を含める**
    ```yaml
    payload:
      task_id: "task_001"
      status: success
-     repo_path: "{repo_path}"
+     repository: "{repository}"
      deliverables:
        - file: "src/auth/login.ts"
          description: "エラーハンドリングを追加しました"
-         location: "{repo_path}/src/auth/login.ts"
+         location: "{REPO_PATH}/src/auth/login.ts"
    ```
 
 ### 外部リポジトリ作業時のログ出力例
 
 ```
 [IGNITIAN-1] 外部リポジトリでのタスクを受信しました！
-[IGNITIAN-1] 作業ディレクトリ: {repo_path}
+[IGNITIAN-1] setup_repo.sh clone で per-IGNITIAN clone を取得
 [IGNITIAN-1] Issue #123 の修正を開始します！
 [IGNITIAN-1] src/auth/login.ts を編集中...
-[IGNITIAN-1] 修正完了！エラーハンドリングを追加しました！
+[IGNITIAN-1] 修正完了！commit+push しました！
 [IGNITIAN-1] レポートを提出します！
 ```
 
