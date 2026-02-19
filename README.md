@@ -4,7 +4,7 @@
   <img src="images/ignite-logo.jpg" width="200">
 </p>
 
-**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** は、AI Coding Agent CLIを活用した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。<br>
+**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** は、複数のAI Coding Agent CLI（OpenCode / Claude Code / Codex CLI）に対応した階層型マルチエージェントシステムです。Leader、5つの専門Sub-Leaders、および可変数のIGNITIANSワーカーが協調して、複雑なタスクを並列実行します。<br>
 IGNITEは今はまだ歌って踊ってライブ配信することはできませんが、いつか皆さんの前で素敵なステージを見せることができるよう日々努力を重ねています。
 
 <p align="center">
@@ -111,7 +111,7 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 - **イベント駆動型通信**: YAMLファイルベースの非同期メッセージング
 - **並列タスク実行**: タスクの性質に応じて1-32のワーカーが並列実行
 - **キャラクター性**: 各エージェントは個性と専門性を持つ
-- **完全なローカル実行**: OpenCodeのフル機能をローカルPCで活用
+- **マルチCLI対応**: OpenCode / Claude Code / Codex CLI から選択可能（per-message + session resume パターンで統一）
 - **エージェントメモリ永続化**: SQLiteによるセッション間の学習・決定記録保持
 - **日次レポート管理**: 作業進捗をリポジトリ別 GitHub Issues で自動追跡
 - **設定可能な遅延**: エージェント間の通信遅延をカスタマイズ可能
@@ -138,8 +138,10 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 以下のツールがインストールされている必要があります：
 
 ```bash
-# AI Coding Agent CLI
-opencode --version
+# AI Coding Agent CLI（いずれか1つ以上）
+opencode --version    # OpenCode（デフォルト）
+claude --version      # Claude Code（Anthropic Max Plan または API キー）
+codex --version       # Codex CLI（OpenAI）
 
 # bash（通常は標準でインストール済み）
 bash --version
@@ -174,8 +176,21 @@ IGNITE のエージェントは tool calling（ファイル読み書き、コマ
 
 CLI プロバイダーがインストールされていない場合：
 ```bash
-# OpenCode
+# OpenCode（デフォルト）
 curl -fsSL https://opencode.ai/install | bash
+
+# Claude Code（Anthropic Max Plan ログイン済みなら API Key 不要）
+npm install -g @anthropic-ai/claude-code
+
+# Codex CLI（OpenAI API Key が必要）
+npm install -g @openai/codex
+```
+
+使用する CLI プロバイダーは `.ignite/system.yaml` で設定します：
+```yaml
+cli:
+  provider: opencode   # opencode / claude / codex
+  model: anthropic/claude-sonnet-4-5-20250929
 ```
 
 curl/jqがインストールされていない場合：
@@ -796,14 +811,15 @@ ignite --version
 ignite start -f
 ```
 
-**原因2: opencodeが見つからない**
+**原因2: CLI プロバイダーが見つからない**
 
 ```bash
-# opencodeのパス確認
-which opencode
+# 設定されているプロバイダーのパス確認
+which opencode    # OpenCode の場合
+which claude      # Claude Code の場合
+which codex       # Codex CLI の場合
 
-# インストールされていない場合
-curl -fsSL https://opencode.ai/install | bash
+# インストールされていない場合は「前提ソフトウェアのインストール」を参照
 ```
 
 ### タスクが進行しない
@@ -1073,6 +1089,8 @@ IGNITEプロジェクトへの貢献を歓迎します！
 
 - **multi-agent-shogun** - アーキテクチャの参考元
 - **OpenCode** - AI Coding Agent CLI
+- **Claude Code** - Anthropic AI Coding Agent CLI
+- **Codex CLI** - OpenAI Coding Agent CLI
 - **Anthropic** - Claude AI
 
 ## 📧 サポート
