@@ -62,6 +62,7 @@ cli_load_config() {
     _cli_provider_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local _provider_script="${_cli_provider_dir}/cli_provider_${CLI_PROVIDER}.sh"
     if [[ -f "$_provider_script" ]]; then
+        # shellcheck source=/dev/null
         source "$_provider_script"
     else
         log_error "プロバイダースクリプトが見つかりません: $_provider_script"
