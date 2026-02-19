@@ -858,7 +858,8 @@ _log_progress() {
 }
 
 _on_monitor_exit() {
-    local exit_code=$?
+    # 引数があれば使用、なければ $? をフォールバック（直接 trap 呼び出し時の後方互換）
+    local exit_code="${1:-$?}"
     MONITOR_LAST_EXIT=$exit_code
     if [[ $exit_code -ne 0 ]]; then
         MONITOR_LAST_FAILURE_AT="$(date -Iseconds)"
@@ -1833,7 +1834,7 @@ main() {
         local exit_code=$?
         [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
         # モニター状態を保存（resume backoff 用）
-        _on_monitor_exit
+        _on_monitor_exit "$exit_code"
         # バックグラウンドプロセスのクリーンアップ
         local _bg_pids
         _bg_pids=$(jobs -p 2>/dev/null) || true
