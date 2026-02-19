@@ -185,6 +185,39 @@ cmd_start() {
             break
         fi
     done
+    # セッションファイルのみ残存している場合も検出
+    if [[ "$_existing_agents" == false ]]; then
+        for _sf in "$IGNITE_RUNTIME_DIR"/state/.agent_session_*; do
+            if [[ -f "$_sf" ]]; then
+                _existing_agents=true
+                break
+            fi
+        done
+    fi
+
+    # セッションのみ残存（PID プロセスなし）→ stale ステートをサイレントにクリーンアップ
+    if [[ "$_existing_agents" == true ]]; then
+        local _has_live_pid=false
+        for _pid_file in "$IGNITE_RUNTIME_DIR"/state/.agent_pid_*; do
+            [[ -f "$_pid_file" ]] || continue
+            local _epid
+            _epid=$(cat "$_pid_file" 2>/dev/null || true)
+            if [[ -n "$_epid" ]] && kill -0 "$_epid" 2>/dev/null; then
+                _has_live_pid=true; break
+            fi
+        done
+        if [[ "$_has_live_pid" == false ]]; then
+            log_info "stale セッションを検出、クリーンアップします"
+            for _sf in "$IGNITE_RUNTIME_DIR"/state/.agent_session_*; do
+                [[ -f "$_sf" ]] || continue
+                local _cidx
+                _cidx=$(basename "$_sf" | sed 's/\.agent_session_//')
+                cli_cleanup_agent_state "$_cidx"
+            done
+            _existing_agents=false
+        fi
+    fi
+
     if [[ "$_existing_agents" == true ]]; then
         if [[ "$force" == true ]]; then
             print_warning "既存のエージェントプロセスを強制終了します"
@@ -507,8 +540,7 @@ EOF
     # ポスト起動リカバリ: 全エージェントをチェックし、スタックしたエージェントを復旧
     # =========================================================================
     _verify_agent_prompt() {
-        local session="$1"
-        local pane_idx="$2"
+        local pane_idx="$1"
 
         # 全プロバイダー統一: セッション ID ベースで判定
         cli_check_session_alive "$pane_idx"
@@ -548,7 +580,7 @@ EOF
 
             sleep "$(get_delay leader_init 10)"
 
-            if _verify_agent_prompt "$SESSION_NAME" "$_pidx" 2>/dev/null; then
+            if _verify_agent_prompt "$_pidx" 2>/dev/null; then
                 print_success "  agent ${_pidx} (${_agent_name_recov}) リカバリ成功"
                 return 0
             fi
@@ -573,13 +605,13 @@ EOF
     local _startup_status="complete"
     local _session_target="$SESSION_NAME"
 
-    # 全エージェントのリカバリチェック（PIDファイルベース）
+    # 全エージェントのリカバリチェック（セッションファイルベース）
     local _total_agents=0
     local -a _agent_indices=()
-    for _pid_file in "$IGNITE_RUNTIME_DIR"/state/.agent_pid_*; do
-        [[ -f "$_pid_file" ]] || continue
+    for _session_file in "$IGNITE_RUNTIME_DIR"/state/.agent_session_*; do
+        [[ -f "$_session_file" ]] || continue
         local _aidx
-        _aidx=$(basename "$_pid_file" | sed 's/\.agent_pid_//')
+        _aidx=$(basename "$_session_file" | sed 's/\.agent_session_//')
         _agent_indices+=("$_aidx")
         _total_agents=$((_total_agents + 1))
     done
@@ -594,7 +626,7 @@ EOF
         # 1. 異常エージェントを特定（順次、軽量チェック）
         local -a _failed_agents=()
         for _pidx in "${_agent_indices[@]}"; do
-            if ! _verify_agent_prompt "$_session_target" "$_pidx" 2>/dev/null; then
+            if ! _verify_agent_prompt "$_pidx" 2>/dev/null; then
                 _failed_agents+=("$_pidx")
             fi
         done
@@ -603,11 +635,12 @@ EOF
         if [[ ${#_failed_agents[@]} -gt 0 ]]; then
             print_warning "${#_failed_agents[@]} エージェントに異常検出、リカバリ中..."
 
-            # ジョブヘルパーをリセット
+            # ジョブヘルパーをリセット（連想配列は再宣言が必要）
             _job_pids=()
-            _job_label=()
-            _job_start=()
-            _job_pane=()
+            unset _job_label _job_start _job_pane
+            declare -A _job_label=()
+            declare -A _job_start=()
+            declare -A _job_pane=()
             _job_success=0
             _job_failed=0
 
@@ -651,6 +684,8 @@ ignitians:
 EOF
 
     # セッション→ワークスペースのマッピングを保存（stop時の自動検出用）
+    local _sl_count=${#SUB_LEADERS[@]}
+    [[ "$agent_mode" == "leader" ]] && _sl_count=0
     mkdir -p "$IGNITE_CONFIG_DIR/sessions"
     cat > "$IGNITE_CONFIG_DIR/sessions/${SESSION_NAME}.yaml" <<EOF
 # IGNITE セッション情報（自動生成）
@@ -658,8 +693,8 @@ session_name: "${SESSION_NAME}"
 workspace_dir: "${WORKSPACE_DIR}"
 started_at: "$(date -Iseconds)"
 mode: "${agent_mode}"
-agents_total: $((1 + ${#SUB_LEADERS[@]} + worker_count))
-agents_actual: $((1 + ${#SUB_LEADERS[@]} + actual_ignitian_count))
+agents_total: $((1 + _sl_count + worker_count))
+agents_actual: $((1 + _sl_count + actual_ignitian_count))
 EOF
 
     # ワークスペースを workspaces.list に登録（cross-workspace list 用）

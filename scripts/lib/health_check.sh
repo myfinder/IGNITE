@@ -37,6 +37,17 @@ check_agent_health() {
         return
     fi
 
+    # PID ファイルがあればプロセス生存チェック（init 失敗検出）
+    local pid_file="${state_dir}/.agent_pid_${pane_index}"
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+            echo "stale"
+            return
+        fi
+    fi
+
     local agent_name
     agent_name=$(cat "${state_dir}/.agent_name_${pane_index}" 2>/dev/null || true)
     if [[ -n "$agent_name" ]]; then
@@ -56,10 +67,10 @@ get_all_agents_health() {
     local session="$1"
 
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    for pid_file in "$state_dir"/.agent_pid_*; do
-        [[ -f "$pid_file" ]] || continue
+    for session_file in "$state_dir"/.agent_session_*; do
+        [[ -f "$session_file" ]] || continue
         local idx
-        idx=$(basename "$pid_file" | sed 's/^\.agent_pid_//')
+        idx=$(basename "$session_file" | sed 's/^\.agent_session_//')
         local agent_name
         agent_name=$(cat "${state_dir}/.agent_name_${idx}" 2>/dev/null || echo "unknown")
         [[ -z "$agent_name" ]] && agent_name="unknown"

@@ -149,7 +149,7 @@ _kill_process_tree() {
     local pid="$1"
     local pane_idx="$2"
     local runtime_dir="${3:-${IGNITE_RUNTIME_DIR:-}}"
-    local max_wait=10  # 生存確認タイムアウト（秒）: systemd TimeoutStopSec=30 と整合
+    local max_wait=10  # 生存確認タイムアウト（0.5秒 × 10回 = 5秒）: systemd TimeoutStopSec=30 と整合
     local pgid=""
     local _process_pattern
     _process_pattern=$(cli_get_process_pattern 2>/dev/null || echo "opencode")
@@ -220,7 +220,7 @@ cli_save_agent_state() {
 
 # cli_load_agent_state <pane_idx> [runtime_dir]
 # ファイルからステートを読み込み → グローバル変数にセット
-# _AGENT_SESSION_ID, _AGENT_PID, _AGENT_NAME
+# _AGENT_SESSION_ID, _AGENT_NAME を設定（_AGENT_PID は後方互換で読み込むが通常は空）
 cli_load_agent_state() {
     local pane_idx="$1"
     local runtime_dir="${2:-$IGNITE_RUNTIME_DIR}"
@@ -239,6 +239,7 @@ cli_cleanup_agent_state() {
     local state_dir="${runtime_dir}/state"
 
     rm -f "${state_dir}/.agent_pid_${pane_idx}"
+    # 後方互換: v0.6.x 以前の port ファイルを削除（将来除去予定）
     rm -f "${state_dir}/.agent_port_${pane_idx}"
     rm -f "${state_dir}/.agent_session_${pane_idx}"
     rm -f "${state_dir}/.agent_name_${pane_idx}"

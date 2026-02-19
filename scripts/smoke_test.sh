@@ -363,7 +363,7 @@ phase_start_stop() {
 
     local runtime_dir="$SMOKE_DIR/workspace/.ignite"
 
-    # ── PID ファイル + HTTP ヘルスチェックで検証 ──
+    # ── PID ファイル + セッション ID ファイルで検証 ──
 
     # セッション名を runtime.yaml から取得
     local session_name=""

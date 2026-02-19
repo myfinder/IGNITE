@@ -11,9 +11,22 @@
 # =============================================================================
 _is_leader_alive() {
     local ws="$1"
+    local state_dir="${ws}/.ignite/state"
     local session_id
-    session_id=$(cat "${ws}/.ignite/state/.agent_session_0" 2>/dev/null || true)
-    [[ -n "$session_id" ]]
+    session_id=$(cat "${state_dir}/.agent_session_0" 2>/dev/null || true)
+    [[ -n "$session_id" ]] || return 1
+
+    # PID ファイルがあれば、プロセス生存で二重チェック（unclean shutdown 検出）
+    local pid_file="${state_dir}/.agent_pid_0"
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+            # PID は死んでいるがセッションファイルが残存 → stale
+            return 1
+        fi
+    fi
+    return 0
 }
 
 # =============================================================================
@@ -110,7 +123,7 @@ list_sessions() {
 # セッションが存在するかチェック
 session_exists() {
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    ls "$state_dir"/.agent_pid_* &>/dev/null || return 1
+    ls "$state_dir"/.agent_session_* &>/dev/null || return 1
     _is_leader_alive "${WORKSPACE_DIR:-$(pwd)}"
 }
 

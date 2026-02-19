@@ -135,6 +135,14 @@ cli_start_agent_server() {
         wait_count=$((wait_count + 1))
     done
 
+    # タイムアウト時はプロセスを強制終了
+    if kill -0 "$bg_pid" 2>/dev/null; then
+        log_error "初期化タイムアウト: プロセスを強制終了します (PID=$bg_pid)"
+        kill "$bg_pid" 2>/dev/null || true
+        wait "$bg_pid" 2>/dev/null || true
+        return 1
+    fi
+
     # レスポンスからセッション ID を取得
     if [[ ! -f "$response_file" ]] || [[ ! -s "$response_file" ]]; then
         log_error "Codex CLI の初期化レスポンスが取得できませんでした: role=$role"
@@ -157,6 +165,9 @@ cli_start_agent_server() {
 
     # ステートを保存
     echo "$session_id" > "$session_file"
+
+    # init 完了後は PID ファイルを削除（per-message パターンではプロセスは既に終了済み）
+    rm -f "$pid_file"
 
     log_info "Codex CLI セッション作成完了: session_id=$session_id, role=$role"
 

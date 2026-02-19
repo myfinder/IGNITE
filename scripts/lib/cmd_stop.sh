@@ -116,6 +116,7 @@ cmd_stop() {
     # PID ファイルに載っていない孤立プロセスも掃除（orphan sweep: 安全弁）
     _sweep_orphan_processes
 
+    # エージェント状態ファイルを全削除（pgid/port は v0.6.x 以前の後方互換、session/name は現行）
     rm -f "$IGNITE_RUNTIME_DIR/state"/.agent_{pgid,port,session,name}_*
     rm -f "$IGNITE_RUNTIME_DIR/state"/.send_lock_*
     print_success "エージェントプロセスを停止しました"

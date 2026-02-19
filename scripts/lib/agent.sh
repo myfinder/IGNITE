@@ -140,7 +140,7 @@ _kill_agent_process() {
     local pid
     pid=$(cat "$pid_file" 2>/dev/null || true)
 
-    if [[ -n "$pid" ]] && _validate_pid "$pid" "$(cli_get_process_pattern)"; then
+    if [[ -n "$pid" ]] && _validate_pid "$pid" "$(cli_get_process_pattern 2>/dev/null || echo "opencode")"; then
         _kill_process_tree "$pid" "$pane_idx" "$IGNITE_RUNTIME_DIR"
     fi
 

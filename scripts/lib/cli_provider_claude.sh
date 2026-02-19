@@ -24,7 +24,7 @@ cli_get_process_pattern() {
 # cli_get_required_commands - インストール時の依存コマンドリストを返す
 # =============================================================================
 cli_get_required_commands() {
-    # Claude Code は HTTP API 不要、jq はレスポンス解析用
+    # Claude Code CLI + jq（レスポンス解析用）
     echo "claude jq"
 }
 
@@ -147,6 +147,18 @@ cli_start_agent_server() {
         wait_count=$((wait_count + 1))
     done
 
+    # タイムアウト時はプロセスを強制終了
+    if kill -0 "$bg_pid" 2>/dev/null; then
+        log_error "初期化タイムアウト: プロセスを強制終了します (PID=$bg_pid)"
+        kill "$bg_pid" 2>/dev/null || true
+        wait "$bg_pid" 2>/dev/null || true
+        # CLAUDECODE 環境変数を復元してからエラー返却
+        if [[ -n "$_saved_claudecode" ]]; then
+            export CLAUDECODE="$_saved_claudecode"
+        fi
+        return 1
+    fi
+
     # CLAUDECODE 環境変数を復元
     if [[ -n "$_saved_claudecode" ]]; then
         export CLAUDECODE="$_saved_claudecode"
@@ -168,6 +180,9 @@ cli_start_agent_server() {
 
     # ステートを保存
     echo "$session_id" > "$session_file"
+
+    # init 完了後は PID ファイルを削除（per-message パターンではプロセスは既に終了済み）
+    rm -f "$pid_file"
 
     log_info "Claude Code セッション作成完了: session_id=$session_id, role=$role"
 

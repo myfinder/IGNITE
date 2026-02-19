@@ -50,11 +50,11 @@ cmd_work_on() {
         esac
     done
 
-    # セッション名とワークスペースを設定
-    setup_session_name
+    # ワークスペースとセッション名を設定
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
     cli_load_config
+    setup_session_name
 
     # Issue入力チェック
     if [[ -z "$issue_input" ]]; then

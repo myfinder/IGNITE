@@ -52,12 +52,12 @@ cmd_status() {
 
         # エージェント数確認
         local agent_count=0
-        for _pf in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
-            [[ -f "$_pf" ]] && agent_count=$((agent_count + 1))
+        for _sf in "$IGNITE_RUNTIME_DIR/state"/.agent_session_*; do
+            [[ -f "$_sf" ]] && agent_count=$((agent_count + 1))
         done
         echo -e "${BLUE}  エージェント数: ${agent_count}${NC}"
 
-        # エージェント状態（PID + HTTP ヘルスチェック）
+        # エージェント状態（セッション ID ベース）
         echo ""
         print_header "エージェント状態"
         echo ""

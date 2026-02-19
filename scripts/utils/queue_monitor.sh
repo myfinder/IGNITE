@@ -124,7 +124,7 @@ MONITOR_STATE_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_state.json"
 MONITOR_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_heartbeat.json"
 MONITOR_PROGRESS_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_progress.log"
 
-# CLI プロバイダー設定を読み込み（submit keys 判定に必要）
+# CLI プロバイダー設定を読み込み（send_to_agent でのプロバイダー判定に必要）
 cli_load_config 2>/dev/null || true
 
 # ヘルスチェック/自動リカバリ設定
@@ -231,9 +231,9 @@ _check_and_recover_agents() {
         local idx agent_name status
         IFS=':' read -r idx agent_name status <<< "$line"
 
-        # crashed / missing のみリカバリ対象
+        # crashed / missing / stale のみリカバリ対象
         case "$status" in
-            crashed|missing) ;;
+            crashed|missing|stale) ;;
             *) continue ;;
         esac
 
@@ -315,12 +315,12 @@ _check_init_and_stale_agents() {
         _agent_mode="${_agent_mode:-full}"
     fi
 
-    # PID ファイルからインデックスを列挙
+    # セッションファイルからインデックスを列挙
     local pane_indices=""
-    for pid_file in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
-        [[ -f "$pid_file" ]] || continue
+    for session_file in "$IGNITE_RUNTIME_DIR/state"/.agent_session_*; do
+        [[ -f "$session_file" ]] || continue
         local _idx
-        _idx=$(basename "$pid_file" | sed 's/^\.agent_pid_//')
+        _idx=$(basename "$session_file" | sed 's/^\.agent_session_//')
         pane_indices+="${_idx}"$'\n'
     done
     [[ -n "$pane_indices" ]] || return 0
@@ -872,7 +872,7 @@ _on_monitor_exit() {
 
 # =============================================================================
 # 関数名: send_to_agent
-# 目的: 指定されたエージェントに HTTP API 経由でメッセージを送信する
+# 目的: 指定されたエージェントに CLI プロバイダー経由でメッセージを送信する
 # 引数:
 #   $1 - エージェント名（例: "leader", "strategist", "ignitian-1"）
 #   $2 - 送信するメッセージ文字列
@@ -1807,9 +1807,6 @@ main() {
     _apply_resume_backoff
     _write_heartbeat
 
-    # 終了時の状態保存
-    trap _on_monitor_exit EXIT
-
     # SIGHUP ハンドラ（フラグベース遅延リロード）
     # trap内で直接load_config()を呼ぶと、scan_queue()実行中に
     # 設定変更の競合が発生するリスクがあるため、
@@ -1835,8 +1832,15 @@ main() {
     cleanup_and_log() {
         local exit_code=$?
         [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
+        # モニター状態を保存（resume backoff 用）
+        _on_monitor_exit
         # バックグラウンドプロセスのクリーンアップ
-        kill "$(jobs -p)" 2>/dev/null
+        local _bg_pids
+        _bg_pids=$(jobs -p 2>/dev/null) || true
+        if [[ -n "$_bg_pids" ]]; then
+            # shellcheck disable=SC2086
+            kill $_bg_pids 2>/dev/null || true  # 意図的な非クォート: PID をワード分割
+        fi
         wait 2>/dev/null
         if [[ -n "$_SHUTDOWN_SIGNAL" ]]; then
             log_info "キュー監視 終了: シグナル${_SHUTDOWN_SIGNAL}による停止"

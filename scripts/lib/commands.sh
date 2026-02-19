@@ -43,8 +43,8 @@ cmd_activate() {
         exit 1
     fi
 
-    # ヘッドレスモード: エージェントは HTTP API 経由で初期化済み
-    print_info "エージェントは HTTP 経由で初期化済みです"
+    # ヘッドレスモード: エージェントは per-message パターンで初期化済み
+    print_info "エージェントはヘッドレスモードで初期化済みです"
     echo ""
     echo -e "状態確認: ${YELLOW}./scripts/ignite status -s $SESSION_NAME${NC}"
 }
@@ -106,7 +106,7 @@ cmd_notify() {
             ;;
     esac
 
-    # ペイン番号を特定
+    # エージェントインデックスを特定
     local pane_num=""
     case "$target" in
         leader) pane_num=0 ;;
@@ -138,9 +138,9 @@ cmd_notify() {
         exit 1
     fi
 
-    # PID ファイルでエージェント存在確認
+    # セッション ID ファイルでエージェント存在確認
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    if [[ ! -f "${state_dir}/.agent_pid_${pane_num}" ]]; then
+    if [[ ! -f "${state_dir}/.agent_session_${pane_num}" ]]; then
         print_error "ターゲット '${target}' のエージェント (idx=${pane_num}) が存在しません"
         exit 1
     fi
@@ -260,7 +260,8 @@ cmd_attach() {
                 attach_cmd="codex resume ${session_id}"
                 ;;
             opencode)
-                attach_cmd="opencode --session ${session_id}"
+                # opencode TUI にはセッション指定オプションがないため run で実行
+                attach_cmd="opencode run --session ${session_id}"
                 ;;
         esac
         echo -e "  コマンド: ${YELLOW}${attach_cmd}${NC}"
