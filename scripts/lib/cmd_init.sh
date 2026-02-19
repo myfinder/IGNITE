@@ -96,6 +96,7 @@ tmp/
 dashboard.md
 runtime.yaml
 opencode_*.json
+.claude_flags_*
 
 # secrets (never commit)
 .env

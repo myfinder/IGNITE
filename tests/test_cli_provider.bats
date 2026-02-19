@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # =============================================================================
 # cli_provider.sh テスト
-# テスト対象: scripts/lib/cli_provider.sh
+# テスト対象: scripts/lib/cli_provider.sh + プロバイダー実装
 # =============================================================================
 
 load 'test_helper'
@@ -49,6 +49,40 @@ EOF
     [ "$CLI_COMMAND" = "opencode" ]
 }
 
+@test "cli_load_config: provider=claude を正しく読み込み" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    [ "$CLI_PROVIDER" = "claude" ]
+    [ "$CLI_MODEL" = "claude-sonnet-4-20250514" ]
+    [ "$CLI_COMMAND" = "claude" ]
+}
+
+@test "cli_load_config: provider=codex を正しく読み込み" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    [ "$CLI_PROVIDER" = "codex" ]
+    [ "$CLI_MODEL" = "gpt-5.2-codex" ]
+    [ "$CLI_COMMAND" = "codex" ]
+}
+
+@test "cli_load_config: 不正な provider で opencode にフォールバック" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: invalid_provider
+  model: openai/o3
+EOF
+    cli_load_config
+    [ "$CLI_PROVIDER" = "opencode" ]
+}
+
 # =============================================================================
 # cli_get_process_names
 # =============================================================================
@@ -60,17 +94,81 @@ EOF
     [[ "$names" == "opencode node" ]]
 }
 
+@test "cli_get_process_names: claude は 'claude node' を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    local names
+    names=$(cli_get_process_names)
+    [[ "$names" == "claude node" ]]
+}
+
+@test "cli_get_process_names: codex は 'codex node' を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    local names
+    names=$(cli_get_process_names)
+    [[ "$names" == "codex node" ]]
+}
+
+# =============================================================================
+# cli_get_process_pattern
+# =============================================================================
+
+@test "cli_get_process_pattern: opencode は 'opencode' を返す" {
+    cli_load_config
+    local pattern
+    pattern=$(cli_get_process_pattern)
+    [[ "$pattern" == "opencode" ]]
+}
+
+@test "cli_get_process_pattern: claude は 'claude' を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    local pattern
+    pattern=$(cli_get_process_pattern)
+    [[ "$pattern" == "claude" ]]
+}
+
+@test "cli_get_process_pattern: codex は 'codex' を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    local pattern
+    pattern=$(cli_get_process_pattern)
+    [[ "$pattern" == "codex" ]]
+}
+
 # =============================================================================
 # cli_setup_project_config
 # =============================================================================
 
-@test "cli_setup_project_config: .ignite/opencode_leader.json を生成" {
+@test "cli_setup_project_config: opencode で .ignite/opencode_leader.json を生成" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: opencode
+  model: openai/o3
+EOF
     cli_load_config
     local ws_dir="$TEST_TEMP_DIR/ws_default"
     mkdir -p "$ws_dir/.ignite"
     cli_setup_project_config "$ws_dir" "leader" "/tmp/char.md" "/tmp/instr.md"
     [ -f "$ws_dir/.ignite/opencode_leader.json" ]
-    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/gpt-5.2-codex"'* ]]
+    [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/o3"'* ]]
 }
 
 @test "cli_setup_project_config: opencode で正しいフィールドを含む" {
@@ -93,7 +191,7 @@ EOF
     [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'/tmp/instr.md'* ]]
 }
 
-@test "cli_setup_project_config: .ignite/ がなければルートに opencode_leader.json を生成" {
+@test "cli_setup_project_config: opencode で .ignite/ がなければルートに生成" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -106,7 +204,7 @@ EOF
     [ -f "$ws_dir/opencode_leader.json" ]
 }
 
-@test "cli_setup_project_config: 既存 opencode_leader.json は最新設定で再生成される" {
+@test "cli_setup_project_config: opencode で既存ファイルは最新設定で再生成される" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: opencode
@@ -120,15 +218,107 @@ EOF
     [[ "$(cat "$ws_dir/.ignite/opencode_leader.json")" == *'"model": "openai/o3"'* ]]
 }
 
+@test "cli_setup_project_config: claude で .claude_flags_{role} ファイルを生成" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    local ws_dir="$TEST_TEMP_DIR/ws_claude"
+    mkdir -p "$ws_dir/.ignite"
+    # テスト用のダミーインストラクションファイルを作成
+    echo "test" > "$TEST_TEMP_DIR/char.md"
+    echo "test" > "$TEST_TEMP_DIR/instr.md"
+    cli_setup_project_config "$ws_dir" "leader" "$TEST_TEMP_DIR/char.md" "$TEST_TEMP_DIR/instr.md"
+    [ -f "$ws_dir/.ignite/.claude_flags_leader" ]
+    [[ "$(cat "$ws_dir/.ignite/.claude_flags_leader")" == *"--append-system-prompt"* ]]
+}
+
+@test "cli_setup_project_config: codex で .codex_init_prompt_{role} ファイルを生成" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    local ws_dir="$TEST_TEMP_DIR/ws_codex"
+    mkdir -p "$ws_dir/.ignite"
+    echo "test instructions" > "$TEST_TEMP_DIR/char.md"
+    echo "test more" > "$TEST_TEMP_DIR/instr.md"
+    cli_setup_project_config "$ws_dir" "leader" "$TEST_TEMP_DIR/char.md" "$TEST_TEMP_DIR/instr.md"
+    [ -f "$ws_dir/.ignite/.codex_init_prompt_leader" ]
+    [[ "$(cat "$ws_dir/.ignite/.codex_init_prompt_leader")" == *"test instructions"* ]]
+}
+
 # =============================================================================
 # cli_get_required_commands
 # =============================================================================
 
-@test "cli_get_required_commands: opencode は 'opencode curl jq'" {
+@test "cli_get_required_commands: opencode は 'opencode jq'" {
     cli_load_config
     local cmds
     cmds=$(cli_get_required_commands)
-    [[ "$cmds" == "opencode curl jq" ]]
+    [[ "$cmds" == "opencode jq" ]]
+}
+
+@test "cli_get_required_commands: claude は 'claude jq'" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    local cmds
+    cmds=$(cli_get_required_commands)
+    [[ "$cmds" == "claude jq" ]]
+}
+
+@test "cli_get_required_commands: codex は 'codex jq'" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    local cmds
+    cmds=$(cli_get_required_commands)
+    [[ "$cmds" == "codex jq" ]]
+}
+
+# =============================================================================
+# cli_get_flock_timeout
+# =============================================================================
+
+@test "cli_get_flock_timeout: opencode は 600 を返す" {
+    cli_load_config
+    local timeout
+    timeout=$(cli_get_flock_timeout)
+    [[ "$timeout" == "600" ]]
+}
+
+@test "cli_get_flock_timeout: claude は 600 を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: claude
+  model: claude-sonnet-4-20250514
+EOF
+    cli_load_config
+    local timeout
+    timeout=$(cli_get_flock_timeout)
+    [[ "$timeout" == "600" ]]
+}
+
+@test "cli_get_flock_timeout: codex は 600 を返す" {
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
+cli:
+  provider: codex
+  model: gpt-5.2-codex
+EOF
+    cli_load_config
+    local timeout
+    timeout=$(cli_get_flock_timeout)
+    [[ "$timeout" == "600" ]]
 }
 
 # =============================================================================
@@ -172,30 +362,55 @@ EOF
 }
 
 # =============================================================================
-# cli_build_server_command: log_level
+# cli_check_session_alive テスト
 # =============================================================================
 
-@test "cli_build_server_command: log_level 設定時に --log-level が含まれる" {
-    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
-cli:
-  provider: opencode
-  model: openai/o3
-  log_level: ERROR
-EOF
+@test "cli_check_session_alive: セッション ID ファイルが存在すれば成功" {
     cli_load_config
-    local cmd
-    cmd=$(cli_build_server_command "$TEST_TEMP_DIR" "leader")
-    [[ "$cmd" == *"--log-level ERROR"* ]]
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    echo "test-session-id" > "$IGNITE_RUNTIME_DIR/state/.agent_session_0"
+    run cli_check_session_alive "0"
+    [ "$status" -eq 0 ]
 }
 
-@test "cli_build_server_command: log_level 未設定時に --log-level が含まれない" {
-    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
-cli:
-  provider: opencode
-  model: openai/o3
-EOF
+@test "cli_check_session_alive: セッション ID ファイルがなければ失敗" {
     cli_load_config
-    local cmd
-    cmd=$(cli_build_server_command "$TEST_TEMP_DIR" "leader")
-    [[ "$cmd" != *"--log-level"* ]]
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    run cli_check_session_alive "0"
+    [ "$status" -ne 0 ]
+}
+
+@test "cli_check_session_alive: セッション ID ファイルが空なら失敗" {
+    cli_load_config
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    echo -n "" > "$IGNITE_RUNTIME_DIR/state/.agent_session_0"
+    run cli_check_session_alive "0"
+    [ "$status" -ne 0 ]
+}
+
+# =============================================================================
+# cli_save_agent_state / cli_load_agent_state テスト
+# =============================================================================
+
+@test "cli_save_agent_state: port 引数なしで session_id と name を保存" {
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    cli_save_agent_state "0" "test-session-123" "TestAgent"
+    [ "$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0")" = "test-session-123" ]
+    [ "$(cat "$IGNITE_RUNTIME_DIR/state/.agent_name_0")" = "TestAgent" ]
+    # port ファイルは作成されない
+    [ ! -f "$IGNITE_RUNTIME_DIR/state/.agent_port_0" ]
+}
+
+@test "cli_load_agent_state: _AGENT_SESSION_ID と _AGENT_NAME を読み込み" {
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    echo "test-session-456" > "$IGNITE_RUNTIME_DIR/state/.agent_session_0"
+    echo "TestAgent2" > "$IGNITE_RUNTIME_DIR/state/.agent_name_0"
+    cli_load_agent_state "0"
+    [ "$_AGENT_SESSION_ID" = "test-session-456" ]
+    [ "$_AGENT_NAME" = "TestAgent2" ]
 }

@@ -54,6 +54,7 @@ cmd_work_on() {
     setup_session_name
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
 
     # Issue入力チェック
     if [[ -z "$issue_input" ]]; then

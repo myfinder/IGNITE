@@ -1,21 +1,36 @@
 # CLI プロバイダー設定
-# opencode ヘッドレスモード専用
+# provider: opencode / claude / codex を選択
 # model: 使用するモデル名
 #
-# OpenCode の場合（デフォルト）:
+# OpenCode の場合:
 #   cli:
+#     provider: opencode
 #     model: anthropic/claude-sonnet-4-5-20250929
 #
-# Ollama（ローカルLLM）の場合:
+# Claude Code の場合:
+#   cli:
+#     provider: claude
+#     model: claude-opus-4-6
+#   # Max Plan ログイン済みなら ANTHROPIC_API_KEY 不要（サブスク枠で動作）
+#   # API キー方式: .ignite/.env に ANTHROPIC_API_KEY を設定（従量課金）
+#   # API キーが設定されている場合はそちらが優先される
+#
+# Codex CLI の場合:
+#   cli:
+#     provider: codex
+#     model: gpt-5.2-codex
+#
+# Ollama（ローカルLLM）の場合（OpenCode プロバイダーのみ）:
 #   事前に ollama serve を起動し、モデルを pull しておくこと
 #   API Key は不要。OLLAMA_API_URL で接続先を変更可能（デフォルト: http://localhost:11434/v1）
 #   cli:
+#     provider: opencode
 #     model: ollama/qwen3-coder:30b
 
 cli:
-  provider: opencode
-  model: openai/gpt-5.2-codex
-  # log_level: INFO   # opencode serve のログレベル (DEBUG/INFO/WARN/ERROR)
+  provider: claude
+  model: claude-opus-4-6
+  # log_level: INFO   # ログレベル (DEBUG/INFO/WARN/ERROR、opencode のみ)
 
 # 起動タイミング制御の遅延値（get_delay() で読み取り）
 delays:
@@ -24,7 +39,7 @@ delays:
   leader_init: 10          # Leader初期化待機（秒）
   agent_stabilize: 2       # エージェント安定化待機（秒）
   agent_retry_wait: 2      # エージェントリトライ待機（秒）
-  server_ready: 60         # opencode serve ヘルスチェックタイムアウト（秒）
+  server_ready: 60         # エージェント初期化タイムアウト（秒）
   # --- 通常変更不要（システム固有） ---
   process_cleanup: 1       # 旧プロセス停止後の待機（秒）
 

@@ -30,6 +30,7 @@ cmd_status() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
     require_workspace
 
@@ -67,9 +68,9 @@ cmd_status() {
             IFS=':' read -r _pane_idx _agent_name _status <<< "$_health_line"
             local _formatted
             _formatted=$(format_health_status "$_status")
-            local _port
-            _port=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_port_${_pane_idx}" 2>/dev/null || echo "-")
-            echo -e "  ${_formatted} idx ${_pane_idx}: ${_agent_name} (port: ${_port})"
+            local _sid
+            _sid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_${_pane_idx}" 2>/dev/null || echo "-")
+            echo -e "  ${_formatted} idx ${_pane_idx}: ${_agent_name} (session: ${_sid})"
         done < <(get_all_agents_health "$SESSION_NAME")
     else
         print_error "セッション: 停止"

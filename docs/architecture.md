@@ -206,7 +206,7 @@ ignite/
 
 ### エージェントサーバー構成
 
-各エージェントは `opencode serve` によるヘッドレスサーバーとして起動し、HTTP API 経由で制御されます。
+各エージェントは CLI プロバイダー（OpenCode / Claude Code / Codex CLI）の per-message モードで起動し、セッション ID で状態管理されます。
 
 **エージェントの割り当て:**
 

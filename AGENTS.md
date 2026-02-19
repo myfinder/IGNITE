@@ -120,6 +120,6 @@ systemd サービスの起動テストや queue_monitor のプログレス表示
 
 ## 重要な注意事項
 
-- CLI プロバイダーは **OpenCode ヘッドレスモード** 専用です（`opencode serve` で HTTP API 経由で管理）
+- CLI プロバイダーは OpenCode / Claude Code / Codex CLI の 3 種類に対応しています（per-message + session resume パターンで統一）
 - 設定ファイルの読み込みは `scripts/lib/yaml_utils.sh` の関数を使用してください
 - セキュリティ: ユーザー入力は必ず `sanitize_*` 関数でサニタイズすること

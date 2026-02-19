@@ -64,6 +64,7 @@ cmd_stop() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     print_header "IGNITE システム停止"
@@ -107,7 +108,7 @@ cmd_stop() {
         pid=$(cat "$pid_file" 2>/dev/null || true)
         # ファイル名から pane_idx を抽出（.agent_pid_N → N）
         pane_idx="${pid_file##*.agent_pid_}"
-        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+        if [[ -n "$pid" ]] && _validate_pid "$pid" "$(cli_get_process_pattern)"; then
             _kill_process_tree "$pid" "$pane_idx" "$IGNITE_RUNTIME_DIR"
         fi
         rm -f "$pid_file"
@@ -171,12 +172,14 @@ _is_workspace_process() {
 # _sweep_orphan_processes
 # PIDファイルに載っていない孤立プロセスを検出・停止
 _sweep_orphan_processes() {
-    # opencode serve および node 関連プロセスを検出
+    # opencode / Claude Code / Codex CLI 関連プロセスを検出
     local _orphan_pids=""
     _orphan_pids=$(
         {
-            pgrep -f "opencode serve.*--print-logs" 2>/dev/null || true
+            pgrep -f "opencode run" 2>/dev/null || true
             pgrep -f "node.*opencode" 2>/dev/null || true
+            pgrep -f "claude.*--dangerously-skip-permissions" 2>/dev/null || true
+            pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _op; do
             [[ -n "$_op" ]] || continue
             # WORKSPACE_DIR マッチで自ワークスペースのプロセスのみ対象（他WS誤kill防止）
@@ -205,7 +208,7 @@ _sweep_orphan_processes() {
     echo "$_orphan_pids" | while read -r _op; do
         [[ -n "$_op" ]] || continue
         if kill -0 "$_op" 2>/dev/null; then
-            if _validate_pid "$_op" "opencode"; then
+            if _validate_pid "$_op" "$(cli_get_process_pattern)"; then
                 log_warn "孤立プロセス PID=$_op が停止しません。SIGKILL を送信します"
                 pkill -9 -P "$_op" 2>/dev/null || true
                 kill -9 "$_op" 2>/dev/null || true
@@ -220,8 +223,10 @@ _check_remaining_processes() {
     local _remaining=""
     _remaining=$(
         {
-            pgrep -f "opencode serve.*--print-logs" 2>/dev/null || true
+            pgrep -f "opencode run" 2>/dev/null || true
             pgrep -f "node.*opencode" 2>/dev/null || true
+            pgrep -f "claude.*--dangerously-skip-permissions" 2>/dev/null || true
+            pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _rp; do
             [[ -n "$_rp" ]] || continue
             if _is_workspace_process "$_rp"; then

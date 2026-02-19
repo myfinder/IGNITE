@@ -56,7 +56,7 @@ teardown() {
 
 # --- setup_session_name ---
 
-@test "setup_session_name: runtime.yaml + Leader PID 生存でセッション名を取得" {
+@test "setup_session_name: runtime.yaml + Leader session_id 存在でセッション名を取得" {
     # ワークスペースに runtime.yaml を作成
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/state"
@@ -64,8 +64,8 @@ teardown() {
 session_name: ignite-test1234
 dry_run: false
 EOF
-    # 自プロセスの PID を Leader PID として設定（必ず生存している）
-    echo "$$" > "$ws/.ignite/state/.agent_pid_0"
+    # セッション ID ファイルを設定（per-message モデルのため PID は不要）
+    echo "test-session-id" > "$ws/.ignite/state/.agent_session_0"
 
     SESSION_NAME=""
     WORKSPACE_DIR="$ws"
@@ -76,7 +76,7 @@ EOF
     [ "$WORKSPACE_DIR" = "$ws" ]
 }
 
-@test "setup_session_name: runtime.yaml あるが Leader PID 死亡 → 新規生成" {
+@test "setup_session_name: runtime.yaml あるが session_id なし → 新規生成" {
     # ワークスペースに runtime.yaml を作成
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/state"
@@ -84,15 +84,14 @@ EOF
 session_name: ignite-dead
 dry_run: false
 EOF
-    # 存在しない PID を設定
-    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+    # session_id ファイルなし → Leader は停止扱い
 
     SESSION_NAME=""
     WORKSPACE_DIR="$ws"
 
     setup_session_name
 
-    # Leader PID が死亡しているので新規生成される
+    # session_id がないので新規生成される
     [[ "$SESSION_NAME" == ignite-* ]]
     [ "$SESSION_NAME" != "ignite-dead" ]
 }
@@ -192,30 +191,29 @@ EOF
 
 # --- cleanup_stale_sessions ---
 
-@test "cleanup_stale_sessions: PID死亡のセッションYAMLを削除" {
+@test "cleanup_stale_sessions: session_idなしのセッションYAMLを削除" {
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
     cat > "$ws/.ignite/sessions/stale.yaml" << EOF
 session_name: ignite-stale
 workspace_dir: $ws
 EOF
-    # 存在しないPIDを設定
-    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+    # session_id ファイルなし → stale 扱い
 
     run cleanup_stale_sessions "$ws"
     [ "$status" -eq 0 ]
     [ ! -f "$ws/.ignite/sessions/stale.yaml" ]
 }
 
-@test "cleanup_stale_sessions: PID生存のセッションYAMLは残す" {
+@test "cleanup_stale_sessions: session_id存在のセッションYAMLは残す" {
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
     cat > "$ws/.ignite/sessions/active.yaml" << EOF
 session_name: ignite-active
 workspace_dir: $ws
 EOF
-    # 自プロセスのPIDを設定（必ず生存）
-    echo "$$" > "$ws/.ignite/state/.agent_pid_0"
+    # セッション ID ファイルを設定（per-message のため PID は不要）
+    echo "test-session-id" > "$ws/.ignite/state/.agent_session_0"
 
     run cleanup_stale_sessions "$ws"
     [ "$status" -eq 0 ]
@@ -246,8 +244,7 @@ EOF
 session_name: ignite-stale3
 workspace_dir: $ws
 EOF
-    # 存在しないPIDを設定
-    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+    # session_id ファイルなし → 全て stale 扱い
 
     run cleanup_stale_sessions "$ws"
     [ "$status" -eq 0 ]
@@ -330,33 +327,32 @@ EOF
     [[ "$output" == *"workspace_dir が欠損"* ]]
 }
 
-@test "list_all_sessions: staleセッション（PID無効）をSTATUS=stoppedとして出力" {
+@test "list_all_sessions: session_idなしのセッションをSTATUS=stoppedとして出力" {
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
     cat > "$ws/.ignite/sessions/stale.yaml" << EOF
 session_name: ignite-stale
 workspace_dir: $ws
 EOF
-    # 存在しないPIDを設定
-    echo "99999999" > "$ws/.ignite/state/.agent_pid_0"
+    # session_id ファイルなし → stopped 扱い
 
     WORKSPACE_DIR="$ws"
     run list_all_sessions
-    # staleセッションはスキップされず stopped として出力される
+    # session_idなしのセッションはスキップされず stopped として出力される
     [ "$status" -eq 0 ]
     [[ "$output" == *"ignite-stale"* ]]
     [[ "$output" == *"stopped"* ]]
 }
 
-@test "list_all_sessions: running セッション（PID生存）を正しく判定" {
+@test "list_all_sessions: running セッション（session_id存在）を正しく判定" {
     local ws="$TEST_TEMP_DIR/workspace"
     mkdir -p "$ws/.ignite/sessions" "$ws/.ignite/state"
     cat > "$ws/.ignite/sessions/active.yaml" << EOF
 session_name: ignite-active
 workspace_dir: $ws
 EOF
-    # 自プロセスのPIDを設定（必ず生存）
-    echo "$$" > "$ws/.ignite/state/.agent_pid_0"
+    # セッション ID ファイルを設定（per-message のため PID は不要）
+    echo "test-session-id" > "$ws/.ignite/state/.agent_session_0"
 
     WORKSPACE_DIR="$ws"
     run list_all_sessions

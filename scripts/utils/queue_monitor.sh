@@ -360,9 +360,8 @@ _check_init_and_stale_agents() {
                     ;;
             esac
 
-            # HTTP ヘルスチェックで活動判定
-            cli_load_agent_state "$idx"
-            if [[ -n "${_AGENT_PORT:-}" ]] && cli_check_server_health "$_AGENT_PORT"; then
+            # セッション存在チェックで活動判定
+            if cli_check_session_alive "$idx"; then
                 touch "$init_flag"
                 continue
             fi
@@ -372,9 +371,8 @@ _check_init_and_stale_agents() {
             continue
         fi
 
-        # HTTP ヘルスチェックで活動判定（初期化済みのエージェント対象）
-        cli_load_agent_state "$idx"
-        if [[ -n "${_AGENT_PORT:-}" ]] && cli_check_server_health "$_AGENT_PORT"; then
+        # セッション存在チェックで活動判定（初期化済みのエージェント対象）
+        if cli_check_session_alive "$idx"; then
             touch "$init_flag" 2>/dev/null || true
         fi
     done <<< "$pane_indices"
@@ -657,9 +655,12 @@ _write_task_health_snapshot() {
     timestamp=$(date -Iseconds)
 
     local agents_json="[]"
-    local leader_pid
-    leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
-    if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
+    # 全プロバイダー統一: session_id ファイルの存在で判定（per-message のため PID は一時的）
+    local _th_leader_alive=false
+    local _th_leader_session
+    _th_leader_session=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0" 2>/dev/null || true)
+    [[ -n "$_th_leader_session" ]] && _th_leader_alive=true
+    if [[ "$_th_leader_alive" == true ]]; then
         agents_json=$(get_agents_health_json "$SESSION_ID" 2>/dev/null || echo "[]")
     fi
 
@@ -915,18 +916,20 @@ send_to_agent() {
     fi
 
     local lock_file="$IGNITE_RUNTIME_DIR/state/.send_lock_${pane_index}"
+    local _flock_timeout
+    _flock_timeout=$(cli_get_flock_timeout 2>/dev/null || echo "30")
     (
-        flock -w 30 200 || { log_warn "ロック取得タイムアウト: agent=$agent"; return 1; }
+        flock -w "$_flock_timeout" 200 || { log_warn "ロック取得タイムアウト: agent=$agent"; return 1; }
         cli_load_agent_state "$pane_index"
-        if [[ -z "${_AGENT_PORT:-}" ]] || [[ -z "${_AGENT_SESSION_ID:-}" ]]; then
+        if [[ -z "${_AGENT_SESSION_ID:-}" ]]; then
             log_warn "エージェントステートが見つかりません: $agent (idx=$pane_index)"
             return 1
         fi
-        if ! cli_check_server_health "$_AGENT_PORT"; then
-            log_warn "エージェントが応答しません: $agent (port=$_AGENT_PORT)"
+        if ! cli_check_session_alive "$pane_index"; then
+            log_warn "エージェントセッションが見つかりません: $agent (idx=$pane_index)"
             return 1
         fi
-        if cli_send_message "$_AGENT_PORT" "$_AGENT_SESSION_ID" "$message"; then
+        if cli_send_message "$_AGENT_SESSION_ID" "$message"; then
             log_success "エージェント $agent (idx $pane_index) にメッセージを送信しました"
             _mark_agent_initialized "$pane_index"
             return 0
@@ -1627,10 +1630,12 @@ monitor_queues() {
     local last_health_check_epoch=0
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-        # Leader プロセス生存チェック（誤検知対策）
-        local leader_pid
-        leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
-        if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+        # Leader 生存チェック（全プロバイダー統一: session_id ファイルの存在で判定）
+        local _leader_alive=false
+        local _leader_session
+        _leader_session=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0" 2>/dev/null || true)
+        [[ -n "$_leader_session" ]] && _leader_alive=true
+        if [[ "$_leader_alive" != true ]]; then
             local now_epoch
             now_epoch=$(date +%s)
             if [[ $missing_session_count -eq 0 ]]; then

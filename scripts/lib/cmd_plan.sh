@@ -43,6 +43,7 @@ cmd_plan() {
     setup_session_name
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
 
     # 引数チェック
     if [[ -z "$goal" ]]; then
