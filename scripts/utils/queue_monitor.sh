@@ -1414,7 +1414,7 @@ process_message() {
     # エージェントに送信（開始後は完了まで中断しない）
     if send_to_agent "$queue_name" "$instruction"; then
         # 配信成功: status=delivered に更新
-        mime_update_status "$file" "delivered"
+        mime_update_status "$file" "delivered" || true
     fi
     # 失敗時は status=processing のまま（リトライ対象）
 }
