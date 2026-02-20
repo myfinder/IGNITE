@@ -43,6 +43,10 @@ delays:
   # --- 通常変更不要（システム固有） ---
   process_cleanup: 1       # 旧プロセス停止後の待機（秒）
 
+queue:
+  poll_interval: 10    # ポーリング間隔（秒）
+  parallel_max: 4      # メッセージ配信の最大並列数（エージェント単位）
+
 defaults:
   message_priority: normal
   task_timeout: 300  # seconds

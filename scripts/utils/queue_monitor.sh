@@ -2,6 +2,11 @@
 # キュー監視・自動処理スクリプト
 # キューに新しいメッセージが来たら、対応するエージェントに処理を指示
 #
+# 配信方式: 2フェーズ並列ディスパッチ
+#   Phase 1: 全キューから未処理メッセージを収集（直列・高速）
+#   Phase 2: エージェントごとにバックグラウンドジョブで並列配信
+#            同一エージェント内のメッセージは直列で順序保証
+#
 # 配信保証: at-least-once（リトライ機構統合済み）
 #   - at-most-once: mv → process の原子性で重複防止
 #   - タイムアウト検知 + process_retry() でリトライ保証
@@ -126,6 +131,32 @@ MONITOR_PROGRESS_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_progress.log"
 
 # CLI プロバイダー設定を読み込み（send_to_agent でのプロバイダー判定に必要）
 cli_load_config 2>/dev/null || true
+
+# =============================================================================
+# 並列配信設定
+# =============================================================================
+_PARALLEL_MAX="${QUEUE_PARALLEL_MAX:-4}"
+_SHUTDOWN_FLAG_FILE="${IGNITE_RUNTIME_DIR}/state/.queue_monitor_shutdown"
+
+_load_queue_config() {
+    local sys_yaml="${IGNITE_CONFIG_DIR}/system.yaml"
+    if [[ -f "$sys_yaml" ]]; then
+        local val
+        val=$(sed -n '/^queue:/,/^[^ ]/p' "$sys_yaml" | awk -F': ' '/^  parallel_max:/{print $2; exit}' | sed 's/ *#.*//' | xargs)
+        _PARALLEL_MAX="${val:-4}"
+
+        val=$(sed -n '/^queue:/,/^[^ ]/p' "$sys_yaml" | awk -F': ' '/^  poll_interval:/{print $2; exit}' | sed 's/ *#.*//' | xargs)
+        [[ -n "$val" ]] && POLL_INTERVAL="$val"
+    fi
+}
+_load_queue_config
+
+# 並列数スロット待機: バックグラウンドジョブ数が _PARALLEL_MAX 以上なら待つ
+_wait_for_slot() {
+    while [[ $(jobs -rp | wc -l) -ge $_PARALLEL_MAX ]]; do
+        wait -n 2>/dev/null || true
+    done
+}
 
 # ヘルスチェック/自動リカバリ設定
 HEALTH_CHECK_INTERVAL=60
@@ -1374,7 +1405,8 @@ process_message() {
     esac
 
     # シャットダウン要求時は新規送信を開始しない
-    if [[ "$_SHUTDOWN_REQUESTED" == true ]]; then
+    # サブシェルからはフラグファイルで検知（親の変数更新は見えないため）
+    if [[ "$_SHUTDOWN_REQUESTED" == true ]] || [[ -f "${_SHUTDOWN_FLAG_FILE:-}" ]]; then
         log_warn "シャットダウン要求中のため送信をスキップ: $file"
         return 0
     fi
@@ -1493,7 +1525,13 @@ _convert_yaml_to_mime() {
     fi
 }
 
-scan_queue() {
+# =============================================================================
+# Phase 1: キュー収集（高速・直列）
+# .mime ファイルを processed/ に移動し _PENDING_WORK 配列に蓄積
+# =============================================================================
+declare -a _PENDING_WORK=()
+
+scan_queue_collect() {
     local queue_dir="$1"
     local queue_name="$2"
 
@@ -1512,26 +1550,96 @@ scan_queue() {
     done
 
     # キューディレクトリ直下の .mime ファイル = 未処理メッセージ
+    # ソートしてタイムスタンプ順を保証
+    local files=()
     for file in "$queue_dir"/*.mime; do
         [[ -f "$file" ]] || continue
 
         # ファイル名が {type}_{timestamp}.mime パターンに一致しない場合は正規化
         file=$(normalize_filename "$file")
         [[ -f "$file" ]] || continue
+        files+=("$file")
+    done
 
+    # タイムスタンプ順にソート（ファイル名ベース）
+    if [[ ${#files[@]} -gt 1 ]]; then
+        IFS=$'\n' files=($(printf '%s\n' "${files[@]}" | sort)); unset IFS
+    fi
+
+    for file in "${files[@]}"; do
         local filename
         filename=$(basename "$file")
         local dest="$queue_dir/processed/$filename"
 
-        # at-least-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
+        # at-least-once 配信: 先に processed/ へ移動
         mv "$file" "$dest" 2>/dev/null || continue
 
         # status=processing + processed_at を追記（タイムアウト検知の基点）
         mime_update_status "$dest" "processing" "$(date -Iseconds)"
 
-        # 処理（processed/ 内のパスを渡す）
-        process_message "$dest" "$queue_name"
+        _PENDING_WORK+=("${dest}|${queue_name}")
     done
+}
+
+# =============================================================================
+# Phase 2: 並列配信
+# キュー名でグループ化し、エージェントごとにバックグラウンドジョブを起動
+# 同一エージェント内のメッセージは直列で順序保証
+# =============================================================================
+dispatch_pending_work() {
+    [[ ${#_PENDING_WORK[@]} -eq 0 ]] && return
+
+    # キュー名でグループ化（同一エージェント宛は1ジョブにまとめる）
+    declare -A _grouped
+    for item in "${_PENDING_WORK[@]}"; do
+        local dest="${item%%|*}"
+        local queue_name="${item##*|}"
+        _grouped[$queue_name]+="${dest}"$'\n'
+    done
+
+    log_info "並列配信開始: ${#_PENDING_WORK[@]} 件 / ${#_grouped[@]} キュー (最大並列数: $_PARALLEL_MAX)"
+
+    local _pids=()
+    for queue_name in "${!_grouped[@]}"; do
+        [[ "$_SHUTDOWN_REQUESTED" == true ]] && break
+
+        _wait_for_slot
+
+        # 各エージェントに1つのバックグラウンドジョブ
+        # → 同一エージェント内のメッセージは直列で順序保証
+        (
+            while IFS= read -r dest; do
+                [[ -z "$dest" ]] && continue
+                [[ -f "$_SHUTDOWN_FLAG_FILE" ]] && break
+                process_message "$dest" "$queue_name"
+            done <<< "${_grouped[$queue_name]}"
+        ) &
+        _pids+=($!)
+    done
+
+    # 全ジョブ完了待ち + 失敗カウント
+    local _failed=0
+    for pid in "${_pids[@]}"; do
+        wait "$pid" 2>/dev/null || _failed=$((_failed + 1))
+    done
+    [[ $_failed -gt 0 ]] && log_warn "並列配信完了: ${_failed}/${#_grouped[@]} キューで失敗あり"
+
+    _PENDING_WORK=()
+}
+
+# 互換シム: テスト等からの直接呼び出し用
+scan_queue() {
+    local queue_dir="$1"
+    local queue_name="$2"
+    local _saved_work=("${_PENDING_WORK[@]}")
+    _PENDING_WORK=()
+    scan_queue_collect "$queue_dir" "$queue_name"
+    for item in "${_PENDING_WORK[@]}"; do
+        local dest="${item%%|*}"
+        local qn="${item##*|}"
+        process_message "$dest" "$qn"
+    done
+    _PENDING_WORK=("${_saved_work[@]}")
 }
 
 # =============================================================================
@@ -1657,23 +1765,29 @@ monitor_queues() {
         missing_session_count=0
         missing_session_first_at=0
 
+        # Phase 1: 全キューから未処理メッセージを収集（直列・高速）
+        _PENDING_WORK=()
+
         # Leader キュー
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
 
         # Sub-Leaders キュー
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
 
         # IGNITIAN キュー（個別ディレクトリ方式 - Sub-Leadersと同じパターン）
         for ignitian_dir in "$IGNITE_RUNTIME_DIR/queue"/ignitian[_-]*; do
             [[ -d "$ignitian_dir" ]] || continue
             local dirname
             dirname=$(basename "$ignitian_dir")
-            scan_queue "$ignitian_dir" "$dirname"
+            scan_queue_collect "$ignitian_dir" "$dirname"
         done
+
+        # Phase 2: 並列配信（エージェントごとにバックグラウンドジョブ）
+        dispatch_pending_work
 
         # タイムアウト検査（全キューの processed/ を走査）
         scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
@@ -1809,7 +1923,7 @@ main() {
     _write_heartbeat
 
     # SIGHUP ハンドラ（フラグベース遅延リロード）
-    # trap内で直接load_config()を呼ぶと、scan_queue()実行中に
+    # trap内で直接load_config()を呼ぶと、dispatch_pending_work()実行中に
     # 設定変更の競合が発生するリスクがあるため、
     # フラグを立てるだけにしてメインループ内で安全にリロードする
     _handle_sighup() {
@@ -1818,11 +1932,13 @@ main() {
     }
 
     # グレースフル停止: フラグベース（trap内でexit()を呼ばない）
-    # scan_queue()/send_to_agent()完了を待ってから安全に停止する
+    # dispatch_pending_work()/send_to_agent()完了を待ってから安全に停止する
     graceful_shutdown() {
         _SHUTDOWN_SIGNAL="$1"
         _SHUTDOWN_REQUESTED=true
         _EXIT_CODE=$((128 + $1))
+        # サブシェルにシャットダウンを通知（変数は伝播しないためファイルで通知）
+        touch "$_SHUTDOWN_FLAG_FILE" 2>/dev/null || true
         log_info "シグナル受信 (${1}): 安全に停止します"
     }
     trap 'graceful_shutdown 15' SIGTERM
@@ -1833,6 +1949,8 @@ main() {
     cleanup_and_log() {
         local exit_code=$?
         [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
+        # シャットダウンフラグファイルを削除
+        rm -f "$_SHUTDOWN_FLAG_FILE"
         # モニター状態を保存（resume backoff 用）
         _on_monitor_exit "$exit_code"
         # バックグラウンドプロセスのクリーンアップ
