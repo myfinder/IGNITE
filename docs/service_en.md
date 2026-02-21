@@ -96,7 +96,7 @@ ignite-watcher@my-project.service loaded active running IGNITE Watcher my-projec
 
 ### Queue Monitor Lifecycle
 
-`queue_monitor.sh` monitors message queues and delivers new messages to agents.
+`queue_monitor.sh` monitors message queues and delivers new messages to agents. It uses 2-phase parallel dispatch to deliver messages to different agents simultaneously (controlled by `queue.parallel_max`, default 9).
 
 #### Exclusive Locking (flock)
 
@@ -740,6 +740,8 @@ ignite status
 # Use ignite stop for cleanup
 ignite stop -s <session-name>
 ```
+
+> **Tip:** When cleaning up orphan processes, `ignite stop` uses `_is_own_process_tree` to filter out the calling CLI process (e.g., Claude Code). This prevents accidentally killing your own session when running `ignite stop` from within Claude Code.
 
 ---
 

@@ -45,7 +45,7 @@ delays:
 
 queue:
   poll_interval: 10    # ポーリング間隔（秒）
-  parallel_max: 4      # メッセージ配信の最大並列数（エージェント単位）
+  parallel_max: 9      # メッセージ配信の最大並列数（エージェント単位）
 
 defaults:
   message_priority: normal

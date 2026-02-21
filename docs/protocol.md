@@ -489,6 +489,7 @@ python3 scripts/lib/ignite_mime.py build \
 - MIMEパースエラー: ログに記録、スキップ
 - 必須ヘッダー欠如: ログに記録、スキップ
 - 不明なtype: ログに記録、スキップ
+- 無効な宛先（To）: `send_message.sh` の `_validate_to` でバリデーション。有効な宛先は `leader`, `strategist`, `architect`, `evaluator`, `coordinator`, `innovator`, `ignitian_N` のみ。不正な宛先（メッセージタイプ名等）はエラーで即座に拒否
 
 ### タイムアウト・リトライ
 

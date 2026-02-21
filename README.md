@@ -124,8 +124,8 @@ IGNITEメンバーへの愛を胸に、Coordinatorから割り当てられたタ
 | 構成 | プロセス数 | メモリ (RAM) | CPU | ストレージ |
 |------|----------|-------------|-----|-----------|
 | **Leader単体モード** | 1 | 4GB以上 | 2コア以上 | 100MB以上 |
-| **デフォルト構成** (Leader + Sub-Leaders + 8 IGNITIANs) | 14 | 8GB以上 | 4コア以上 | 500MB以上 |
-| **最大構成** (Leader + Sub-Leaders + 32 IGNITIANs) | 38 | 16GB以上 | 8コア以上 | 1GB以上 |
+| **デフォルト構成** (Leader + Sub-Leaders + 8 IGNITIANS) | 14 | 8GB以上 | 4コア以上 | 500MB以上 |
+| **最大構成** (Leader + Sub-Leaders + 32 IGNITIANS) | 38 | 16GB以上 | 8コア以上 | 1GB以上 |
 
 - **OS**: Linux / Windows (WSL2) / macOS（開発モード）
 - **アーキテクチャ**: x86_64 / ARM64
@@ -422,7 +422,7 @@ sequenceDiagram
     participant E as Evaluator
     participant I as Innovator
     participant C as Coordinator
-    participant IG as IGNITIANs
+    participant IG as IGNITIANS
 
     U->>L: user_goal
     L->>S: strategy_request
@@ -462,7 +462,7 @@ IGNITEは **YAMLファイルキュー** と **SQLiteデータベース** の2層
 | **メッセージング層** | YAMLファイルキュー | エージェント間の非同期通信（指示・応答の配信） | 短命（配信完了で役目終了） |
 | **ストレージ層** | SQLite (`memory.db`) | メモリ永続化・タスク状態追跡・ダッシュボード生成 | 永続（セッション横断で保持） |
 
-- **YAMLキュー**: `queue_monitor.sh` が10秒ポーリングで監視し、at-least-once配信保証・Exponential Backoffリトライ・DLQエスカレーションを提供
+- **YAMLキュー**: `queue_monitor.sh` がポーリング監視（`queue.poll_interval`、デフォルト10秒）し、エージェント単位の並列配信（`queue.parallel_max`、デフォルト9）で高速に配信。at-least-once配信保証・Exponential Backoffリトライ・DLQエスカレーションを提供
 - **SQLite**: WALモードで並行アクセスに対応。全エージェントが学習・決定・タスク状態をセッション横断で記録し、再起動時の状態復元やMemory Insightsに活用
 
 詳細は [docs/architecture.md](docs/architecture.md) の「データストレージアーキテクチャ」セクションを参照してください。
@@ -609,7 +609,7 @@ ignite start --agents leader
 
 | シナリオ | 説明 |
 |---------|------|
-| **コスト削減** | Sub-LeadersやIGNITIANsを起動しないため、トークン消費を大幅に削減 |
+| **コスト削減** | Sub-LeadersやIGNITIANSを起動しないため、トークン消費を大幅に削減 |
 | **単純タスク処理** | 簡単なタスク（ファイル編集、軽微な修正など）にはLeader一人で十分 |
 | **迅速な対応** | 複雑な協調プロセスをスキップして素早く処理 |
 | **デバッグ・テスト** | システムの動作確認やテスト時に最小構成で実行 |
@@ -618,12 +618,12 @@ ignite start --agents leader
 
 | 項目 | 通常モード | Leaderオンリーモード |
 |------|-----------|---------------------|
-| 起動エージェント | Leader + 5 Sub-Leaders + IGNITIANs | Leaderのみ |
+| 起動エージェント | Leader + 5 Sub-Leaders + IGNITIANS | Leaderのみ |
 | 戦略立案 | Strategistが担当 | Leaderが直接実行 |
 | 設計判断 | Architectが担当 | Leaderが直接実行 |
-| タスク実行 | IGNITIANsが並列実行 | Leaderが直接実行 |
+| タスク実行 | IGNITIANSが並列実行 | Leaderが直接実行 |
 | 品質評価 | Evaluatorが担当 | Leaderが直接確認 |
-| エージェントプロセス数 | 6+（Sub-Leaders + IGNITIANs） | 1（Leaderのみ） |
+| エージェントプロセス数 | 6+（Sub-Leaders + IGNITIANS） | 1（Leaderのみ） |
 
 **注意事項:**
 - 複雑なタスクや大規模な変更には通常モード（協調モード）を推奨します
@@ -642,7 +642,7 @@ ignite plan "プロジェクトのドキュメントを作成する"
 1. Strategist がドキュメントの構造を決定
 2. Architect が情報構造を設計
 3. Coordinator が各セクションをIGNITIANSに配分
-4. IGNITIANs が並列でセクションを執筆
+4. IGNITIANS が並列でセクションを執筆
 5. Evaluator が完成度を評価
 6. Innovator が改善提案
 
@@ -656,7 +656,7 @@ ignite plan "タスク管理CLIツールを実装する" -c "add, list, complete
 1. Strategist が実装をフェーズに分解
 2. Architect がコード構造を設計
 3. Coordinator が機能ごとにタスクを配分
-4. IGNITIANs が並列で実装
+4. IGNITIANS が並列で実装
 5. Evaluator がコード品質とテストを検証
 6. Innovator がリファクタリング提案
 
@@ -670,7 +670,7 @@ ignite plan "プロジェクトのコードベースを分析して改善点を�
 1. Strategist が分析戦略を立案
 2. Architect が分析対象の優先度を決定
 3. Coordinator が分析タスクを配分
-4. IGNITIANs が並列で分析
+4. IGNITIANS が並列で分析
 5. Evaluator が分析結果の妥当性を検証
 6. Innovator が具体的な改善案を提示
 
@@ -687,8 +687,15 @@ nano config/system.yaml
 
 ```yaml
 defaults:
-  worker_count: 3    # IGNITIANs並列数
+  worker_count: 3    # IGNITIANS並列数
+
+queue:
+  poll_interval: 10  # ポーリング間隔（秒）
+  parallel_max: 9    # メッセージ配信の最大並列数（エージェント単位）
 ```
+
+- `worker_count`: IGNITIAN ワーカーの並列数を制御
+- `parallel_max`: queue_monitor がメッセージを配信する際の最大並列数。エージェント単位で並列配信し、同一エージェント内の複数メッセージは順序保証のため直列配信
 
 変更後はシステムを再起動:
 ```bash
