@@ -831,6 +831,14 @@ IGNITE システムはセッション横断のメモリを SQLite データベ�
 
 > **注**: `sqlite3` コマンドが利用できない環境では、メモリ操作はスキップしてください。コア機能（改善提案・最適化）には影響しません。
 
+### テーブルスキーマ
+
+| テーブル | カラム |
+|---|---|
+| `agent_states` | `agent` (PK), `status`, `current_task_id`, `last_active`, `summary` |
+| `tasks` | `task_id` (PK), `assigned_to`, `delegated_by`, `status`, `title`, `repository`, `issue_number`, `dependencies`, `started_at`, `completed_at` |
+| `memories` | `id` (PK), `agent`, `type`, `content`, `context`, `task_id`, `repository`, `issue_number`, `timestamp` |
+
 ### セッション開始時の状態復元
 
 起動時に以下のクエリで前回の状態を復元してください:

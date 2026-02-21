@@ -417,7 +417,7 @@ payload:
   attempted_solutions:
     - "{試行1の内容と結果}"
     - "{試行2の内容と結果}"
-  current_state: |
+  current_state: |  # ※ メッセージ用フィールド（DBカラムではない）
     {現在の作業状態}
   repository: "{REPOSITORY}"
   issue_number: {ISSUE_NUMBER}
@@ -982,6 +982,14 @@ IGNITE システムはセッション横断のメモリを SQLite データベ�
 データベースパス: `.ignite/state/memory.db`
 
 > **注**: `sqlite3` コマンドが利用できない環境では、メモリ操作はスキップしてください。コア機能（タスク実行・レポート送信）には影響しません。
+
+### テーブルスキーマ
+
+| テーブル | カラム |
+|---|---|
+| `agent_states` | `agent` (PK), `status`, `current_task_id`, `last_active`, `summary` |
+| `tasks` | `task_id` (PK), `assigned_to`, `delegated_by`, `status`, `title`, `repository`, `issue_number`, `dependencies`, `started_at`, `completed_at` |
+| `memories` | `id` (PK), `agent`, `type`, `content`, `context`, `task_id`, `repository`, `issue_number`, `timestamp` |
 
 ### セッション開始時の状態復元
 

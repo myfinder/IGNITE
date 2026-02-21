@@ -152,10 +152,12 @@ _load_queue_config() {
 _load_queue_config
 
 # 並列数スロット待機: バックグラウンドジョブ数が _PARALLEL_MAX 以上なら待つ
-_wait_for_slot() {
-    while [[ $(jobs -rp | wc -l) -ge $_PARALLEL_MAX ]]; do
-        wait -n 2>/dev/null || true
-    done
+_has_available_slot() {
+    _reap_completed_jobs
+    [[ ${#_RUNNING_PIDS[@]} -lt $_PARALLEL_MAX ]]
+}
+_wait_for_slot() {  # 互換シム
+    while ! _has_available_slot; do sleep 0.5; done
 }
 
 # ヘルスチェック/自動リカバリ設定
@@ -1530,6 +1532,22 @@ _convert_yaml_to_mime() {
 # .mime ファイルを processed/ に移動し _PENDING_WORK 配列に蓄積
 # =============================================================================
 declare -a _PENDING_WORK=()
+declare -a _RUNNING_PIDS=()  # "pid|queue_name" 形式
+
+# 完了済みバックグラウンドジョブを回収し _RUNNING_PIDS を更新
+_reap_completed_jobs() {
+    local _new_pids=() _failed=0
+    for entry in "${_RUNNING_PIDS[@]}"; do
+        local pid="${entry%%|*}"
+        if kill -0 "$pid" 2>/dev/null; then
+            _new_pids+=("$entry")
+        else
+            wait "$pid" 2>/dev/null || _failed=$((_failed + 1))
+        fi
+    done
+    _RUNNING_PIDS=("${_new_pids[@]}")
+    [[ $_failed -gt 0 ]] && log_warn "完了ジョブ: ${_failed} 件で配信失敗あり"
+}
 
 scan_queue_collect() {
     local queue_dir="$1"
@@ -1589,6 +1607,9 @@ scan_queue_collect() {
 dispatch_pending_work() {
     [[ ${#_PENDING_WORK[@]} -eq 0 ]] && return
 
+    # 完了ジョブを回収してスロットを空ける
+    _reap_completed_jobs
+
     # キュー名でグループ化（同一エージェント宛は1ジョブにまとめる）
     declare -A _grouped
     for item in "${_PENDING_WORK[@]}"; do
@@ -1597,13 +1618,22 @@ dispatch_pending_work() {
         _grouped[$queue_name]+="${dest}"$'\n'
     done
 
-    log_info "並列配信開始: ${#_PENDING_WORK[@]} 件 / ${#_grouped[@]} キュー (最大並列数: $_PARALLEL_MAX)"
+    log_info "並列配信開始: ${#_PENDING_WORK[@]} 件 / ${#_grouped[@]} キュー (実行中: ${#_RUNNING_PIDS[@]}/${_PARALLEL_MAX})"
 
-    local _pids=()
+    local _dispatched=0
+    local _remaining=()
     for queue_name in "${!_grouped[@]}"; do
         [[ "$_SHUTDOWN_REQUESTED" == true ]] && break
 
-        _wait_for_slot
+        # スロット満杯なら残りを保持して return
+        if ! _has_available_slot; then
+            # 未ディスパッチ分を _remaining に蓄積
+            while IFS= read -r dest; do
+                [[ -z "$dest" ]] && continue
+                _remaining+=("${dest}|${queue_name}")
+            done <<< "${_grouped[$queue_name]}"
+            continue
+        fi
 
         # 各エージェントに1つのバックグラウンドジョブ
         # → 同一エージェント内のメッセージは直列で順序保証
@@ -1614,17 +1644,14 @@ dispatch_pending_work() {
                 process_message "$dest" "$queue_name"
             done <<< "${_grouped[$queue_name]}"
         ) &
-        _pids+=($!)
+        _RUNNING_PIDS+=("$!|${queue_name}")
+        _dispatched=$((_dispatched + 1))
     done
 
-    # 全ジョブ完了待ち + 失敗カウント
-    local _failed=0
-    for pid in "${_pids[@]}"; do
-        wait "$pid" 2>/dev/null || _failed=$((_failed + 1))
-    done
-    [[ $_failed -gt 0 ]] && log_warn "並列配信完了: ${_failed}/${#_grouped[@]} キューで失敗あり"
+    # ディスパッチ済み分をクリアし、未ディスパッチ分を次サイクルに残す
+    _PENDING_WORK=("${_remaining[@]}")
 
-    _PENDING_WORK=()
+    [[ $_dispatched -gt 0 ]] && log_info "並列配信: ${_dispatched} キュー起動 (実行中: ${#_RUNNING_PIDS[@]})"
 }
 
 # 互換シム: テスト等からの直接呼び出し用
@@ -1739,6 +1766,9 @@ monitor_queues() {
     local last_health_check_epoch=0
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
+        # 完了済みバックグラウンドジョブを回収
+        _reap_completed_jobs
+
         # Leader 生存チェック（全プロバイダー統一: session_id ファイルの存在で判定）
         local _leader_alive=false
         local _leader_session
@@ -1766,7 +1796,7 @@ monitor_queues() {
         missing_session_first_at=0
 
         # Phase 1: 全キューから未処理メッセージを収集（直列・高速）
-        _PENDING_WORK=()
+        # 注: 前サイクルの未ディスパッチ分は _PENDING_WORK に残っている
 
         # Leader キュー
         scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
@@ -1849,6 +1879,14 @@ monitor_queues() {
             i=$((i + 1))
         done
     done
+
+    # シャットダウン: 実行中のバックグラウンドジョブ完了を待機
+    if [[ ${#_RUNNING_PIDS[@]} -gt 0 ]]; then
+        log_info "シャットダウン: 実行中のジョブ ${#_RUNNING_PIDS[@]} 件の完了を待機..."
+        for entry in "${_RUNNING_PIDS[@]}"; do
+            wait "${entry%%|*}" 2>/dev/null || true
+        done
+    fi
 
     exit "${_EXIT_CODE:-0}"
 }
