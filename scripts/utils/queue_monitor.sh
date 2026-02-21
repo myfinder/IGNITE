@@ -1563,7 +1563,7 @@ scan_queue_collect() {
 
     # タイムスタンプ順にソート（ファイル名ベース）
     if [[ ${#files[@]} -gt 1 ]]; then
-        IFS=$'\n' files=($(printf '%s\n' "${files[@]}" | sort)); unset IFS
+        mapfile -t files < <(printf '%s\n' "${files[@]}" | sort)
     fi
 
     for file in "${files[@]}"; do
