@@ -170,6 +170,25 @@ _is_workspace_process() {
     return 1
 }
 
+# _is_own_process_tree <pid>
+# 指定PIDが自プロセス（ignite stop を呼び出した側）の祖先か判定
+# 呼び出し元の Claude Code を誤って kill しないためのガード
+#
+# 構造: Claude Code (PID A) → bash tool → ignite stop ($$)
+# A は $$ の祖先なので、$$ から親を辿って A に到達すればマッチ
+_is_own_process_tree() {
+    local check_pid="$1"
+    local cur=$$
+
+    # $$ から親を辿り、check_pid に到達すれば呼び出し元の祖先
+    while [[ "$cur" -gt 1 ]] 2>/dev/null; do
+        [[ "$cur" == "$check_pid" ]] && return 0
+        cur=$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ') || return 1
+        [[ -n "$cur" ]] || return 1
+    done
+    return 1
+}
+
 # _sweep_orphan_processes
 # PIDファイルに載っていない孤立プロセスを検出・停止
 _sweep_orphan_processes() {
@@ -183,6 +202,8 @@ _sweep_orphan_processes() {
             pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _op; do
             [[ -n "$_op" ]] || continue
+            # 自プロセスツリーは除外（呼び出し元の Claude Code を誤kill防止）
+            _is_own_process_tree "$_op" && continue
             # WORKSPACE_DIR マッチで自ワークスペースのプロセスのみ対象（他WS誤kill防止）
             if _is_workspace_process "$_op"; then
                 echo "$_op"
@@ -230,6 +251,8 @@ _check_remaining_processes() {
             pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _rp; do
             [[ -n "$_rp" ]] || continue
+            # 自プロセスツリーは除外（呼び出し元の Claude Code を報告しない）
+            _is_own_process_tree "$_rp" && continue
             if _is_workspace_process "$_rp"; then
                 echo "$_rp"
             fi
