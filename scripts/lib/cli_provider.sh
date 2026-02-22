@@ -203,6 +203,24 @@ _kill_process_tree() {
     fi
 }
 
+# _log_session_response <role> <session_id> <response> <runtime_dir>
+# セッションの応答をJSONL形式でログに記録する
+_log_session_response() {
+    local role="$1" session_id="$2" response="$3" runtime_dir="$4"
+    local log_file="${runtime_dir}/logs/session_${role}.jsonl"
+    local max_size=5242880  # 5MB
+    # ログローテーション
+    if [[ -f "$log_file" ]] && [[ $(stat -c%s "$log_file" 2>/dev/null || echo 0) -ge $max_size ]]; then
+        mv "$log_file" "${log_file%.jsonl}_prev.jsonl" 2>/dev/null || true
+    fi
+    # JSONL書き込み（失敗しても本体処理をブロックしない）
+    {
+        printf '{"ts":"%s","role":"%s","sid":"%s","provider":"%s","type":"response","data":%s}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role" "$session_id" \
+            "${CLI_PROVIDER:-unknown}" "$response"
+    } >> "$log_file" 2>/dev/null || true
+}
+
 # cli_save_agent_state <pane_idx> <session_id> <agent_name> [runtime_dir]
 # ステートファイル群を保存
 cli_save_agent_state() {
