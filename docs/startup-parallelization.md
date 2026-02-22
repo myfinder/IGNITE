@@ -35,7 +35,7 @@ setup_workspace
 ## 並列化可能範囲
 
 - **Sub-Leaders/IGNITIANS の起動**
-  - opencode serve の起動・ヘルスチェック待機・セッション作成は並列化可能
+  - CLI プロバイダーの初期化・セッション作成は並列化可能
 
 - **Watcher/queue_monitor 起動**
   - エージェントプロセス確立後なら並列起動可能

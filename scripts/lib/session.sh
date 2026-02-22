@@ -3,6 +3,33 @@
 [[ -n "${__LIB_SESSION_LOADED:-}" ]] && return; __LIB_SESSION_LOADED=1
 
 # =============================================================================
+# _is_leader_alive <workspace_dir>
+# Leader エージェントが稼働中かを判定する。
+# per-message モデルでは CLI プロセスは一時的なため、session_id の存在のみで判定。
+# session_id ファイルは ignite stop 時に cli_cleanup_agent_state で削除される。
+# 戻り値: 0=alive, 1=dead
+# =============================================================================
+_is_leader_alive() {
+    local ws="$1"
+    local state_dir="${ws}/.ignite/state"
+    local session_id
+    session_id=$(cat "${state_dir}/.agent_session_0" 2>/dev/null || true)
+    [[ -n "$session_id" ]] || return 1
+
+    # PID ファイルがあれば、プロセス生存で二重チェック（unclean shutdown 検出）
+    local pid_file="${state_dir}/.agent_pid_0"
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+            # PID は死んでいるがセッションファイルが残存 → stale
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# =============================================================================
 # 関数名: generate_session_id
 # 目的: ユニークなセッションIDを自動生成する
 # 引数: なし
@@ -35,10 +62,8 @@ setup_session_name() {
         local name
         name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name")
         if [[ -n "$name" ]]; then
-            # Leader PID が生存していれば有効
-            local leader_pid
-            leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-            if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
+            # Leader が生存していれば有効
+            if _is_leader_alive "$ws"; then
                 SESSION_NAME="$name"
                 WORKSPACE_DIR="$ws"
                 return
@@ -85,9 +110,7 @@ list_sessions() {
         local name
         name=$(yaml_get "$ws/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)
         if [[ -n "$name" ]]; then
-            local leader_pid
-            leader_pid=$(cat "$ws/.ignite/state/.agent_pid_0" 2>/dev/null || true)
-            if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
+            if _is_leader_alive "$ws"; then
                 echo "$name"
                 return 0
             fi
@@ -100,10 +123,8 @@ list_sessions() {
 # セッションが存在するかチェック
 session_exists() {
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    ls "$state_dir"/.agent_pid_* &>/dev/null || return 1
-    local leader_pid
-    leader_pid=$(cat "$state_dir/.agent_pid_0" 2>/dev/null || true)
-    [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null
+    ls "$state_dir"/.agent_session_* &>/dev/null || return 1
+    _is_leader_alive "${WORKSPACE_DIR:-$(pwd)}"
 }
 
 # =============================================================================
@@ -291,19 +312,11 @@ list_all_sessions() {
                     fi
                 fi
 
-                # STATUS判定: Leader PID (.agent_pid_0) の生存チェック
+                # STATUS判定: Leader の生存チェック
                 # stale セッションは STATUS='stopped' として出力（スキップしない）
                 local _s_status="stopped"
-                local _pid_file="${_s_workspace}/.ignite/state/.agent_pid_0"
-                if [[ -f "$_pid_file" ]]; then
-                    local _leader_pid
-                    _leader_pid="$(cat "$_pid_file" 2>/dev/null || true)"
-                    if [[ -n "$_leader_pid" ]]; then
-                        if kill -0 "$_leader_pid" 2>/dev/null; then
-                            _s_status="running"
-                        fi
-                        # PID 無効 → stopped のまま（stale をスキップしない）
-                    fi
+                if _is_leader_alive "$_s_workspace"; then
+                    _s_status="running"
                 fi
 
                 # 出力: session_name<TAB>status<TAB>agents<TAB>workspace_dir
@@ -320,13 +333,8 @@ list_all_sessions() {
             _rt_name="$(yaml_get "${_ws}/.ignite/runtime.yaml" "session_name" 2>/dev/null || true)"
             if [[ -n "$_rt_name" ]]; then
                 local _rt_status="stopped"
-                local _rt_pid_file="${_ws}/.ignite/state/.agent_pid_0"
-                if [[ -f "$_rt_pid_file" ]]; then
-                    local _rt_pid
-                    _rt_pid="$(cat "$_rt_pid_file" 2>/dev/null || true)"
-                    if [[ -n "$_rt_pid" ]] && kill -0 "$_rt_pid" 2>/dev/null; then
-                        _rt_status="running"
-                    fi
+                if _is_leader_alive "$_ws"; then
+                    _rt_status="running"
                 fi
                 printf '%s\t%s\t%s\t%s\n' "$_rt_name" "$_rt_status" "-" "$_ws"
                 found=$((found + 1))
@@ -368,20 +376,9 @@ cleanup_stale_sessions() {
         s_workspace="$(grep '^workspace_dir:' "$yaml_file" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")"
         [[ -z "$s_workspace" ]] && continue
 
-        # PID ファイルのパスを決定
-        local pid_file="${s_workspace}/.ignite/state/.agent_pid_0"
-        if [[ ! -f "$pid_file" ]]; then
-            # PID ファイルなし → stale
-            log_info "stale セッションを削除: $s_name (PIDファイルなし)"
-            rm -f "$yaml_file"
-            continue
-        fi
-
-        local leader_pid
-        leader_pid="$(cat "$pid_file" 2>/dev/null || true)"
-        if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
-            # PID が空 or 死亡 → stale
-            log_info "stale セッションを削除: $s_name (PID=${leader_pid:-empty})"
+        # Leader の生存チェック
+        if ! _is_leader_alive "$s_workspace"; then
+            log_info "stale セッションを削除: $s_name"
             rm -f "$yaml_file"
         fi
     done

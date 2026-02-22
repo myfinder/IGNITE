@@ -265,3 +265,49 @@ teardown() {
     func_body=$(sed -n '/^cmd_stop()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
     [[ "$func_body" == *"_stop_daemon_process"* ]]
 }
+
+# =============================================================================
+# Claude プロバイダー対応テスト
+# =============================================================================
+
+@test "cmd_stop: _sweep_orphan_processes が claude パターンも検出する" {
+    local func_body
+    func_body=$(sed -n '/_sweep_orphan_processes()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *"claude.*--dangerously-skip-permissions"* ]]
+}
+
+@test "cmd_stop: _sweep_orphan_processes が opencode run パターンを検出する" {
+    local func_body
+    func_body=$(sed -n '/_sweep_orphan_processes()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *'opencode run'* ]]
+}
+
+@test "cmd_stop: _sweep_orphan_processes が codex exec パターンを検出する" {
+    local func_body
+    func_body=$(sed -n '/_sweep_orphan_processes()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *'codex exec'* ]]
+}
+
+@test "cmd_stop: _check_remaining_processes が claude パターンも検出する" {
+    local func_body
+    func_body=$(sed -n '/_check_remaining_processes()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *"claude.*--dangerously-skip-permissions"* ]]
+}
+
+@test "cmd_stop: _check_remaining_processes が codex exec パターンを検出する" {
+    local func_body
+    func_body=$(sed -n '/_check_remaining_processes()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *'codex exec'* ]]
+}
+
+@test "cmd_stop: エージェント停止ループが cli_get_process_pattern を使用" {
+    local func_body
+    func_body=$(sed -n '/^cmd_stop()/,/^}/p' "$SCRIPTS_DIR/lib/cmd_stop.sh")
+    [[ "$func_body" == *"cli_get_process_pattern"* ]]
+}
+
+@test "agent.sh: _kill_agent_process が cli_get_process_pattern を使用" {
+    local func_body
+    func_body=$(sed -n '/_kill_agent_process()/,/^}/p' "$SCRIPTS_DIR/lib/agent.sh")
+    [[ "$func_body" == *"cli_get_process_pattern"* ]]
+}

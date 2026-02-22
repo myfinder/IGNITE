@@ -32,6 +32,7 @@ cmd_activate() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     if ! session_exists; then
@@ -42,8 +43,8 @@ cmd_activate() {
         exit 1
     fi
 
-    # ヘッドレスモード: エージェントは HTTP API 経由で初期化済み
-    print_info "エージェントは HTTP 経由で初期化済みです"
+    # ヘッドレスモード: エージェントは per-message パターンで初期化済み
+    print_info "エージェントはヘッドレスモードで初期化済みです"
     echo ""
     echo -e "状態確認: ${YELLOW}./scripts/ignite status -s $SESSION_NAME${NC}"
 }
@@ -88,6 +89,7 @@ cmd_notify() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     if [[ -z "$target" ]] || [[ -z "$message" ]]; then
@@ -104,7 +106,7 @@ cmd_notify() {
             ;;
     esac
 
-    # ペイン番号を特定
+    # エージェントインデックスを特定
     local pane_num=""
     case "$target" in
         leader) pane_num=0 ;;
@@ -136,9 +138,9 @@ cmd_notify() {
         exit 1
     fi
 
-    # PID ファイルでエージェント存在確認
+    # セッション ID ファイルでエージェント存在確認
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    if [[ ! -f "${state_dir}/.agent_pid_${pane_num}" ]]; then
+    if [[ ! -f "${state_dir}/.agent_session_${pane_num}" ]]; then
         print_error "ターゲット '${target}' のエージェント (idx=${pane_num}) が存在しません"
         exit 1
     fi
@@ -204,6 +206,7 @@ cmd_attach() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     if ! session_exists; then
@@ -235,14 +238,47 @@ cmd_attach() {
             return 1
         fi
 
-        local port
-        port=$(cat "${state_dir}/.agent_port_${found_idx}" 2>/dev/null || true)
-        if [[ -z "$port" ]]; then
-            print_error "エージェント '$agent_name' のポートが見つかりません"
+        local session_id
+        session_id=$(cat "${state_dir}/.agent_session_${found_idx}" 2>/dev/null || true)
+        if [[ -z "$session_id" ]]; then
+            print_error "エージェント '$agent_name' のセッション ID が見つかりません"
             return 1
         fi
 
-        exec opencode attach "http://localhost:${port}"
+        echo ""
+        print_warning "エージェントセッションに接続します"
+        echo ""
+        echo -e "  セッション ID: ${YELLOW}${session_id}${NC}"
+
+        # プロバイダー別の接続コマンドを表示・実行
+        local attach_cmd=""
+        case "${CLI_PROVIDER:-opencode}" in
+            claude)
+                attach_cmd="claude --resume ${session_id}"
+                ;;
+            codex)
+                attach_cmd="codex resume ${session_id}"
+                ;;
+            opencode)
+                # opencode TUI にはセッション指定オプションがないため run で実行
+                attach_cmd="opencode run --session ${session_id}"
+                ;;
+        esac
+        echo -e "  コマンド: ${YELLOW}${attach_cmd}${NC}"
+        echo ""
+        print_warning "queue_monitor との競合に注意してください。"
+        echo "attach 中は queue_monitor からのメッセージ送信が待機状態になります。"
+        echo ""
+        if [[ -t 0 ]]; then
+            read -p "接続しますか? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_warning "キャンセルしました"
+                return 0
+            fi
+        fi
+        # shellcheck disable=SC2086
+        exec $attach_cmd
     else
         # エージェント一覧を表示して選択
         print_header "実行中のエージェント"
@@ -251,12 +287,12 @@ cmd_attach() {
         local idx=0
         for name_file in "$state_dir"/.agent_name_*; do
             [[ -f "$name_file" ]] || continue
-            local _name _idx _port
+            local _name _idx _sid
             _idx=$(basename "$name_file" | sed 's/^\.agent_name_//')
             _name=$(cat "$name_file")
-            _port=$(cat "${state_dir}/.agent_port_${_idx}" 2>/dev/null || echo "-")
+            _sid=$(cat "${state_dir}/.agent_session_${_idx}" 2>/dev/null || echo "-")
             agents+=("${_name}")
-            printf "  %d) %-20s (idx=%s, port=%s)\n" "$((idx + 1))" "$_name" "$_idx" "$_port"
+            printf "  %d) %-20s (idx=%s, session=%s)\n" "$((idx + 1))" "$_name" "$_idx" "$_sid"
             idx=$((idx + 1))
         done
 
@@ -306,6 +342,7 @@ cmd_logs() {
     # ワークスペースを設定
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     require_workspace
 
     cd "$WORKSPACE_DIR" || return 1
@@ -364,6 +401,7 @@ cmd_clean() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
     require_workspace
 
@@ -455,6 +493,7 @@ cmd_list() {
     # ワークスペース解決 → 設定ロード
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
 
     if [[ "$scan_all" == true ]]; then
         print_header "IGNITEセッション一覧（全ワークスペース）"
@@ -509,6 +548,7 @@ cmd_watcher() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     case "$action" in

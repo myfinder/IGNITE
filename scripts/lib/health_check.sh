@@ -2,7 +2,7 @@
 # =============================================================================
 # health_check.sh - ヘルスチェックライブラリ（ヘッドレス専用）
 # =============================================================================
-# エージェントの状態を PID + HTTP API で判定する。
+# エージェントの状態をセッション ID ファイルで判定する。
 #
 # 提供関数:
 #   check_agent_health   - 単一エージェント用ヘルスチェック
@@ -27,32 +27,33 @@ check_agent_health() {
     local pane_index="$2"
     local expected_name="$3"
 
-    # PID + HTTP ヘルスチェック
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    local pid
-    pid=$(cat "${state_dir}/.agent_pid_${pane_index}" 2>/dev/null || true)
 
-    # Layer 1: PID 生存チェック
-    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+    # 統一ロジック: セッション ID ファイルの存在で判定
+    local session_id
+    session_id=$(cat "${state_dir}/.agent_session_${pane_index}" 2>/dev/null || true)
+    if [[ -z "$session_id" ]]; then
         echo "missing"
         return
     fi
 
-    # Layer 2: ステートファイル存在チェック
+    # PID ファイルがあればプロセス生存チェック（init 失敗検出）
+    local pid_file="${state_dir}/.agent_pid_${pane_index}"
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+            echo "stale"
+            return
+        fi
+    fi
+
     local agent_name
     agent_name=$(cat "${state_dir}/.agent_name_${pane_index}" 2>/dev/null || true)
-
-    # Layer 3: HTTP ヘルスチェック
-    local port
-    port=$(cat "${state_dir}/.agent_port_${pane_index}" 2>/dev/null || true)
-    if [[ -n "$port" ]] && cli_check_server_health "$port"; then
-        if [[ -n "$agent_name" ]]; then
-            echo "healthy"
-        else
-            echo "starting"
-        fi
+    if [[ -n "$agent_name" ]]; then
+        echo "healthy"
     else
-        echo "stale"
+        echo "starting"
     fi
 }
 
@@ -66,10 +67,10 @@ get_all_agents_health() {
     local session="$1"
 
     local state_dir="$IGNITE_RUNTIME_DIR/state"
-    for pid_file in "$state_dir"/.agent_pid_*; do
-        [[ -f "$pid_file" ]] || continue
+    for session_file in "$state_dir"/.agent_session_*; do
+        [[ -f "$session_file" ]] || continue
         local idx
-        idx=$(basename "$pid_file" | sed 's/^\.agent_pid_//')
+        idx=$(basename "$session_file" | sed 's/^\.agent_session_//')
         local agent_name
         agent_name=$(cat "${state_dir}/.agent_name_${idx}" 2>/dev/null || echo "unknown")
         [[ -z "$agent_name" ]] && agent_name="unknown"

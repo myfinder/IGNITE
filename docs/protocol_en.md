@@ -488,6 +488,7 @@ python3 scripts/lib/ignite_mime.py build \
 - MIME parse error: Log and skip
 - Missing required headers: Log and skip
 - Unknown type: Log and skip
+- Invalid destination (To): Validated by `_validate_to` in `send_message.sh`. Valid destinations are `leader`, `strategist`, `architect`, `evaluator`, `coordinator`, `innovator`, and `ignitian_N` only. Invalid destinations (e.g., message type names) are immediately rejected with an error
 
 ### Timeout and Retry
 

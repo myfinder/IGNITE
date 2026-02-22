@@ -35,7 +35,7 @@ setup_workspace
 ## Parallelizable Scope
 
 - **Sub-Leaders / IGNITIANs startup**
-  - opencode serve startup, health check waiting, and session creation can run in parallel
+  - CLI provider initialization and session creation can run in parallel
 
 - **Watcher / queue_monitor startup**
   - Can be started in parallel once agent processes are established

@@ -74,6 +74,8 @@ Key settings:
 |---------|-------------|---------|
 | `model` | LLM model to use | (see system.yaml) |
 | `defaults.worker_count` | IGNITIANS parallelism | 3 |
+| `queue.poll_interval` | Queue polling interval (seconds) | 10 |
+| `queue.parallel_max` | Max parallel message dispatches (per agent) | 9 |
 
 ### 4. Set Up Environment Variables
 

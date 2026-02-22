@@ -214,6 +214,14 @@ EOF
 
 > **sqlite3 不在時**: メモリ操作はスキップし、コア機能に影響なし（ログに警告を出力して続行）
 
+### テーブルスキーマ
+
+| テーブル | カラム |
+|---|---|
+| `agent_states` | `agent` (PK), `status`, `current_task_id`, `last_active`, `summary` |
+| `tasks` | `task_id` (PK), `assigned_to`, `delegated_by`, `status`, `title`, `repository`, `issue_number`, `dependencies`, `started_at`, `completed_at` |
+| `memories` | `id` (PK), `agent`, `type`, `content`, `context`, `task_id`, `repository`, `issue_number`, `timestamp` |
+
 > **SQL injection 対策**: ユーザー入力をSQLに含める場合、シングルクォートは二重化する（例: `'` → `''`）
 
 ### セッション開始時（必須）

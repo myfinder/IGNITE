@@ -74,6 +74,8 @@ vi .ignite/system.yaml
 |------|------|-----------|
 | `model` | 使用する LLM モデル | （system.yaml 参照） |
 | `defaults.worker_count` | IGNITIANS 並列数 | 3 |
+| `queue.poll_interval` | キューポーリング間隔（秒） | 10 |
+| `queue.parallel_max` | メッセージ配信の最大並列数（エージェント単位） | 9 |
 
 ### 4. 環境変数を設定
 

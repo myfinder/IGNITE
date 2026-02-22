@@ -321,12 +321,12 @@ phase_start_stop() {
 
     # CLI プロバイダーが利用可能か確認
     local cli_available=false
-    if command -v opencode &>/dev/null; then
+    if command -v opencode &>/dev/null || command -v claude &>/dev/null || command -v codex &>/dev/null; then
         cli_available=true
     fi
 
     if [[ "$cli_available" != true ]]; then
-        print_warning "No CLI provider (opencode) found, skipping start/stop tests"
+        print_warning "No CLI provider (opencode, claude, or codex) found, skipping start/stop tests"
         return
     fi
 
@@ -363,7 +363,7 @@ phase_start_stop() {
 
     local runtime_dir="$SMOKE_DIR/workspace/.ignite"
 
-    # ── PID ファイル + HTTP ヘルスチェックで検証 ──
+    # ── PID ファイル + セッション ID ファイルで検証 ──
 
     # セッション名を runtime.yaml から取得
     local session_name=""
@@ -387,22 +387,19 @@ phase_start_stop() {
         print_info "PID files: $pid_files (partial start)"
     fi
 
-    # HTTP ヘルスチェック（opencode serve のヘルスエンドポイント）
+    # セッションヘルスチェック（セッション ID ファイルの存在確認）
     if [[ "$start_ok" == true ]]; then
-        local health_ok=false
-        # ポート情報が runtime.yaml にある場合チェック
-        local port
-        port=$(grep 'port:' "$runtime_dir/runtime.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1 || true)
-        if [[ -n "$port" ]]; then
-            if curl -s --max-time 5 "http://localhost:${port}/health" >/dev/null 2>&1; then
-                health_ok=true
-            fi
+        local session_ok=false
+        local session_id
+        session_id=$(cat "$runtime_dir/state/.agent_session_0" 2>/dev/null || true)
+        if [[ -n "$session_id" ]]; then
+            session_ok=true
         fi
-        if [[ "$health_ok" == true ]]; then
+        if [[ "$session_ok" == true ]]; then
             PASS_COUNT=$((PASS_COUNT + 1))
-            print_success "PASS: HTTP health check passed (port: $port)"
+            print_success "PASS: Session health check passed (session: ${session_id:0:12}...)"
         else
-            print_info "HTTP health check skipped or unavailable"
+            print_info "Session health check skipped or unavailable"
         fi
     fi
 

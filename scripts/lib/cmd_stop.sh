@@ -64,6 +64,7 @@ cmd_stop() {
     # ワークスペース解決 → 設定ロード → セッション名解決
     setup_workspace
     setup_workspace_config "$WORKSPACE_DIR"
+    cli_load_config
     setup_session_name
 
     print_header "IGNITE システム停止"
@@ -107,7 +108,7 @@ cmd_stop() {
         pid=$(cat "$pid_file" 2>/dev/null || true)
         # ファイル名から pane_idx を抽出（.agent_pid_N → N）
         pane_idx="${pid_file##*.agent_pid_}"
-        if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+        if [[ -n "$pid" ]] && _validate_pid "$pid" "$(cli_get_process_pattern)"; then
             _kill_process_tree "$pid" "$pane_idx" "$IGNITE_RUNTIME_DIR"
         fi
         rm -f "$pid_file"
@@ -115,6 +116,7 @@ cmd_stop() {
     # PID ファイルに載っていない孤立プロセスも掃除（orphan sweep: 安全弁）
     _sweep_orphan_processes
 
+    # エージェント状態ファイルを全削除（pgid/port は v0.6.x 以前の後方互換、session/name は現行）
     rm -f "$IGNITE_RUNTIME_DIR/state"/.agent_{pgid,port,session,name}_*
     rm -f "$IGNITE_RUNTIME_DIR/state"/.send_lock_*
     print_success "エージェントプロセスを停止しました"
@@ -168,17 +170,40 @@ _is_workspace_process() {
     return 1
 }
 
+# _is_own_process_tree <pid>
+# 指定PIDが自プロセス（ignite stop を呼び出した側）の祖先か判定
+# 呼び出し元の Claude Code を誤って kill しないためのガード
+#
+# 構造: Claude Code (PID A) → bash tool → ignite stop ($$)
+# A は $$ の祖先なので、$$ から親を辿って A に到達すればマッチ
+_is_own_process_tree() {
+    local check_pid="$1"
+    local cur=$$
+
+    # $$ から親を辿り、check_pid に到達すれば呼び出し元の祖先
+    while [[ "$cur" -gt 1 ]] 2>/dev/null; do
+        [[ "$cur" == "$check_pid" ]] && return 0
+        cur=$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ') || return 1
+        [[ -n "$cur" ]] || return 1
+    done
+    return 1
+}
+
 # _sweep_orphan_processes
 # PIDファイルに載っていない孤立プロセスを検出・停止
 _sweep_orphan_processes() {
-    # opencode serve および node 関連プロセスを検出
+    # opencode / Claude Code / Codex CLI 関連プロセスを検出
     local _orphan_pids=""
     _orphan_pids=$(
         {
-            pgrep -f "opencode serve.*--print-logs" 2>/dev/null || true
+            pgrep -f "opencode run" 2>/dev/null || true
             pgrep -f "node.*opencode" 2>/dev/null || true
+            pgrep -f "claude.*--dangerously-skip-permissions" 2>/dev/null || true
+            pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _op; do
             [[ -n "$_op" ]] || continue
+            # 自プロセスツリーは除外（呼び出し元の Claude Code を誤kill防止）
+            _is_own_process_tree "$_op" && continue
             # WORKSPACE_DIR マッチで自ワークスペースのプロセスのみ対象（他WS誤kill防止）
             if _is_workspace_process "$_op"; then
                 echo "$_op"
@@ -205,7 +230,7 @@ _sweep_orphan_processes() {
     echo "$_orphan_pids" | while read -r _op; do
         [[ -n "$_op" ]] || continue
         if kill -0 "$_op" 2>/dev/null; then
-            if _validate_pid "$_op" "opencode"; then
+            if _validate_pid "$_op" "$(cli_get_process_pattern)"; then
                 log_warn "孤立プロセス PID=$_op が停止しません。SIGKILL を送信します"
                 pkill -9 -P "$_op" 2>/dev/null || true
                 kill -9 "$_op" 2>/dev/null || true
@@ -220,10 +245,14 @@ _check_remaining_processes() {
     local _remaining=""
     _remaining=$(
         {
-            pgrep -f "opencode serve.*--print-logs" 2>/dev/null || true
+            pgrep -f "opencode run" 2>/dev/null || true
             pgrep -f "node.*opencode" 2>/dev/null || true
+            pgrep -f "claude.*--dangerously-skip-permissions" 2>/dev/null || true
+            pgrep -f "codex exec" 2>/dev/null || true
         } | sort -u | while read -r _rp; do
             [[ -n "$_rp" ]] || continue
+            # 自プロセスツリーは除外（呼び出し元の Claude Code を報告しない）
+            _is_own_process_tree "$_rp" && continue
             if _is_workspace_process "$_rp"; then
                 echo "$_rp"
             fi

@@ -2,6 +2,11 @@
 # キュー監視・自動処理スクリプト
 # キューに新しいメッセージが来たら、対応するエージェントに処理を指示
 #
+# 配信方式: 2フェーズ並列ディスパッチ
+#   Phase 1: 全キューから未処理メッセージを収集（直列・高速）
+#   Phase 2: エージェントごとにバックグラウンドジョブで並列配信
+#            同一エージェント内のメッセージは直列で順序保証
+#
 # 配信保証: at-least-once（リトライ機構統合済み）
 #   - at-most-once: mv → process の原子性で重複防止
 #   - タイムアウト検知 + process_retry() でリトライ保証
@@ -124,8 +129,36 @@ MONITOR_STATE_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_state.json"
 MONITOR_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_heartbeat.json"
 MONITOR_PROGRESS_FILE="${IGNITE_RUNTIME_DIR}/state/queue_monitor_progress.log"
 
-# CLI プロバイダー設定を読み込み（submit keys 判定に必要）
+# CLI プロバイダー設定を読み込み（send_to_agent でのプロバイダー判定に必要）
 cli_load_config 2>/dev/null || true
+
+# =============================================================================
+# 並列配信設定
+# =============================================================================
+_PARALLEL_MAX="${QUEUE_PARALLEL_MAX:-4}"
+_SHUTDOWN_FLAG_FILE="${IGNITE_RUNTIME_DIR}/state/.queue_monitor_shutdown"
+
+_load_queue_config() {
+    local sys_yaml="${IGNITE_CONFIG_DIR}/system.yaml"
+    if [[ -f "$sys_yaml" ]]; then
+        local val
+        val=$(sed -n '/^queue:/,/^[^ ]/p' "$sys_yaml" | awk -F': ' '/^  parallel_max:/{print $2; exit}' | sed 's/ *#.*//' | xargs)
+        _PARALLEL_MAX="${val:-4}"
+
+        val=$(sed -n '/^queue:/,/^[^ ]/p' "$sys_yaml" | awk -F': ' '/^  poll_interval:/{print $2; exit}' | sed 's/ *#.*//' | xargs)
+        [[ -n "$val" ]] && POLL_INTERVAL="$val"
+    fi
+}
+_load_queue_config
+
+# 並列数スロット待機: バックグラウンドジョブ数が _PARALLEL_MAX 以上なら待つ
+_has_available_slot() {
+    _reap_completed_jobs
+    [[ ${#_RUNNING_PIDS[@]} -lt $_PARALLEL_MAX ]]
+}
+_wait_for_slot() {  # 互換シム
+    while ! _has_available_slot; do sleep 0.5; done
+}
 
 # ヘルスチェック/自動リカバリ設定
 HEALTH_CHECK_INTERVAL=60
@@ -231,9 +264,9 @@ _check_and_recover_agents() {
         local idx agent_name status
         IFS=':' read -r idx agent_name status <<< "$line"
 
-        # crashed / missing のみリカバリ対象
+        # crashed / missing / stale のみリカバリ対象
         case "$status" in
-            crashed|missing) ;;
+            crashed|missing|stale) ;;
             *) continue ;;
         esac
 
@@ -315,12 +348,12 @@ _check_init_and_stale_agents() {
         _agent_mode="${_agent_mode:-full}"
     fi
 
-    # PID ファイルからインデックスを列挙
+    # セッションファイルからインデックスを列挙
     local pane_indices=""
-    for pid_file in "$IGNITE_RUNTIME_DIR/state"/.agent_pid_*; do
-        [[ -f "$pid_file" ]] || continue
+    for session_file in "$IGNITE_RUNTIME_DIR/state"/.agent_session_*; do
+        [[ -f "$session_file" ]] || continue
         local _idx
-        _idx=$(basename "$pid_file" | sed 's/^\.agent_pid_//')
+        _idx=$(basename "$session_file" | sed 's/^\.agent_session_//')
         pane_indices+="${_idx}"$'\n'
     done
     [[ -n "$pane_indices" ]] || return 0
@@ -360,9 +393,8 @@ _check_init_and_stale_agents() {
                     ;;
             esac
 
-            # HTTP ヘルスチェックで活動判定
-            cli_load_agent_state "$idx"
-            if [[ -n "${_AGENT_PORT:-}" ]] && cli_check_server_health "$_AGENT_PORT"; then
+            # セッション存在チェックで活動判定
+            if cli_check_session_alive "$idx"; then
                 touch "$init_flag"
                 continue
             fi
@@ -372,9 +404,8 @@ _check_init_and_stale_agents() {
             continue
         fi
 
-        # HTTP ヘルスチェックで活動判定（初期化済みのエージェント対象）
-        cli_load_agent_state "$idx"
-        if [[ -n "${_AGENT_PORT:-}" ]] && cli_check_server_health "$_AGENT_PORT"; then
+        # セッション存在チェックで活動判定（初期化済みのエージェント対象）
+        if cli_check_session_alive "$idx"; then
             touch "$init_flag" 2>/dev/null || true
         fi
     done <<< "$pane_indices"
@@ -657,9 +688,12 @@ _write_task_health_snapshot() {
     timestamp=$(date -Iseconds)
 
     local agents_json="[]"
-    local leader_pid
-    leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
-    if [[ -n "$leader_pid" ]] && kill -0 "$leader_pid" 2>/dev/null; then
+    # 全プロバイダー統一: session_id ファイルの存在で判定（per-message のため PID は一時的）
+    local _th_leader_alive=false
+    local _th_leader_session
+    _th_leader_session=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0" 2>/dev/null || true)
+    [[ -n "$_th_leader_session" ]] && _th_leader_alive=true
+    if [[ "$_th_leader_alive" == true ]]; then
         agents_json=$(get_agents_health_json "$SESSION_ID" 2>/dev/null || echo "[]")
     fi
 
@@ -857,7 +891,8 @@ _log_progress() {
 }
 
 _on_monitor_exit() {
-    local exit_code=$?
+    # 引数があれば使用、なければ $? をフォールバック（直接 trap 呼び出し時の後方互換）
+    local exit_code="${1:-$?}"
     MONITOR_LAST_EXIT=$exit_code
     if [[ $exit_code -ne 0 ]]; then
         MONITOR_LAST_FAILURE_AT="$(date -Iseconds)"
@@ -871,7 +906,7 @@ _on_monitor_exit() {
 
 # =============================================================================
 # 関数名: send_to_agent
-# 目的: 指定されたエージェントに HTTP API 経由でメッセージを送信する
+# 目的: 指定されたエージェントに CLI プロバイダー経由でメッセージを送信する
 # 引数:
 #   $1 - エージェント名（例: "leader", "strategist", "ignitian-1"）
 #   $2 - 送信するメッセージ文字列
@@ -915,18 +950,20 @@ send_to_agent() {
     fi
 
     local lock_file="$IGNITE_RUNTIME_DIR/state/.send_lock_${pane_index}"
+    local _flock_timeout
+    _flock_timeout=$(cli_get_flock_timeout 2>/dev/null || echo "30")
     (
-        flock -w 30 200 || { log_warn "ロック取得タイムアウト: agent=$agent"; return 1; }
+        flock -w "$_flock_timeout" 200 || { log_warn "ロック取得タイムアウト: agent=$agent"; return 1; }
         cli_load_agent_state "$pane_index"
-        if [[ -z "${_AGENT_PORT:-}" ]] || [[ -z "${_AGENT_SESSION_ID:-}" ]]; then
+        if [[ -z "${_AGENT_SESSION_ID:-}" ]]; then
             log_warn "エージェントステートが見つかりません: $agent (idx=$pane_index)"
             return 1
         fi
-        if ! cli_check_server_health "$_AGENT_PORT"; then
-            log_warn "エージェントが応答しません: $agent (port=$_AGENT_PORT)"
+        if ! cli_check_session_alive "$pane_index"; then
+            log_warn "エージェントセッションが見つかりません: $agent (idx=$pane_index)"
             return 1
         fi
-        if cli_send_message "$_AGENT_PORT" "$_AGENT_SESSION_ID" "$message"; then
+        if cli_send_message "$_AGENT_SESSION_ID" "$message"; then
             log_success "エージェント $agent (idx $pane_index) にメッセージを送信しました"
             _mark_agent_initialized "$pane_index"
             return 0
@@ -1370,7 +1407,8 @@ process_message() {
     esac
 
     # シャットダウン要求時は新規送信を開始しない
-    if [[ "$_SHUTDOWN_REQUESTED" == true ]]; then
+    # サブシェルからはフラグファイルで検知（親の変数更新は見えないため）
+    if [[ "$_SHUTDOWN_REQUESTED" == true ]] || [[ -f "${_SHUTDOWN_FLAG_FILE:-}" ]]; then
         log_warn "シャットダウン要求中のため送信をスキップ: $file"
         return 0
     fi
@@ -1378,7 +1416,7 @@ process_message() {
     # エージェントに送信（開始後は完了まで中断しない）
     if send_to_agent "$queue_name" "$instruction"; then
         # 配信成功: status=delivered に更新
-        mime_update_status "$file" "delivered"
+        mime_update_status "$file" "delivered" || true
     fi
     # 失敗時は status=processing のまま（リトライ対象）
 }
@@ -1489,7 +1527,29 @@ _convert_yaml_to_mime() {
     fi
 }
 
-scan_queue() {
+# =============================================================================
+# Phase 1: キュー収集（高速・直列）
+# .mime ファイルを processed/ に移動し _PENDING_WORK 配列に蓄積
+# =============================================================================
+declare -a _PENDING_WORK=()
+declare -a _RUNNING_PIDS=()  # "pid|queue_name" 形式
+
+# 完了済みバックグラウンドジョブを回収し _RUNNING_PIDS を更新
+_reap_completed_jobs() {
+    local _new_pids=() _failed=0
+    for entry in "${_RUNNING_PIDS[@]}"; do
+        local pid="${entry%%|*}"
+        if kill -0 "$pid" 2>/dev/null; then
+            _new_pids+=("$entry")
+        else
+            wait "$pid" 2>/dev/null || _failed=$((_failed + 1))
+        fi
+    done
+    _RUNNING_PIDS=("${_new_pids[@]}")
+    [[ $_failed -gt 0 ]] && log_warn "完了ジョブ: ${_failed} 件で配信失敗あり"
+}
+
+scan_queue_collect() {
     local queue_dir="$1"
     local queue_name="$2"
 
@@ -1508,26 +1568,105 @@ scan_queue() {
     done
 
     # キューディレクトリ直下の .mime ファイル = 未処理メッセージ
+    # ソートしてタイムスタンプ順を保証
+    local files=()
     for file in "$queue_dir"/*.mime; do
         [[ -f "$file" ]] || continue
 
         # ファイル名が {type}_{timestamp}.mime パターンに一致しない場合は正規化
         file=$(normalize_filename "$file")
         [[ -f "$file" ]] || continue
+        files+=("$file")
+    done
 
+    # タイムスタンプ順にソート（ファイル名ベース）
+    if [[ ${#files[@]} -gt 1 ]]; then
+        mapfile -t files < <(printf '%s\n' "${files[@]}" | sort)
+    fi
+
+    for file in "${files[@]}"; do
         local filename
         filename=$(basename "$file")
         local dest="$queue_dir/processed/$filename"
 
-        # at-least-once 配信: 先に processed/ へ移動し、成功した場合のみ処理
+        # at-least-once 配信: 先に processed/ へ移動
         mv "$file" "$dest" 2>/dev/null || continue
 
         # status=processing + processed_at を追記（タイムアウト検知の基点）
         mime_update_status "$dest" "processing" "$(date -Iseconds)"
 
-        # 処理（processed/ 内のパスを渡す）
-        process_message "$dest" "$queue_name"
+        _PENDING_WORK+=("${dest}|${queue_name}")
     done
+}
+
+# =============================================================================
+# Phase 2: 並列配信
+# キュー名でグループ化し、エージェントごとにバックグラウンドジョブを起動
+# 同一エージェント内のメッセージは直列で順序保証
+# =============================================================================
+dispatch_pending_work() {
+    [[ ${#_PENDING_WORK[@]} -eq 0 ]] && return
+
+    # 完了ジョブを回収してスロットを空ける
+    _reap_completed_jobs
+
+    # キュー名でグループ化（同一エージェント宛は1ジョブにまとめる）
+    declare -A _grouped
+    for item in "${_PENDING_WORK[@]}"; do
+        local dest="${item%%|*}"
+        local queue_name="${item##*|}"
+        _grouped[$queue_name]+="${dest}"$'\n'
+    done
+
+    log_info "並列配信開始: ${#_PENDING_WORK[@]} 件 / ${#_grouped[@]} キュー (実行中: ${#_RUNNING_PIDS[@]}/${_PARALLEL_MAX})"
+
+    local _dispatched=0
+    local _remaining=()
+    for queue_name in "${!_grouped[@]}"; do
+        [[ "$_SHUTDOWN_REQUESTED" == true ]] && break
+
+        # スロット満杯なら残りを保持して return
+        if ! _has_available_slot; then
+            # 未ディスパッチ分を _remaining に蓄積
+            while IFS= read -r dest; do
+                [[ -z "$dest" ]] && continue
+                _remaining+=("${dest}|${queue_name}")
+            done <<< "${_grouped[$queue_name]}"
+            continue
+        fi
+
+        # 各エージェントに1つのバックグラウンドジョブ
+        # → 同一エージェント内のメッセージは直列で順序保証
+        (
+            while IFS= read -r dest; do
+                [[ -z "$dest" ]] && continue
+                [[ -f "$_SHUTDOWN_FLAG_FILE" ]] && break
+                process_message "$dest" "$queue_name"
+            done <<< "${_grouped[$queue_name]}"
+        ) &
+        _RUNNING_PIDS+=("$!|${queue_name}")
+        _dispatched=$((_dispatched + 1))
+    done
+
+    # ディスパッチ済み分をクリアし、未ディスパッチ分を次サイクルに残す
+    _PENDING_WORK=("${_remaining[@]}")
+
+    [[ $_dispatched -gt 0 ]] && log_info "並列配信: ${_dispatched} キュー起動 (実行中: ${#_RUNNING_PIDS[@]})"
+}
+
+# 互換シム: テスト等からの直接呼び出し用
+scan_queue() {
+    local queue_dir="$1"
+    local queue_name="$2"
+    local _saved_work=("${_PENDING_WORK[@]}")
+    _PENDING_WORK=()
+    scan_queue_collect "$queue_dir" "$queue_name"
+    for item in "${_PENDING_WORK[@]}"; do
+        local dest="${item%%|*}"
+        local qn="${item##*|}"
+        process_message "$dest" "$qn"
+    done
+    _PENDING_WORK=("${_saved_work[@]}")
 }
 
 # =============================================================================
@@ -1627,10 +1766,15 @@ monitor_queues() {
     local last_health_check_epoch=0
 
     while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-        # Leader プロセス生存チェック（誤検知対策）
-        local leader_pid
-        leader_pid=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_pid_0" 2>/dev/null || true)
-        if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+        # 完了済みバックグラウンドジョブを回収
+        _reap_completed_jobs
+
+        # Leader 生存チェック（全プロバイダー統一: session_id ファイルの存在で判定）
+        local _leader_alive=false
+        local _leader_session
+        _leader_session=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0" 2>/dev/null || true)
+        [[ -n "$_leader_session" ]] && _leader_alive=true
+        if [[ "$_leader_alive" != true ]]; then
             local now_epoch
             now_epoch=$(date +%s)
             if [[ $missing_session_count -eq 0 ]]; then
@@ -1651,23 +1795,29 @@ monitor_queues() {
         missing_session_count=0
         missing_session_first_at=0
 
+        # Phase 1: 全キューから未処理メッセージを収集（直列・高速）
+        # 注: 前サイクルの未ディスパッチ分は _PENDING_WORK に残っている
+
         # Leader キュー
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
 
         # Sub-Leaders キュー
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
-        scan_queue "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/strategist" "strategist"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/architect" "architect"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/evaluator" "evaluator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/coordinator" "coordinator"
+        scan_queue_collect "$IGNITE_RUNTIME_DIR/queue/innovator" "innovator"
 
         # IGNITIAN キュー（個別ディレクトリ方式 - Sub-Leadersと同じパターン）
         for ignitian_dir in "$IGNITE_RUNTIME_DIR/queue"/ignitian[_-]*; do
             [[ -d "$ignitian_dir" ]] || continue
             local dirname
             dirname=$(basename "$ignitian_dir")
-            scan_queue "$ignitian_dir" "$dirname"
+            scan_queue_collect "$ignitian_dir" "$dirname"
         done
+
+        # Phase 2: 並列配信（エージェントごとにバックグラウンドジョブ）
+        dispatch_pending_work
 
         # タイムアウト検査（全キューの processed/ を走査）
         scan_for_timeouts "$IGNITE_RUNTIME_DIR/queue/leader" "leader"
@@ -1729,6 +1879,14 @@ monitor_queues() {
             i=$((i + 1))
         done
     done
+
+    # シャットダウン: 実行中のバックグラウンドジョブ完了を待機
+    if [[ ${#_RUNNING_PIDS[@]} -gt 0 ]]; then
+        log_info "シャットダウン: 実行中のジョブ ${#_RUNNING_PIDS[@]} 件の完了を待機..."
+        for entry in "${_RUNNING_PIDS[@]}"; do
+            wait "${entry%%|*}" 2>/dev/null || true
+        done
+    fi
 
     exit "${_EXIT_CODE:-0}"
 }
@@ -1802,11 +1960,8 @@ main() {
     _apply_resume_backoff
     _write_heartbeat
 
-    # 終了時の状態保存
-    trap _on_monitor_exit EXIT
-
     # SIGHUP ハンドラ（フラグベース遅延リロード）
-    # trap内で直接load_config()を呼ぶと、scan_queue()実行中に
+    # trap内で直接load_config()を呼ぶと、dispatch_pending_work()実行中に
     # 設定変更の競合が発生するリスクがあるため、
     # フラグを立てるだけにしてメインループ内で安全にリロードする
     _handle_sighup() {
@@ -1815,11 +1970,13 @@ main() {
     }
 
     # グレースフル停止: フラグベース（trap内でexit()を呼ばない）
-    # scan_queue()/send_to_agent()完了を待ってから安全に停止する
+    # dispatch_pending_work()/send_to_agent()完了を待ってから安全に停止する
     graceful_shutdown() {
         _SHUTDOWN_SIGNAL="$1"
         _SHUTDOWN_REQUESTED=true
         _EXIT_CODE=$((128 + $1))
+        # サブシェルにシャットダウンを通知（変数は伝播しないためファイルで通知）
+        touch "$_SHUTDOWN_FLAG_FILE" 2>/dev/null || true
         log_info "シグナル受信 (${1}): 安全に停止します"
     }
     trap 'graceful_shutdown 15' SIGTERM
@@ -1830,8 +1987,17 @@ main() {
     cleanup_and_log() {
         local exit_code=$?
         [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
+        # シャットダウンフラグファイルを削除
+        rm -f "$_SHUTDOWN_FLAG_FILE"
+        # モニター状態を保存（resume backoff 用）
+        _on_monitor_exit "$exit_code"
         # バックグラウンドプロセスのクリーンアップ
-        kill "$(jobs -p)" 2>/dev/null
+        local _bg_pids
+        _bg_pids=$(jobs -p 2>/dev/null) || true
+        if [[ -n "$_bg_pids" ]]; then
+            # shellcheck disable=SC2086
+            kill $_bg_pids 2>/dev/null || true  # 意図的な非クォート: PID をワード分割
+        fi
         wait 2>/dev/null
         if [[ -n "$_SHUTDOWN_SIGNAL" ]]; then
             log_info "キュー監視 終了: シグナル${_SHUTDOWN_SIGNAL}による停止"

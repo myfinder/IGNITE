@@ -4,7 +4,7 @@
   <img src="images/ignite-logo.jpg" width="200">
 </p>
 
-**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** is a hierarchical multi-agent system utilizing the OpenCode headless mode. A Leader, five specialized Sub-Leaders, and a variable number of IGNITIANS workers collaborate to execute complex tasks in parallel.<br>
+**IGNITE (Intelligent Generative Networked Interaction-driven Task Engine)** is a hierarchical multi-agent system supporting multiple AI Coding Agent CLIs (OpenCode / Claude Code / Codex CLI). A Leader, five specialized Sub-Leaders, and a variable number of IGNITIANS workers collaborate to execute complex tasks in parallel.<br>
 IGNITE may not be able to sing, dance, or go live streaming just yet, but they’re training hard every single day, aiming for the day they can shine on stage and put on a wonderful show for all their fans.
 
 <p align="center">
@@ -111,8 +111,8 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 - **Event-Driven Communication**: Asynchronous messaging based on YAML files
 - **Parallel Task Execution**: 1-32 workers execute in parallel depending on task nature
 - **Character Personality**: Each agent has unique personality and expertise
-- **Fully Local Execution**: Leverage full OpenCode capabilities on local PC
-- **Headless Agent Servers**: Each agent runs as an independent HTTP server process
+- **Multi-CLI Support**: Choose from OpenCode / Claude Code / Codex CLI (unified per-message + session resume pattern)
+- **Headless Agent Servers**: Each agent runs as an independent headless process
 - **Agent Memory Persistence**: SQLite-based retention of learning and decision records across sessions
 - **Daily Report Management**: Automatic progress tracking via per-repository GitHub Issues
 - **Configurable Delays**: Customize inter-agent communication delays
@@ -139,8 +139,10 @@ With love for IGNITE members in their hearts, they execute tasks assigned by Coo
 The following tools must be installed:
 
 ```bash
-# AI Coding Agent CLI
-opencode --version   # OpenCode (default)
+# AI Coding Agent CLI (at least one of the following)
+opencode --version    # OpenCode (default)
+claude --version      # Claude Code (Anthropic Max Plan or API key)
+codex --version       # Codex CLI (OpenAI)
 
 # bash (usually pre-installed)
 bash --version
@@ -176,8 +178,18 @@ If CLI provider is not installed:
 # OpenCode (default)
 curl -fsSL https://opencode.ai/install | bash
 
-# Claude Code (alternative — legacy support)
+# Claude Code (no API key needed if logged into Anthropic Max Plan)
 npm install -g @anthropic-ai/claude-code
+
+# Codex CLI (requires OpenAI API key)
+npm install -g @openai/codex
+```
+
+Configure the CLI provider in `.ignite/system.yaml`:
+```yaml
+cli:
+  provider: opencode   # opencode / claude / codex
+  model: anthropic/claude-sonnet-4-5-20250929
 ```
 
 If yq is not installed (optional):
@@ -730,7 +742,7 @@ ignite attach
 ignite logs -f
 ```
 
-Each agent runs as an independent headless server process. Use `ignite status` to check which agents are running.
+Each agent runs as an independent headless process. Use `ignite status` to check which agents are running.
 
 ### Getting Help
 
@@ -801,14 +813,15 @@ Goal: Create a README file
 ignite start -f
 ```
 
-**Cause 2: opencode not found**
+**Cause 2: CLI provider not found**
 
 ```bash
-# Check opencode path
-which opencode
+# Check the configured provider's path
+which opencode    # For OpenCode
+which claude      # For Claude Code
+which codex       # For Codex CLI
 
-# If not installed
-curl -fsSL https://opencode.ai/install | bash
+# If not installed, see "Installation" section above
 ```
 
 ### Tasks Not Progressing
@@ -1078,7 +1091,9 @@ When forking, please replace character assets (`characters/`, `images/`) with yo
 ## 🙏 Acknowledgments
 
 - **multi-agent-shogun** - Architecture reference
-- **OpenCode** - AI Coding Agent CLI (headless mode)
+- **OpenCode** - AI Coding Agent CLI
+- **Claude Code** - Anthropic AI Coding Agent CLI
+- **Codex CLI** - OpenAI Coding Agent CLI
 - **Anthropic** - Claude AI
 
 ## 📧 Support

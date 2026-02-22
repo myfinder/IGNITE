@@ -57,47 +57,36 @@ _build_init_prompt() {
 }
 
 # =============================================================================
-# ヘッドレスモード: エージェント起動
+# ヘッドレスモード: エージェント起動（全プロバイダー統一フロー）
 # =============================================================================
 
-# _start_agent_headless <role> <name> <pane_idx> [extra_env]
-# opencode serve をバックグラウンド起動し、HTTP で初期化プロンプトを送信
+# _start_agent_headless <role> <name> <pane_idx> [extra_env] [character_file] [instruction_file]
+# プロバイダーに応じてエージェントを起動し、初期化プロンプトを送信
 _start_agent_headless() {
     local role="$1"
     local name="$2"
     local pane_idx="$3"
     local extra_env="${4:-}"
+    local character_file="${5:-$IGNITE_CHARACTERS_DIR/${role}.md}"
+    local instruction_file="${6:-$IGNITE_INSTRUCTIONS_DIR/${role}.md}"
 
-    # プロジェクト設定を生成
-    local character_file="$IGNITE_CHARACTERS_DIR/${role}.md"
-    local instruction_file="$IGNITE_INSTRUCTIONS_DIR/${role}.md"
+    # 1. プロジェクト設定を生成
     cli_setup_project_config "$WORKSPACE_DIR" "$role" "$character_file" "$instruction_file"
 
-    # サーバー起動
+    # 2. エージェント起動（全プロバイダーで session 作成まで完結）
     cli_start_agent_server "$WORKSPACE_DIR" "$role" "$pane_idx" "$extra_env" || return 1
 
-    # ポート取得
-    local port
-    port=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_port_${pane_idx}" 2>/dev/null)
-    if [[ -z "$port" ]]; then
-        log_error "ポートが取得できません: role=$role, idx=$pane_idx"
-        return 1
-    fi
-
-    # ヘルスチェック待機
-    cli_wait_server_ready "$port" "$(get_delay server_ready 60)" || return 1
-
-    # セッション作成
+    # 3. ステートから session_id を読み取り
     local session_id
-    session_id=$(cli_create_session "$port") || return 1
+    session_id=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_${pane_idx}" 2>/dev/null || true)
 
-    # ステート保存
-    cli_save_agent_state "$pane_idx" "$port" "$session_id" "${name} (${role^})"
+    # 4. ステート保存
+    cli_save_agent_state "$pane_idx" "$session_id" "${name} (${role^})"
 
-    # 初期化プロンプト送信
+    # 5. 初期化プロンプト送信
     local init_prompt
     init_prompt=$(_build_init_prompt "$role" "$name" "$character_file" "$instruction_file")
-    cli_send_message "$port" "$session_id" "$init_prompt" || return 1
+    cli_send_message "$session_id" "$init_prompt" || return 1
 
     return 0
 }
@@ -112,28 +101,28 @@ _start_ignitian_headless() {
     mkdir -p "$IGNITE_RUNTIME_DIR/queue/ignitian_${id}"
 
     local role="ignitian_${id}"
+
+    # 1. プロジェクト設定を生成
     cli_setup_project_config "$WORKSPACE_DIR" "$role" \
         "$IGNITE_CHARACTERS_DIR/ignitian.md" "$IGNITE_INSTRUCTIONS_DIR/ignitian.md"
 
     local env_str="export IGNITE_WORKER_ID=${id}"
     [[ -n "$extra_env" ]] && env_str="${extra_env%%+([ ])&&*} ${env_str}"
 
+    # 2. エージェント起動
     cli_start_agent_server "$WORKSPACE_DIR" "$role" "$pane_idx" "$env_str" || return 1
 
-    local port
-    port=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_port_${pane_idx}" 2>/dev/null)
-    [[ -z "$port" ]] && return 1
-
-    cli_wait_server_ready "$port" "$(get_delay server_ready 60)" || return 1
-
+    # 3. ステートから session_id を読み取り
     local session_id
-    session_id=$(cli_create_session "$port") || return 1
+    session_id=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_${pane_idx}" 2>/dev/null || true)
 
-    cli_save_agent_state "$pane_idx" "$port" "$session_id" "IGNITIAN-${id}"
+    # 4. ステート保存
+    cli_save_agent_state "$pane_idx" "$session_id" "IGNITIAN-${id}"
 
+    # 5. 初期化プロンプト送信
     local init_prompt
     init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
-    cli_send_message "$port" "$session_id" "$init_prompt" || return 1
+    cli_send_message "$session_id" "$init_prompt" || return 1
 
     return 0
 }
@@ -151,7 +140,7 @@ _kill_agent_process() {
     local pid
     pid=$(cat "$pid_file" 2>/dev/null || true)
 
-    if [[ -n "$pid" ]] && _validate_pid "$pid" "opencode"; then
+    if [[ -n "$pid" ]] && _validate_pid "$pid" "$(cli_get_process_pattern 2>/dev/null || echo "opencode")"; then
         _kill_process_tree "$pid" "$pane_idx" "$IGNITE_RUNTIME_DIR"
     fi
 
@@ -166,18 +155,21 @@ _kill_pane_process() {
 }
 
 # エージェント起動関数（最大3回リトライ）
+# start_agent_in_pane <role> <name> <pane> [gh_export] [character_file] [instruction_file]
 start_agent_in_pane() {
     local role="$1"      # strategist, architect, etc.
     local name="$2"      # キャラクター名（characters.yaml で定義）
     local pane="$3"      # ペイン番号
     local _gh_export="${4:-}"  # 未使用（後方互換）
+    local character_file="${5:-}"
+    local instruction_file="${6:-}"
     local max_retries=3
     local retry=0
 
     while [[ $retry -lt $max_retries ]]; do
         print_info "${name} を起動中... (試行 $((retry+1))/$max_retries)"
 
-        if _start_agent_headless "$role" "$name" "$pane"; then
+        if _start_agent_headless "$role" "$name" "$pane" "" "$character_file" "$instruction_file"; then
             print_success "${name} 起動完了"
             return 0
         fi
@@ -220,7 +212,7 @@ start_ignitian_in_pane() {
 }
 
 # =============================================================================
-# リカバリ関数
+# リカバリ関数（簡素化: 旧セッション試行 → 失敗なら完全再起動）
 # =============================================================================
 
 # restart_leader_in_pane <agent_mode> <gh_export>
@@ -241,38 +233,22 @@ restart_leader_in_pane() {
 
     # リカバリフロー
     cli_load_agent_state "$pane"
-    local old_pid="${_AGENT_PID:-}"
-    local old_port="${_AGENT_PORT:-}"
     local old_session="${_AGENT_SESSION_ID:-}"
 
-    # サーバープロセスが生存しているか
-    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-        # 旧セッションで resume 試行
-        if [[ -n "$old_session" ]]; then
-            local init_prompt
-            init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
-            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                log_info "Leader リカバリ: 旧セッションで再開"
-                return 0
-            fi
-        fi
-        # 旧セッション失敗 → 新規セッション作成
-        local new_session
-        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-        if [[ -n "$new_session" ]]; then
-            cli_save_agent_state "$pane" "$old_port" "$new_session" "${LEADER_NAME} (Leader)"
-            local init_prompt
-            init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
-            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
-            log_info "Leader リカバリ: 新規セッションで再開"
+    # 旧セッションで resume 試行
+    if [[ -n "$old_session" ]]; then
+        local init_prompt
+        init_prompt=$(_build_init_prompt "leader" "${LEADER_NAME}" "$character_file" "$instruction_file")
+        if cli_send_message "$old_session" "$init_prompt" 2>/dev/null; then
+            log_info "Leader リカバリ: 旧セッションで再開"
             return 0
         fi
     fi
 
-    # サーバー死亡 → 再起動
+    # 旧セッション失敗 → 完全再起動
     _kill_agent_process "$pane"
     cli_setup_project_config "$WORKSPACE_DIR" "leader" "$character_file" "$instruction_file"
-    _start_agent_headless "leader" "${LEADER_NAME}" "$pane" || return 1
+    _start_agent_headless "leader" "${LEADER_NAME}" "$pane" "" "$character_file" "$instruction_file" || return 1
     return 0
 }
 
@@ -285,30 +261,19 @@ restart_agent_in_pane() {
     local _gh_export="${4:-}"
 
     cli_load_agent_state "$pane"
-    local old_pid="${_AGENT_PID:-}"
-    local old_port="${_AGENT_PORT:-}"
     local old_session="${_AGENT_SESSION_ID:-}"
 
-    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-        if [[ -n "$old_session" ]]; then
-            local init_prompt
-            init_prompt=$(_build_init_prompt "$role" "$name")
-            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                log_info "${name} リカバリ: 旧セッションで再開"
-                return 0
-            fi
-        fi
-        local new_session
-        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-        if [[ -n "$new_session" ]]; then
-            cli_save_agent_state "$pane" "$old_port" "$new_session" "${name} (${role^})"
-            local init_prompt
-            init_prompt=$(_build_init_prompt "$role" "$name")
-            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+    # 旧セッションで resume 試行
+    if [[ -n "$old_session" ]]; then
+        local init_prompt
+        init_prompt=$(_build_init_prompt "$role" "$name")
+        if cli_send_message "$old_session" "$init_prompt" 2>/dev/null; then
+            log_info "${name} リカバリ: 旧セッションで再開"
             return 0
         fi
     fi
 
+    # 旧セッション失敗 → 完全再起動
     _kill_agent_process "$pane"
     cli_setup_project_config "$WORKSPACE_DIR" "$role" \
         "$IGNITE_CHARACTERS_DIR/${role}.md" "$IGNITE_INSTRUCTIONS_DIR/${role}.md"
@@ -327,30 +292,19 @@ restart_ignitian_in_pane() {
     mkdir -p "$IGNITE_RUNTIME_DIR/queue/ignitian_${id}"
 
     cli_load_agent_state "$pane"
-    local old_pid="${_AGENT_PID:-}"
-    local old_port="${_AGENT_PORT:-}"
     local old_session="${_AGENT_SESSION_ID:-}"
 
-    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && [[ -n "$old_port" ]]; then
-        if [[ -n "$old_session" ]]; then
-            local init_prompt
-            init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
-            if cli_send_message "$old_port" "$old_session" "$init_prompt" 2>/dev/null; then
-                log_info "IGNITIAN-${id} リカバリ: 旧セッションで再開"
-                return 0
-            fi
-        fi
-        local new_session
-        new_session=$(cli_create_session "$old_port" 2>/dev/null) || true
-        if [[ -n "$new_session" ]]; then
-            cli_save_agent_state "$pane" "$old_port" "$new_session" "IGNITIAN-${id}"
-            local init_prompt
-            init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
-            cli_send_message "$old_port" "$new_session" "$init_prompt" || true
+    # 旧セッションで resume 試行
+    if [[ -n "$old_session" ]]; then
+        local init_prompt
+        init_prompt=$(_build_init_prompt "ignitian" "IGNITIAN-${id}")
+        if cli_send_message "$old_session" "$init_prompt" 2>/dev/null; then
+            log_info "IGNITIAN-${id} リカバリ: 旧セッションで再開"
             return 0
         fi
     fi
 
+    # 旧セッション失敗 → 完全再起動
     _kill_agent_process "$pane"
     _start_ignitian_headless "$id" "$pane" || return 1
     return 0

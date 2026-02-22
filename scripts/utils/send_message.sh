@@ -126,6 +126,30 @@ if [[ $# -gt 0 ]]; then
 fi
 
 # =============================================================================
+# 宛先エージェント名バリデーション
+# =============================================================================
+# 既知のエージェント名リスト（Sub-Leaders + IGNITIANs パターン）
+_VALID_AGENTS="leader strategist architect evaluator coordinator innovator"
+
+_validate_to() {
+    local to="$1"
+    # 既知のエージェント名
+    for agent in $_VALID_AGENTS; do
+        [[ "$to" == "$agent" ]] && return 0
+    done
+    # IGNITIAN パターン: ignitian_N または ignitian-N
+    [[ "$to" =~ ^ignitian[-_][0-9]+$ ]] && return 0
+    return 1
+}
+
+if ! _validate_to "$TO"; then
+    echo "❌ エラー: 不正な宛先エージェント名: '$TO'" >&2
+    echo "  有効な宛先: $_VALID_AGENTS, ignitian_N" >&2
+    echo "  ヒント: send_message.sh <type> <from> <to> の第3引数はエージェント名です" >&2
+    exit 1
+fi
+
+# =============================================================================
 # 宛先ディレクトリ解決
 # =============================================================================
 # .ignite/ 構成（v0.5.0+）を自動検知

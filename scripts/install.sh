@@ -96,25 +96,46 @@ check_dependencies() {
 
     local missing=()
 
-    # 必須コマンドリスト（opencode ヘッドレス専用）
-    local required_cmds="opencode curl jq"
+    # jq は共通で必須
+    if command -v jq &>/dev/null; then
+        print_success "jq が見つかりました"
+    else
+        print_error "jq が見つかりません"
+        missing+=("jq")
+    fi
 
-    for cmd in $required_cmds; do
-        if command -v "$cmd" &> /dev/null; then
-            print_success "$cmd が見つかりました"
-        else
-            print_error "$cmd が見つかりません"
-            missing+=("$cmd")
-        fi
-    done
+    # CLI プロバイダー: opencode / claude / codex のいずれかが必要
+    local has_opencode=false
+    local has_claude=false
+    local has_codex=false
+    if command -v opencode &>/dev/null; then
+        has_opencode=true
+        print_success "opencode が見つかりました"
+    fi
+    if command -v claude &>/dev/null; then
+        has_claude=true
+        print_success "claude が見つかりました"
+    fi
+    if command -v codex &>/dev/null; then
+        has_codex=true
+        print_success "codex が見つかりました"
+    fi
+
+    if [[ "$has_opencode" != true ]] && [[ "$has_claude" != true ]] && [[ "$has_codex" != true ]]; then
+        print_error "CLI プロバイダーが見つかりません（opencode / claude / codex のいずれかが必要）"
+        missing+=("opencode/claude/codex")
+    fi
 
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo ""
         print_warning "以下のコマンドをインストールしてください:"
         for cmd in "${missing[@]}"; do
             case "$cmd" in
-                opencode)
+                opencode/claude/codex)
                     echo "  - opencode: https://opencode.ai/"
+                    echo "  - claude: npm install -g @anthropic-ai/claude-code"
+                    echo "  - codex: npm install -g @openai/codex"
+                    echo "  （いずれか一つをインストールしてください）"
                     ;;
                 curl)
                     echo "  - curl: sudo apt install curl (Ubuntu) / brew install curl (macOS)"

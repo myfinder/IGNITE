@@ -96,7 +96,7 @@ ignite-watcher@my-project.service loaded active running IGNITE Watcher my-projec
 
 ### キューモニターのライフサイクル
 
-`queue_monitor.sh` はメッセージキューを監視し、新しいメッセージをエージェントに配信するプロセスです。
+`queue_monitor.sh` はメッセージキューを監視し、新しいメッセージをエージェントに配信するプロセスです。2フェーズ並列配信により、異なるエージェントへのメッセージを同時に配信します（`queue.parallel_max` で最大並列数を制御、デフォルト9）。
 
 #### 排他制御（flock）
 
@@ -740,6 +740,8 @@ ignite status
 # ignite stop を使用してクリーンアップ
 ignite stop -s <session-name>
 ```
+
+> **💡 安全装置:** `ignite stop` は孤立プロセスの掃除時に、呼び出し元の CLI プロセス（Claude Code 等）を誤って kill しないよう `_is_own_process_tree` でプロセスツリーをフィルタリングしています。これにより、Claude Code から `ignite stop` を実行しても自分自身のセッションが破壊されることはありません。
 
 ---
 
