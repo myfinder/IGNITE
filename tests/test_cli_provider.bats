@@ -414,3 +414,73 @@ EOF
     [ "$_AGENT_SESSION_ID" = "test-session-456" ]
     [ "$_AGENT_NAME" = "TestAgent2" ]
 }
+
+# =============================================================================
+# _log_session_response テスト
+# =============================================================================
+
+@test "_log_session_response: ログファイルにJSONLを書き込み" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$runtime_dir/logs"
+    export CLI_PROVIDER="claude"
+    _log_session_response "leader" "sess-001" '{"result":"ok"}' "$runtime_dir"
+    local log_file="$runtime_dir/logs/session_leader.jsonl"
+    [ -f "$log_file" ]
+    # jqで各フィールドが読めること
+    [ "$(jq -r '.role' "$log_file")" = "leader" ]
+    [ "$(jq -r '.sid' "$log_file")" = "sess-001" ]
+    [ "$(jq -r '.provider' "$log_file")" = "claude" ]
+    [ "$(jq -r '.type' "$log_file")" = "response" ]
+    [ "$(jq -r '.ts' "$log_file")" != "null" ]
+    [ "$(jq -r '.data.result' "$log_file")" = "ok" ]
+}
+
+@test "_log_session_response: 初回実行時にログディレクトリが存在すれば成功" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$runtime_dir/logs"
+    export CLI_PROVIDER="opencode"
+    _log_session_response "coordinator" "sess-002" '{"msg":"hello"}' "$runtime_dir"
+    [ -f "$runtime_dir/logs/session_coordinator.jsonl" ]
+}
+
+@test "_log_session_response: 複数回呼び出しでJSONL追記" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$runtime_dir/logs"
+    export CLI_PROVIDER="codex"
+    _log_session_response "worker" "s1" '{"n":1}' "$runtime_dir"
+    _log_session_response "worker" "s1" '{"n":2}' "$runtime_dir"
+    local lines
+    lines=$(wc -l < "$runtime_dir/logs/session_worker.jsonl")
+    [ "$lines" -eq 2 ]
+}
+
+@test "_log_session_response: ログローテーション（5MB超で_prev.jsonlに退避）" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$runtime_dir/logs"
+    local log_file="$runtime_dir/logs/session_leader.jsonl"
+    # 5MB超のダミーファイルを作成
+    dd if=/dev/zero of="$log_file" bs=1024 count=5121 2>/dev/null
+    export CLI_PROVIDER="claude"
+    _log_session_response "leader" "sess-rot" '{"rotated":true}' "$runtime_dir"
+    # _prev.jsonl が作成されている
+    [ -f "$runtime_dir/logs/session_leader_prev.jsonl" ]
+    # 新しいログファイルに最新エントリがある
+    [ -f "$log_file" ]
+    [ "$(jq -r '.sid' "$log_file")" = "sess-rot" ]
+}
+
+@test "_log_session_response: 空レスポンスでもエラーにならない" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime"
+    mkdir -p "$runtime_dir/logs"
+    export CLI_PROVIDER="claude"
+    run _log_session_response "leader" "sess-empty" '' "$runtime_dir"
+    [ "$status" -eq 0 ]
+}
+
+@test "_log_session_response: logsディレクトリ未作成でもエラーにならない" {
+    local runtime_dir="$TEST_TEMP_DIR/runtime_nodir"
+    # logsディレクトリを作成しない
+    export CLI_PROVIDER="claude"
+    run _log_session_response "leader" "sess-nodir" '{"test":1}' "$runtime_dir"
+    [ "$status" -eq 0 ]
+}
