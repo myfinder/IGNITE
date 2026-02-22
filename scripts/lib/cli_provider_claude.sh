@@ -185,6 +185,7 @@ cli_start_agent_server() {
     rm -f "$pid_file"
 
     log_info "Claude Code セッション作成完了: session_id=$session_id, role=$role"
+    _log_session_response "$role" "$session_id" "$(cat "$response_file" 2>/dev/null)" "$runtime_dir"
 
     # レスポンスファイルをクリーンアップ
     rm -f "$response_file"
@@ -228,6 +229,7 @@ cli_send_message() {
             2>> "$log_file"
     )
     local rc=$?
+    [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     # CLAUDECODE 環境変数を復元
     if [[ -n "$_saved_claudecode" ]]; then
