@@ -170,6 +170,7 @@ cli_start_agent_server() {
     rm -f "$pid_file"
 
     log_info "Codex CLI セッション作成完了: session_id=$session_id, role=$role"
+    _log_session_response "$role" "$session_id" "$(cat "$response_file" 2>/dev/null)" "$runtime_dir"
 
     # レスポンスファイルをクリーンアップ
     rm -f "$response_file"
@@ -200,6 +201,7 @@ cli_send_message() {
         codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
     )
     local rc=$?
+    [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     if [[ $rc -ne 0 ]]; then
         log_error "Codex CLI メッセージ送信に失敗しました (session=$session_id, rc=$rc)"
