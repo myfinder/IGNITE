@@ -217,7 +217,7 @@ _log_session_response() {
     {
         printf '{"ts":"%s","role":"%s","sid":"%s","provider":"%s","type":"response","data":%s}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role" "$session_id" \
-            "${CLI_PROVIDER:-unknown}" "$response"
+            "${CLI_PROVIDER:-unknown}" "${response:-null}"
     } >> "$log_file" 2>/dev/null || true
 }
 

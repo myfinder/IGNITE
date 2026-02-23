@@ -475,6 +475,10 @@ EOF
     export CLI_PROVIDER="claude"
     run _log_session_response "leader" "sess-empty" '' "$runtime_dir"
     [ "$status" -eq 0 ]
+    # 空レスポンスは null にフォールバックし、有効なJSONになる
+    local log_file="$runtime_dir/logs/session_leader.jsonl"
+    [ -f "$log_file" ]
+    [ "$(jq -r '.data' "$log_file")" = "null" ]
 }
 
 @test "_log_session_response: logsディレクトリ未作成でもエラーにならない" {
