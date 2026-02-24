@@ -5,6 +5,86 @@
 [[ -n "${__LIB_CMD_START_LOADED:-}" ]] && return; __LIB_CMD_START_LOADED=1
 
 # =============================================================================
+# Watcher ヘルパー関数
+# =============================================================================
+
+# _load_watcher_entries
+# watchers.yaml からwatcherエントリを読み込む。
+# watchers.yaml非存在時はgithub-watcher.yamlフォールバック。
+# 出力: "name|script_path|config_file|enabled|auto_start" per line
+_load_watcher_entries() {
+    local watchers_file="$IGNITE_CONFIG_DIR/watchers.yaml"
+
+    if [[ -f "$watchers_file" ]]; then
+        local count
+        count=$(yq -r '.watchers | length' "$watchers_file" 2>/dev/null)
+        [[ -z "$count" || "$count" == "null" ]] && count=0
+
+        local i
+        for (( i = 0; i < count; i++ )); do
+            local name script config enabled auto_start
+            name=$(yq -r ".watchers[$i].name // \"\"" "$watchers_file")
+            script=$(yq -r ".watchers[$i].script_path // \"\"" "$watchers_file")
+            config=$(yq -r ".watchers[$i].config_file // \"\"" "$watchers_file")
+            enabled=$(yq -r ".watchers[$i].enabled // false" "$watchers_file")
+            auto_start=$(yq -r ".watchers[$i].auto_start // false" "$watchers_file")
+            echo "${name}|${script}|${config}|${enabled}|${auto_start}"
+        done
+    elif [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
+        # フォールバック: github-watcher.yaml から github_watcher エントリを生成
+        local auto_start_val="false"
+        if get_watcher_auto_start; then
+            auto_start_val="true"
+        fi
+        echo "github_watcher|scripts/utils/github_watcher.sh|github-watcher.yaml|true|${auto_start_val}"
+    fi
+}
+
+# _start_single_watcher <name> <script_path> <config_file>
+# 単一のwatcherプロセスをバックグラウンドで起動する
+_start_single_watcher() {
+    local watcher_name="$1"
+    local script_path="$2"
+    local config_file="$3"
+
+    # script_path 解決（相対パスはIGNITE_CONFIG_DIR親ディレクトリ基準）
+    local resolved_script="$script_path"
+    if [[ "$resolved_script" != /* ]]; then
+        resolved_script="$(dirname "$IGNITE_CONFIG_DIR")/${resolved_script}"
+    fi
+
+    local config_path="$IGNITE_CONFIG_DIR/$config_file"
+
+    if [[ ! -f "$resolved_script" ]]; then
+        print_warning "${watcher_name}: スクリプトが見つかりません: ${script_path}。スキップ"
+        return 0
+    fi
+
+    if [[ ! -f "$config_path" ]]; then
+        print_warning "${watcher_name}: 設定ファイルが見つかりません: ${config_file}。スキップ"
+        return 0
+    fi
+
+    print_info "${watcher_name}を起動中..."
+    local watcher_log="$IGNITE_RUNTIME_DIR/logs/${watcher_name}.log"
+    echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$watcher_log"
+
+    export IGNITE_WATCHER_CONFIG="$config_path"
+    export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
+    export WORKSPACE_DIR="$WORKSPACE_DIR"
+    export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
+    export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
+    export IGNITE_SESSION="$SESSION_NAME"
+
+    "$resolved_script" >> "$watcher_log" 2>&1 &
+    local watcher_pid=$!
+    echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/${watcher_name}.pid"
+
+    print_success "${watcher_name}起動完了 (PID: $watcher_pid)"
+    print_info "ログ: $watcher_log"
+}
+
+# =============================================================================
 # start コマンド
 # =============================================================================
 cmd_start() {
@@ -14,7 +94,7 @@ cmd_start() {
     local agent_mode="full"    # full, leader, sub
     local worker_count=""
     local no_workers=false
-    local with_watcher=""      # 空=設定に従う, true=起動, false=起動しない
+    local with_watcher=""      # 空=設定に従う, auto=auto_start起動, all=全enabled起動, none=無効, {name}=指定のみ
     local skip_validation=false
     local dry_run=false
 
@@ -55,8 +135,9 @@ cmd_start() {
                 shift 2
                 ;;
             --no-workers) no_workers=true; shift ;;
-            --with-watcher) with_watcher=true; shift ;;
-            --no-watcher) with_watcher=false; shift ;;
+            --with-watcher=*) with_watcher="${1#--with-watcher=}"; shift ;;
+            --with-watcher) with_watcher="auto"; shift ;;
+            --no-watcher) with_watcher="none"; shift ;;
             --daemon) daemon_mode=true; no_attach=true; force=true; shift ;;
             --skip-validation) skip_validation=true; shift ;;
             -h|--help) cmd_help start; exit 0 ;;
@@ -309,15 +390,21 @@ EOF
     print_success "workspace初期化完了"
     echo ""
 
-    # 旧デーモンプロセスをクリーンアップ（PIDファイルベース・セッション固有）
-    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+    # 旧Watcherプロセスをクリーンアップ（PIDファイルベース・セッション固有）
+    for _pid_file in "$IGNITE_RUNTIME_DIR"/*.pid; do
+        [[ -f "$_pid_file" ]] || continue
+        local _pid_basename
+        _pid_basename=$(basename "$_pid_file")
+        # queue_monitor/ignite-daemon は別途管理
+        [[ "$_pid_basename" == "queue_monitor.pid" ]] && continue
+        [[ "$_pid_basename" == "ignite-daemon.pid" ]] && continue
         local old_pid
-        old_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+        old_pid=$(cat "$_pid_file")
         if kill -0 "$old_pid" 2>/dev/null; then
             kill "$old_pid" 2>/dev/null || true
         fi
-        rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
-    fi
+        rm -f "$_pid_file"
+    done
     if [[ -f "$IGNITE_RUNTIME_DIR/queue_monitor.pid" ]]; then
         local old_pid
         old_pid=$(cat "$IGNITE_RUNTIME_DIR/queue_monitor.pid")
@@ -744,35 +831,56 @@ EOF
     echo -e "  - セッション終了: ${YELLOW}ignite stop${NC}"
     echo ""
 
-    # GitHub Watcher の起動判定
-    local start_watcher=false
-    if [[ "$with_watcher" == "true" ]]; then
-        start_watcher=true
-    elif [[ "$with_watcher" == "false" ]]; then
-        start_watcher=false
-    elif get_watcher_auto_start; then
-        start_watcher=true
-    fi
+    # Watcher の起動
+    if [[ "$with_watcher" != "none" ]]; then
+        local _watcher_entries=()
+        while IFS= read -r _line; do
+            [[ -n "$_line" ]] && _watcher_entries+=("$_line")
+        done < <(_load_watcher_entries)
 
-    # GitHub Watcher の起動
-    if [[ "$start_watcher" == true ]]; then
-        if [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
-            print_info "GitHub Watcherを起動中..."
-            local watcher_log="$IGNITE_RUNTIME_DIR/logs/github_watcher.log"
-            echo "========== ${SESSION_NAME} started at $(date -Iseconds) ==========" >> "$watcher_log"
-            export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
-            export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
-            export WORKSPACE_DIR="$WORKSPACE_DIR"
-            export IGNITE_RUNTIME_DIR="$IGNITE_RUNTIME_DIR"
-            export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
-            export IGNITE_SESSION="$SESSION_NAME"
-            "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
-            local watcher_pid=$!
-            echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/github_watcher.pid"
-            print_success "GitHub Watcher起動完了 (PID: $watcher_pid)"
-            print_info "ログ: $watcher_log"
-        else
-            print_warning "github-watcher.yaml が見つかりません。Watcher起動をスキップ"
+        if [[ ${#_watcher_entries[@]} -gt 0 ]]; then
+            # --with-watcher={name} の場合、名前存在チェック
+            if [[ -n "$with_watcher" && "$with_watcher" != "auto" && "$with_watcher" != "all" ]]; then
+                local _name_found=false
+                for _entry in "${_watcher_entries[@]}"; do
+                    IFS='|' read -r _w_name _ _ _ _ <<< "$_entry"
+                    [[ "$_w_name" == "$with_watcher" ]] && _name_found=true
+                done
+                if [[ "$_name_found" == false ]]; then
+                    print_error "watchers.yamlに未登録のwatcher名です: $with_watcher"
+                    exit 1
+                fi
+            fi
+
+            local _started_count=0
+            for _entry in "${_watcher_entries[@]}"; do
+                IFS='|' read -r _w_name _w_script _w_config _w_enabled _w_auto_start <<< "$_entry"
+
+                local _should_start=false
+                case "$with_watcher" in
+                    "auto"|"")
+                        # auto_start=true かつ enabled=true
+                        [[ "$_w_enabled" == "true" && "$_w_auto_start" == "true" ]] && _should_start=true
+                        ;;
+                    "all")
+                        # enabled=true 全watcher
+                        [[ "$_w_enabled" == "true" ]] && _should_start=true
+                        ;;
+                    *)
+                        # 指定名のwatcherのみ
+                        [[ "$_w_name" == "$with_watcher" ]] && _should_start=true
+                        ;;
+                esac
+
+                if [[ "$_should_start" == true ]]; then
+                    _start_single_watcher "$_w_name" "$_w_script" "$_w_config"
+                    _started_count=$(( _started_count + 1 ))
+                fi
+            done
+
+            if [[ "$_started_count" -eq 0 && -n "$with_watcher" ]]; then
+                print_warning "起動対象のwatcherが見つかりませんでした"
+            fi
         fi
     fi
 

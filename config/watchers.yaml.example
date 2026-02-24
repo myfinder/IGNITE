@@ -13,6 +13,7 @@ watchers:
     script_path: scripts/utils/github_watcher.sh
     config_file: github-watcher.yaml
     enabled: true
+    auto_start: true    # ignite start で自動起動するか
 
   # カスタム watcher 追加例:
   # - name: slack_watcher
@@ -20,3 +21,4 @@ watchers:
   #   script_path: scripts/utils/slack_watcher.sh
   #   config_file: slack-watcher.yaml
   #   enabled: false
+  #   auto_start: false

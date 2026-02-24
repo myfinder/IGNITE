@@ -401,6 +401,13 @@ validate_watchers_yaml() {
         validate_required "$file" "${prefix}.enabled"
         validate_type     "$file" "${prefix}.enabled" bool
 
+        # auto_start はオプショナル（存在する場合は型チェック）
+        local auto_start_val
+        auto_start_val=$(yq -r "${prefix}.auto_start // \"__NULL__\"" "$file" 2>/dev/null)
+        if [[ "$auto_start_val" != "__NULL__" && "$auto_start_val" != "null" ]]; then
+            validate_type "$file" "${prefix}.auto_start" bool
+        fi
+
         # name の空値チェック
         local name
         name=$(yq -r "${prefix}.name // \"\"" "$file" 2>/dev/null)
