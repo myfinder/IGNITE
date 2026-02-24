@@ -242,6 +242,12 @@ _check_and_recover_agents() {
     # シャットダウン中はエージェントの復旧を試みない（再起動ループ防止）
     [[ "$_SHUTDOWN_REQUESTED" != true ]] || return 0
 
+    # コンテナ生存チェック（isolation 有効時）
+    if isolation_is_enabled 2>/dev/null && ! isolation_is_container_running 2>/dev/null; then
+        log_warn "Isolation container is not running. Restarting..."
+        isolation_restart_container "$WORKSPACE_DIR" "$IGNITE_RUNTIME_DIR" 2>/dev/null || true
+    fi
+
     # SESSION_NAME を設定（リカバリ関数が参照する）
     SESSION_NAME="$SESSION_ID"
 

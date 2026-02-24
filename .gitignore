@@ -35,5 +35,7 @@ Thumbs.db
 # Build output
 dist/
 
-# ignite runtime config
+# ignite runtime data
 .ignite/
+workspaces.list
+workspaces.list.lock

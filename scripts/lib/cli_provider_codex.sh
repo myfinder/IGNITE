@@ -113,14 +113,25 @@ cli_start_agent_server() {
     rm -f "$response_file"
 
     # codex exec をバックグラウンドで実行
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        echo "$init_msg" | codex exec --json --full-auto - \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+        (
+            isolation_exec bash -c \
+                "cd '$workspace_dir' && cat '$msg_file' | codex exec --json --full-auto -" \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            echo "$init_msg" | codex exec --json --full-auto - \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存
@@ -196,11 +207,23 @@ cli_send_message() {
     local log_file="${runtime_dir}/logs/codex_send.log"
 
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        response=$(
+            isolation_exec bash -c \
+                "cd '$workspace_dir' && codex exec resume --json --full-auto '$session_id' \"\$(cat '$msg_file')\"" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     if [[ $rc -ne 0 ]]; then

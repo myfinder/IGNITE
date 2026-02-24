@@ -25,22 +25,49 @@ docs/                 # ドキュメント
 
 ## 開発ワークフロー
 
+### セットアップ
+
+リポジトリからの直接実行が正式な開発ワークフローです。`install.sh` によるインストールは不要です。
+
+```bash
+git clone <repo-url> && cd ignite
+make dev          # 依存ツール確認・環境セットアップ
+./scripts/ignite --help   # 直接実行
+```
+
+詳細は [docs/development.md](docs/development.md) を参照してください。
+
 ### 依存関係
 
-- **必須**: opencode, curl, jq
-- **任意**: yq (v4.30+), sqlite3, python3
+- **必須**: bash (4.0+), curl, jq, sqlite3, bats, git, GNU parallel
+- **任意**: yq (v4.30+), python3, podman, shellcheck
+- **実行時**: opencode / claude / codex（いずれか1つの CLI プロバイダ）
+
+### Make ターゲット
+
+```bash
+make help     # ヘルプ表示
+make dev      # 開発環境セットアップ（依存ツール確認）
+make test     # 全テスト実行（bats 並列）
+make lint     # shellcheck による静的解析
+make start    # テストワークスペースで起動
+make stop     # テストワークスペース停止
+make clean    # テストワークスペース削除
+```
 
 ### テスト
 
 ```bash
 # 全テスト実行（並列）
+make test
+# または直接:
 bats --jobs "$(($(nproc) * 8))" tests/
 
 # 特定テストファイル
 bats tests/test_cmd_start_init.bats
 ```
 
-PR を出す前に必ず `bats --jobs "$(($(nproc) * 8))" tests/` を実行してください。
+PR を出す前に必ず `make test` を実行してください。
 並列実行には GNU parallel が必要です（`apt install parallel` / `brew install parallel`）。
 
 ### 動作確認

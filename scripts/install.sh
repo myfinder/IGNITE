@@ -354,6 +354,22 @@ install_data() {
         fi
     fi
 
+    # containers ディレクトリ（Containerfile）
+    local source_containers="$SCRIPT_DIR/share/containers"
+    if [[ ! -d "$source_containers" ]]; then
+        source_containers="$SCRIPT_DIR/../containers"
+    fi
+
+    if [[ -d "$source_containers" ]]; then
+        mkdir -p "$DATA_DIR/containers"
+        cp "$source_containers"/* "$DATA_DIR/containers/" 2>/dev/null || true
+        if [[ "$UPGRADE" == "true" ]]; then
+            print_success "containers を $DATA_DIR/containers にアップグレードしました"
+        else
+            print_success "containers を $DATA_DIR/containers にインストールしました"
+        fi
+    fi
+
     # templates ディレクトリ
     local source_templates="$SCRIPT_DIR/share/templates/systemd"
     if [[ ! -d "$source_templates" ]]; then

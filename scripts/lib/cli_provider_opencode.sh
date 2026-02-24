@@ -161,15 +161,26 @@ cli_start_agent_server() {
     rm -f "$response_file"
 
     # opencode run をバックグラウンドで実行
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        OPENCODE_CONFIG=".ignite/${config_name}" \
-        opencode run --format json "$init_msg" \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+        (
+            isolation_exec_with_env -e "OPENCODE_CONFIG=.ignite/${config_name}" -- \
+                bash -c "cd '$workspace_dir' && opencode run --format json \"\$(cat '$msg_file')\"" \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            OPENCODE_CONFIG=".ignite/${config_name}" \
+            opencode run --format json "$init_msg" \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存
@@ -250,12 +261,28 @@ cli_send_message() {
     fi
 
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        ${config_env:+export $config_env}
-        opencode run --format json --session "$session_id" "$message" 2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        local exec_env_args=()
+        if [[ -n "$config_env" ]]; then
+            exec_env_args=(-e "$config_env")
+        fi
+        response=$(
+            isolation_exec_with_env "${exec_env_args[@]}" -- \
+                bash -c "cd '$workspace_dir' && opencode run --format json --session '$session_id' \"\$(cat '$msg_file')\"" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            ${config_env:+export $config_env}
+            opencode run --format json --session "$session_id" "$message" 2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     if [[ $rc -ne 0 ]]; then

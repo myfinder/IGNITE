@@ -479,6 +479,37 @@ EOF
     }
 
     # =========================================================================
+    # コンテナ起動（isolation 有効時）
+    # =========================================================================
+    if isolation_is_enabled 2>/dev/null; then
+        print_header "コンテナ隔離"
+
+        # prerequisites チェック（podman, OS 等）
+        if ! isolation_check_prerequisites; then
+            print_error "コンテナ隔離の前提条件を満たしていません"
+            exit 1
+        fi
+
+        # イメージ存在チェック → なければ自動ビルド
+        local _iso_image
+        _iso_image="$(get_config isolation image 'ignite-agent:latest')"
+        local _iso_runtime="${_ISOLATION_RUNTIME:-podman}"
+        if ! "$_iso_runtime" image exists "$_iso_image" 2>/dev/null; then
+            print_info "コンテナイメージが見つかりません。自動ビルドを実行します..."
+            source "${LIB_DIR}/cmd_container.sh"
+            cmd_build_image || { print_error "イメージのビルドに失敗しました"; exit 1; }
+        fi
+
+        print_info "コンテナを起動中..."
+        if ! isolation_start_container "$WORKSPACE_DIR" "$IGNITE_RUNTIME_DIR"; then
+            print_error "コンテナ起動に失敗しました"
+            exit 1
+        fi
+        print_success "コンテナ起動完了: $(cat "$IGNITE_RUNTIME_DIR/state/container_name")"
+        echo ""
+    fi
+
+    # =========================================================================
     # 全エージェント一括並列起動
     # =========================================================================
     local total_agents=1  # Leader

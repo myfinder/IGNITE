@@ -1,0 +1,21 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl jq python3 git sqlite3 ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js (Claude Code / Codex CLI 依存)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# CLI ツール（ビルド引数で選択）
+ARG CLI_PROVIDER=claude
+RUN if [ "$CLI_PROVIDER" = "claude" ]; then npm install -g @anthropic-ai/claude-code; \
+    elif [ "$CLI_PROVIDER" = "opencode" ]; then curl -fsSL https://opencode.ai/install.sh | bash; \
+    elif [ "$CLI_PROVIDER" = "codex" ]; then npm install -g @openai/codex; fi
+
+# gh CLI は意図的にインストールしない（エージェントによる無断 PR 作成を防止）
+# SSH クライアントは意図的にインストールしない（HTTPS + Token 認証のみ）
+
+WORKDIR /workspace

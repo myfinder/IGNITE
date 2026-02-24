@@ -121,18 +121,31 @@ cli_start_agent_server() {
     local response_file="${runtime_dir}/state/.claude_init_response_${pane_idx}"
     rm -f "$response_file"
 
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        claude -p "$init_msg" \
-            --output-format json \
-            --dangerously-skip-permissions \
-            --model "$model" \
-            $extra_flags \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+        (
+            isolation_exec bash -c \
+                "cd '$workspace_dir' && claude -p \"\$(cat '$msg_file')\" \
+                --output-format json --dangerously-skip-permissions \
+                --model '$model' $extra_flags" \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            claude -p "$init_msg" \
+                --output-format json \
+                --dangerously-skip-permissions \
+                --model "$model" \
+                $extra_flags \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存（バックグラウンドプロセスの PID）
@@ -219,16 +232,30 @@ cli_send_message() {
 
     # claude -p --resume で同期的にメッセージ送信
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        claude -p "$message" \
-            --resume "$session_id" \
-            --output-format json \
-            --dangerously-skip-permissions \
-            --model "$model" \
-            2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        response=$(
+            isolation_exec bash -c \
+                "cd '$workspace_dir' && claude -p \"\$(cat '$msg_file')\" \
+                --resume '$session_id' --output-format json \
+                --dangerously-skip-permissions --model '$model'" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            claude -p "$message" \
+                --resume "$session_id" \
+                --output-format json \
+                --dangerously-skip-permissions \
+                --model "$model" \
+                2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     # CLAUDECODE 環境変数を復元

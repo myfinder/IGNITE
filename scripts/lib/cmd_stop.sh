@@ -121,6 +121,13 @@ cmd_stop() {
     rm -f "$IGNITE_RUNTIME_DIR/state"/.send_lock_*
     print_success "エージェントプロセスを停止しました"
 
+    # コンテナ停止（isolation 有効時）
+    if isolation_is_enabled 2>/dev/null; then
+        print_info "コンテナを停止中..."
+        isolation_stop_container "$IGNITE_RUNTIME_DIR"
+        print_success "コンテナ停止完了"
+    fi
+
     # 最終残存プロセスチェック
     _check_remaining_processes
 
@@ -192,6 +199,10 @@ _is_own_process_tree() {
 # _sweep_orphan_processes
 # PIDファイルに載っていない孤立プロセスを検出・停止
 _sweep_orphan_processes() {
+    # コンテナ隔離時はスキップ（プロセスはコンテナ内）
+    if isolation_is_enabled 2>/dev/null; then
+        return 0
+    fi
     # opencode / Claude Code / Codex CLI 関連プロセスを検出
     local _orphan_pids=""
     _orphan_pids=$(
