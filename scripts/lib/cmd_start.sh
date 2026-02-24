@@ -143,7 +143,7 @@ cmd_start() {
         _VALIDATION_ERRORS=()
         _VALIDATION_WARNINGS=()
         validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml" || true
-        validate_watcher_yaml    "${IGNITE_CONFIG_DIR}/github-watcher.yaml" || true
+        validate_github_watcher_yaml "${IGNITE_CONFIG_DIR}/github-watcher.yaml" || true
         validate_github_app_yaml "${IGNITE_CONFIG_DIR}/github-app.yaml" || true
 
         # 警告の表示

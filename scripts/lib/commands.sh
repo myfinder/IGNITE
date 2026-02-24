@@ -724,7 +724,7 @@ cmd_validate() {
                 print_warning "github-watcher.yaml が見つかりません（スキップ）"
                 return 0
             fi
-            validate_watcher_yaml "$f"
+            validate_github_watcher_yaml "$f"
             ;;
         github-app)
             local f="${config_dir}/github-app.yaml"
@@ -738,7 +738,7 @@ cmd_validate() {
             # config_dir 内の全設定ファイルを検証
             if [[ -d "$config_dir" ]]; then
                 validate_system_yaml "${config_dir}/system.yaml"
-                [[ -f "${config_dir}/github-watcher.yaml" ]] && validate_watcher_yaml "${config_dir}/github-watcher.yaml"
+                [[ -f "${config_dir}/github-watcher.yaml" ]] && validate_github_watcher_yaml "${config_dir}/github-watcher.yaml"
                 [[ -f "${config_dir}/github-app.yaml" ]] && validate_github_app_yaml "${config_dir}/github-app.yaml"
             else
                 validation_error "$config_dir" "(dir)" "設定ディレクトリが見つかりません"

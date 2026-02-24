@@ -9,7 +9,8 @@
 if ! command -v yq &>/dev/null; then
     echo "[WARN] config_validator: yq が未インストールのため検証をスキップします" >&2
     validate_system_yaml() { return 0; }
-    validate_watcher_yaml() { return 0; }
+    validate_github_watcher_yaml() { return 0; }
+    validate_watchers_yaml() { return 0; }
     validate_github_app_yaml() { return 0; }
     validate_all_configs() { return 0; }
     return 0
@@ -286,10 +287,10 @@ validate_system_yaml() {
 }
 
 # =============================================================================
-# スキーマ関数: validate_watcher_yaml
+# スキーマ関数: validate_github_watcher_yaml (旧 validate_watcher_yaml)
 # =============================================================================
 
-validate_watcher_yaml() {
+validate_github_watcher_yaml() {
     local file="$1"
     _validate_file_guard "$file" || return 0
 
@@ -348,6 +349,95 @@ validate_github_app_yaml() {
 }
 
 # =============================================================================
+# スキーマ関数: validate_watchers_yaml
+# watchers.yaml が存在しない場合、github-watcher.yaml にフォールバック
+# =============================================================================
+
+# validate_watchers_yaml <config_dir>
+# config_dir 内の watchers.yaml を検証する。
+# watchers.yaml が存在しない場合、github-watcher.yaml が存在すれば
+# github_watcher のみ登録された状態として扱う（後方互換）。
+validate_watchers_yaml() {
+    local config_dir="$1"
+    local file="${config_dir}/watchers.yaml"
+
+    if [[ ! -e "$file" ]]; then
+        # フォールバック: github-watcher.yaml が存在すればそちらを使用
+        if [[ -f "${config_dir}/github-watcher.yaml" ]]; then
+            echo "[INFO] watchers.yaml が見つかりません。github-watcher.yaml にフォールバックします" >&2
+            validate_github_watcher_yaml "${config_dir}/github-watcher.yaml" || true
+            return 0
+        fi
+        # どちらも存在しない場合はスキップ
+        return 0
+    fi
+
+    _validate_file_guard "$file" || return 0
+
+    echo "[INFO] 検証中: $(basename "$file")" >&2
+
+    # watchers セクションが配列であること
+    validate_required "$file" ".watchers"
+    validate_type     "$file" ".watchers" seq
+    validate_array_min "$file" ".watchers" 1
+
+    # 各 watcher エントリを検証
+    local count
+    count=$(yq -r '.watchers | length' "$file" 2>/dev/null)
+    [[ -z "$count" || "$count" == "null" ]] && count=0
+
+    local -A seen_names=()
+    local i
+    for (( i = 0; i < count; i++ )); do
+        local prefix=".watchers[$i]"
+
+        # 必須フィールド
+        validate_required "$file" "${prefix}.name"
+        validate_type     "$file" "${prefix}.name" str
+        validate_required "$file" "${prefix}.script_path"
+        validate_type     "$file" "${prefix}.script_path" str
+        validate_required "$file" "${prefix}.config_file"
+        validate_type     "$file" "${prefix}.config_file" str
+        validate_required "$file" "${prefix}.enabled"
+        validate_type     "$file" "${prefix}.enabled" bool
+
+        # name の空値チェック
+        local name
+        name=$(yq -r "${prefix}.name // \"\"" "$file" 2>/dev/null)
+        if [[ -n "$name" && "$name" != "null" ]]; then
+            # 重複 name チェック
+            if [[ -n "${seen_names[$name]+_}" ]]; then
+                validation_error "$file" "${prefix}.name" "watcher名が重複しています: ${name}" "一意の名前を設定してください"
+            fi
+            seen_names[$name]=1
+        fi
+
+        # script_path の存在チェック（config_dir の親ディレクトリ基準で解決）
+        local script_path
+        script_path=$(yq -r "${prefix}.script_path // \"\"" "$file" 2>/dev/null)
+        if [[ -n "$script_path" && "$script_path" != "null" ]]; then
+            local resolved_path="${script_path}"
+            if [[ "$resolved_path" != /* ]]; then
+                # 相対パスは config_dir の親（プロジェクトルート）基準
+                resolved_path="$(dirname "$config_dir")/${resolved_path}"
+            fi
+            if [[ ! -f "$resolved_path" ]]; then
+                validation_warn "$file" "${prefix}.script_path" \
+                    "スクリプトが見つかりません: ${script_path}" \
+                    "パスを確認してください"
+            fi
+        fi
+
+        # description はオプショナル（存在する場合は型チェックのみ）
+        local desc_val
+        desc_val=$(yq -r "${prefix}.description // \"__NULL__\"" "$file" 2>/dev/null)
+        if [[ "$desc_val" != "__NULL__" && "$desc_val" != "null" ]]; then
+            validate_type "$file" "${prefix}.description" str
+        fi
+    done
+}
+
+# =============================================================================
 # スキーマ関数: validate_workspace_config
 # =============================================================================
 
@@ -378,7 +468,7 @@ validate_workspace_config() {
 
     # ワークスペース内の設定ファイルを個別検証
     [[ -f "$ignite_dir/system.yaml" ]] && validate_system_yaml "$ignite_dir/system.yaml" || true
-    [[ -f "$ignite_dir/github-watcher.yaml" ]] && validate_watcher_yaml "$ignite_dir/github-watcher.yaml" || true
+    [[ -f "$ignite_dir/github-watcher.yaml" ]] && validate_github_watcher_yaml "$ignite_dir/github-watcher.yaml" || true
 
     return 0
 }
@@ -404,7 +494,7 @@ validate_all_configs() {
 
     # XDG 設定はオプショナル（不在時スキップ）
     if [[ -d "$xdg_config_dir" ]]; then
-        validate_watcher_yaml    "${xdg_config_dir}/github-watcher.yaml" || true
+        validate_github_watcher_yaml "${xdg_config_dir}/github-watcher.yaml" || true
         validate_github_app_yaml "${xdg_config_dir}/github-app.yaml" || true
     fi
 

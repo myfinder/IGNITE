@@ -62,9 +62,9 @@ YAML
     [[ "${_VALIDATION_ERRORS[0]}" == *"許可されていない値"* ]]
 }
 
-# --- validate_watcher_yaml 複合テスト ---
+# --- validate_github_watcher_yaml 複合テスト ---
 
-@test "validate_watcher_yaml: allowed_users空配列でエラーメッセージのフォーマット確認" {
+@test "validate_github_watcher_yaml: allowed_users空配列でエラーメッセージのフォーマット確認" {
     cat > "$TEST_TEMP_DIR/watcher.yaml" <<'YAML'
 watcher:
   repositories:
@@ -81,7 +81,7 @@ logging:
 YAML
     _VALIDATION_ERRORS=()
     _VALIDATION_WARNINGS=()
-    validate_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
+    validate_github_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
     [[ ${#_VALIDATION_ERRORS[@]} -ge 1 ]]
     # エラーメッセージに要素数不足が含まれる
     local found=false
@@ -91,7 +91,7 @@ YAML
     [[ "$found" == true ]]
 }
 
-@test "validate_watcher_yaml: 複数エラーが全て蓄積される" {
+@test "validate_github_watcher_yaml: 複数エラーが全て蓄積される" {
     cat > "$TEST_TEMP_DIR/watcher.yaml" <<'YAML'
 watcher:
   repositories: []
@@ -104,7 +104,7 @@ logging:
 YAML
     _VALIDATION_ERRORS=()
     _VALIDATION_WARNINGS=()
-    validate_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
+    validate_github_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
     # repositories空 + interval範囲外 + allowed_users空 + level不正 = 最低3件以上
     [[ ${#_VALIDATION_ERRORS[@]} -ge 3 ]]
 }
@@ -125,7 +125,7 @@ YAML
     _VALIDATION_WARNINGS=()
     # set -e を有効にした状態で || true 付きで呼び出し
     set -e
-    validate_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
+    validate_github_watcher_yaml "$TEST_TEMP_DIR/watcher.yaml" || true
     # ここに到達すること自体が成功（サイレント終了していない）
     [[ ${#_VALIDATION_ERRORS[@]} -ge 1 ]]
     set +e

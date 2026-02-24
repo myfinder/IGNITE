@@ -1,0 +1,22 @@
+# Watcher 管理設定
+# 登録された watcher を IGNITE が管理・起動します
+# このファイルをコピーして config/watchers.yaml として使用してください
+# cp config/watchers.yaml.example config/watchers.yaml
+#
+# watchers.yaml が存在しない場合、github-watcher.yaml が存在すれば
+# github_watcher のみ登録された状態として動作します（後方互換）
+
+watchers:
+  # GitHub Issue/PR イベント監視
+  - name: github_watcher
+    description: "GitHub Issue/PR イベント監視"
+    script_path: scripts/utils/github_watcher.sh
+    config_file: github-watcher.yaml
+    enabled: true
+
+  # カスタム watcher 追加例:
+  # - name: slack_watcher
+  #   description: "Slack メッセージ監視"
+  #   script_path: scripts/utils/slack_watcher.sh
+  #   config_file: slack-watcher.yaml
+  #   enabled: false
