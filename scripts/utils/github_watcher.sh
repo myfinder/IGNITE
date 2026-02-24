@@ -19,6 +19,9 @@ cli_load_config 2>/dev/null || true
 # YAMLユーティリティ
 source "${SCRIPT_DIR}/../lib/yaml_utils.sh"
 
+# Watcher共通ライブラリ
+source "${SCRIPT_DIR}/../lib/watcher_common.sh"
+
 # Bot Token / GitHub API 共通関数の読み込み
 source "${SCRIPT_DIR}/github_helpers.sh"
 
@@ -35,47 +38,19 @@ HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-10}"  # デフォルト10秒
 WATCHER_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR:-}/state/github_watcher_heartbeat.json"
 WATCHER_LOCK_FILE="${IGNITE_RUNTIME_DIR:-}/state/github_watcher.lock"
 
-# SIGHUP設定リロード用フラグ（trap内では直接load_config()を呼ばない）
-_RELOAD_REQUESTED=false
-
-# グレースフル停止用フラグ（trap内ではフラグを立てるだけ、exit()を呼ばない）
-_SHUTDOWN_REQUESTED=false
-_SHUTDOWN_SIGNAL=""
-_EXIT_CODE=0
+# シグナル制御フラグは watcher_common.sh の _WATCHER_* 変数を使用
+# 後方互換エイリアス（process_events等から参照される場合に備える）
+# 注意: 実際の制御は watcher_common.sh の _WATCHER_SHUTDOWN_REQUESTED 等が担当
 
 # スクリプト固有ログ（core.sh の log_* はカラー・タイムスタンプ付きで提供済み）
 log_event() { echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] ${CYAN}[EVENT]${NC} $1" >&2; }
 
 # =============================================================================
-# 外部データサニタイズ（信頼境界）
+# 外部データサニタイズ（watcher_common.sh に委譲）
 # =============================================================================
 
-# GitHub APIからの外部入力をサニタイズする
-# - 制御文字（\x00-\x1f、\x7fを除くタブ・改行）を除去
-# - シェルメタキャラクタを無害化
-# - 長さ制限を適用
-_sanitize_external_input() {
-    local input="$1"
-    local max_length="${2:-256}"
-
-    # 制御文字を全除去（タブ・改行含む: YAML埋め込み時のインジェクション防止）
-    local sanitized
-    sanitized=$(printf '%s' "$input" | tr -d '\000-\037\177')
-
-    # シェルメタキャラクタを無害化（全角に置換）
-    sanitized="${sanitized//;/；}"
-    sanitized="${sanitized//|/｜}"
-    sanitized="${sanitized//&/＆}"
-    sanitized="${sanitized//\$/＄}"
-    sanitized="${sanitized//\`/｀}"
-    sanitized="${sanitized//</＜}"
-    sanitized="${sanitized//>/＞}"
-    sanitized="${sanitized//(/（}"
-    sanitized="${sanitized//)/）}"
-
-    # 長さ制限
-    echo "${sanitized:0:$max_length}"
-}
+# 後方互換ラッパー: watcher_common.sh の _watcher_sanitize_input() に委譲
+_sanitize_external_input() { _watcher_sanitize_input "$@"; }
 
 # =============================================================================
 # 設定読み込み
@@ -284,14 +259,14 @@ expand_patterns() {
 }
 
 # =============================================================================
-# ステート管理
+# ステート管理（watcher_common.sh に委譲）
 # =============================================================================
 
+# 後方互換ラッパー: STATE_FILE を _WATCHER_STATE_FILE にブリッジして委譲
 init_state() {
+    _WATCHER_STATE_FILE="$STATE_FILE"
     mkdir -p "$(dirname "$STATE_FILE")"
     if [[ ! -f "$STATE_FILE" ]]; then
-        # 新規作成時は現在時刻を記録
-        # これ以降のイベントのみ処理対象とする（過去イベントの再処理防止）
         local now
         now=$(date -Iseconds)
         echo "{\"processed_events\":{},\"last_check\":{},\"initialized_at\":\"$now\"}" > "$STATE_FILE"
@@ -300,6 +275,7 @@ init_state() {
 }
 
 # 初期化時刻を取得（sinceパラメータのフォールバック用）
+# GitHub固有: fetch_*() が since パラメータに使用
 get_initialized_at() {
     jq -r '.initialized_at // empty' "$STATE_FILE" 2>/dev/null
 }
@@ -332,68 +308,18 @@ to_utc() {
     fi
 }
 
-# イベントIDが処理済みかチェック
-is_event_processed() {
-    local event_type="$1"
-    local event_id="$2"
-    local key="${event_type}_${event_id}"
+# 後方互換ラッパー: watcher_common.sh の共通関数に委譲
+is_event_processed() { watcher_is_event_processed "$@"; }
+mark_event_processed() { watcher_mark_event_processed "$@"; }
 
-    jq -e ".processed_events[\"$key\"]" "$STATE_FILE" > /dev/null 2>&1
-}
-
-# イベントIDを処理済みとして記録
-mark_event_processed() {
-    local event_type="$1"
-    local event_id="$2"
-    local key="${event_type}_${event_id}"
-    local timestamp
-    timestamp=$(date -Iseconds)
-
-    local tmp_file
-    tmp_file=$(mktemp)
-    if jq ".processed_events[\"$key\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"; then
-        mv "$tmp_file" "$STATE_FILE"
-    else
-        rm -f "$tmp_file"
-        log_warn "ステートファイル更新失敗: mark_event_processed $key"
-    fi
-}
-
-# 最終チェック時刻を更新
+# update_last_check は引数形式を維持（repo, event_type → "repo_event_type" キーに変換）
 update_last_check() {
     local repo="$1"
     local event_type="$2"
-    local timestamp
-    timestamp=$(date -Iseconds)
-
-    local tmp_file
-    tmp_file=$(mktemp)
-    if jq ".last_check[\"${repo}_${event_type}\"] = \"$timestamp\"" "$STATE_FILE" > "$tmp_file"; then
-        mv "$tmp_file" "$STATE_FILE"
-    else
-        rm -f "$tmp_file"
-        log_warn "ステートファイル更新失敗: update_last_check ${repo}_${event_type}"
-    fi
+    watcher_update_last_check "${repo}_${event_type}"
 }
 
-# 古い処理済みイベントをクリーンアップ（24時間以上前）
-cleanup_old_events() {
-    local cutoff
-    cutoff=$(date -d "24 hours ago" -Iseconds 2>/dev/null || date -v-24H -Iseconds 2>/dev/null || echo "")
-    if [[ -z "$cutoff" ]]; then
-        return
-    fi
-
-    local tmp_file
-    tmp_file=$(mktemp)
-    if jq --arg cutoff "$cutoff" '
-        .processed_events |= with_entries(select(.value >= $cutoff))
-    ' "$STATE_FILE" > "$tmp_file" 2>/dev/null; then
-        mv "$tmp_file" "$STATE_FILE"
-    else
-        rm -f "$tmp_file"
-    fi
-}
+cleanup_old_events() { watcher_cleanup_old_events; }
 
 # =============================================================================
 # ハートビート
@@ -1234,6 +1160,38 @@ process_pr_reviews() {
 # メインループ
 # =============================================================================
 
+# watcher_poll() オーバーライド: process_events() + パターンリフレッシュ
+# watcher_common.sh の watcher_run_daemon() から呼び出される
+_GITHUB_REFRESH_COUNTER=0
+watcher_poll() {
+    # パターンの定期リフレッシュ
+    if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+        _GITHUB_REFRESH_COUNTER=$((_GITHUB_REFRESH_COUNTER + 1))
+        if [[ $_GITHUB_REFRESH_COUNTER -ge $PATTERN_REFRESH_INTERVAL ]]; then
+            _GITHUB_REFRESH_COUNTER=0
+            log_info "パターンリフレッシュ実行中..."
+            expand_patterns "${REPO_PATTERNS[@]}" || log_warn "パターンリフレッシュ失敗、前回のリストを維持"
+            log_info "現在の監視対象: ${REPOSITORIES[*]}"
+        fi
+    fi
+
+    # SIGHUP リロード: GitHub 固有の設定リロード
+    # watcher_common.sh は共通設定のみリロードするため、
+    # GitHub固有の load_config + expand_patterns はここで実行
+    if [[ "$_WATCHER_RELOAD_REQUESTED" == true ]]; then
+        _WATCHER_RELOAD_REQUESTED=false
+        load_config || log_warn "設定リロード失敗"
+        _WATCHER_STATE_FILE="$STATE_FILE"
+        _WATCHER_POLL_INTERVAL="$POLL_INTERVAL"
+        if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
+            expand_patterns "${REPO_PATTERNS[@]}" || log_warn "パターン展開失敗"
+        fi
+        log_info "設定リロード完了: 監視対象=${REPOSITORIES[*]}"
+    fi
+
+    process_events
+}
+
 run_daemon() {
     # 二重起動防止ロック（queue_monitor と同一パターン）
     if [[ -n "${IGNITE_RUNTIME_DIR:-}" ]]; then
@@ -1254,69 +1212,12 @@ run_daemon() {
         log_info "パターンリフレッシュ間隔: ${PATTERN_REFRESH_INTERVAL}サイクル"
     fi
 
-    local refresh_counter=0
-    local _last_heartbeat_epoch=0
+    # watcher_common.sh のポーリング間隔をGitHub固有設定で上書き
+    _WATCHER_POLL_INTERVAL="$POLL_INTERVAL"
 
-    # 起動直後にハートビートを書き込み
-    _write_watcher_heartbeat || true
-    _last_heartbeat_epoch=$(date +%s)
-
-    while [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-        # セッション/プロセス生存チェック（環境変数が設定されている場合のみ）
-        if [[ -n "${IGNITE_SESSION:-}" ]]; then
-            local _watcher_leader_alive=false
-            local _watcher_leader_session
-            _watcher_leader_session=$(cat "$IGNITE_RUNTIME_DIR/state/.agent_session_0" 2>/dev/null || true)
-            [[ -n "$_watcher_leader_session" ]] && _watcher_leader_alive=true
-            if [[ "$_watcher_leader_alive" != true ]]; then
-                log_warn "Leader プロセスが終了しました。Watcherを終了します"
-                exit 0
-            fi
-        fi
-
-        # パターンの定期リフレッシュ
-        if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
-            refresh_counter=$((refresh_counter + 1))
-            if [[ $refresh_counter -ge $PATTERN_REFRESH_INTERVAL ]]; then
-                refresh_counter=0
-                log_info "パターンリフレッシュ実行中..."
-                expand_patterns "${REPO_PATTERNS[@]}" || log_warn "パターンリフレッシュ失敗、前回のリストを維持"
-                log_info "現在の監視対象: ${REPOSITORIES[*]}"
-            fi
-        fi
-
-        process_events || log_warn "process_events failed, continuing..."
-
-        # 定期的に古いイベントをクリーンアップ
-        cleanup_old_events || log_warn "cleanup_old_events failed, continuing..."
-
-        # SIGHUP による設定リロード（フラグベース遅延実行）
-        if [[ "$_RELOAD_REQUESTED" == true ]]; then
-            _RELOAD_REQUESTED=false
-            load_config || log_warn "設定リロード失敗"
-            if [[ ${#REPO_PATTERNS[@]} -gt 0 ]]; then
-                expand_patterns "${REPO_PATTERNS[@]}" || log_warn "パターン展開失敗"
-            fi
-            log_info "設定リロード完了: 監視対象=${REPOSITORIES[*]}"
-        fi
-
-        # sleep分割: SIGTERM応答性改善（最大1秒以内に停止可能）
-        local i=0
-        while [[ $i -lt $POLL_INTERVAL ]] && [[ "$_SHUTDOWN_REQUESTED" != true ]]; do
-            sleep 1
-            i=$((i + 1))
-
-            # ハートビート書き込み（HEARTBEAT_INTERVAL秒ごと）
-            local _now_epoch
-            _now_epoch=$(date +%s)
-            if (( _now_epoch - _last_heartbeat_epoch >= HEARTBEAT_INTERVAL )); then
-                _write_watcher_heartbeat || true
-                _last_heartbeat_epoch=$_now_epoch
-            fi
-        done
-    done
-
-    exit "${_EXIT_CODE:-0}"
+    # watcher_common.sh のデーモンループに委譲
+    # 注意: SIGHUPリロードは watcher_poll() 内で GitHub 固有設定含めて処理
+    watcher_run_daemon
 }
 
 run_once() {
@@ -1408,43 +1309,11 @@ main() {
     # ステート初期化
     init_state
 
-    # SIGHUP ハンドラ（フラグベース遅延リロード）
-    # trap内で直接load_config()を呼ぶと、process_events()実行中に
-    # REPOSITORIES[]変更やSTATE_FILE競合が発生するリスクがあるため、
-    # フラグを立てるだけにしてメインループ内で安全にリロードする
-    _handle_sighup() {
-        log_info "SIGHUP受信: リロード予約"
-        _RELOAD_REQUESTED=true
-    }
-
-    # グレースフル停止: フラグベース（trap内でexit()を呼ばない）
-    # process_events()完了を待ってから安全に停止する
-    graceful_shutdown() {
-        _SHUTDOWN_SIGNAL="$1"
-        _SHUTDOWN_REQUESTED=true
-        _EXIT_CODE=$((128 + $1))
-        log_info "シグナル受信 (${1}): 安全に停止します"
-    }
-    trap 'graceful_shutdown 15' SIGTERM
-    trap 'graceful_shutdown 2' SIGINT
-    trap '_handle_sighup' SIGHUP
-
-    # EXIT trap: 終了理由をログに記録
-    cleanup_and_log() {
-        local exit_code=$?
-        [[ $exit_code -eq 0 ]] && exit_code=${_EXIT_CODE:-0}
-        if [[ -n "$_SHUTDOWN_SIGNAL" ]]; then
-            log_info "GitHub Watcher 終了: シグナル${_SHUTDOWN_SIGNAL}による停止"
-        elif [[ $exit_code -eq 0 ]]; then
-            log_info "GitHub Watcher 終了: 正常終了"
-        elif [[ $exit_code -gt 128 ]]; then
-            local sig=$((exit_code - 128))
-            log_warn "GitHub Watcher 終了: 未捕捉シグナル$(kill -l $sig 2>/dev/null || echo UNKNOWN)"
-        else
-            log_error "GitHub Watcher 終了: 異常終了 (exit_code=$exit_code)"
-        fi
-    }
-    trap cleanup_and_log EXIT
+    # watcher_common.sh の初期化（シグナルtrap登録、PIDファイル作成）
+    # 注意: load_config/init_state の後に呼ぶ（設定値が必要なため）
+    _WATCHER_NAME="github_watcher"
+    _WATCHER_CONFIG_FILE="${IGNITE_WATCHER_CONFIG:-${IGNITE_CONFIG_DIR}/${DEFAULT_CONFIG_FILE}}"
+    _watcher_setup_traps
 
     # 実行モード
     case "$mode" in
