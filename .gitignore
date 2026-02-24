@@ -27,6 +27,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+.claude.json
 
 # Temporary files
 *.tmp
