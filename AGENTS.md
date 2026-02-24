@@ -70,6 +70,14 @@ bats tests/test_cmd_start_init.bats
 PR を出す前に必ず `make test` を実行してください。
 並列実行には GNU parallel が必要です（`apt install parallel` / `brew install parallel`）。
 
+### Test plan の検証ルール
+
+PR の Test plan に記載された項目は、**実際にコマンドを実行して動作を確認すること**。
+
+- `--dry-run` やコードリーディングだけで「確認済み」としてはいけない
+- `ignite start` の動作確認であれば、実際に `ignite start` → エージェント起動完了 → `ignite stop` まで通すこと
+- 設定変更のフォールバック確認であれば、設定を変更して実際に起動し、期待通りの分岐が行われることを出力で確認すること
+
 ### 動作確認
 
 systemd サービスの起動テストや queue_monitor のプログレス表示確認など、
