@@ -78,7 +78,7 @@ isolation_start_container() {
     "$_ISOLATION_RUNTIME" rm -f "$container_name" 2>/dev/null || true
 
     local memory cpus image
-    memory="$(get_config isolation resource_memory '4g')"
+    memory="$(get_config isolation resource_memory '8g')"
     cpus="$(get_config isolation resource_cpus '4')"
     image="$(get_config isolation image 'ignite-agent:latest')"
 
@@ -158,8 +158,8 @@ isolation_exec() {
 
 # =============================================================================
 # isolation_exec_with_env - 環境変数付きでコンテナ内コマンド実行
-# env_args は -e KEY=VALUE の配列
-# Usage: isolation_exec_with_env env_args_array -- command args...
+# env_args は -e KEY=VALUE の配列（空配列でも可: -- の前に何もなければスキップ）
+# Usage: isolation_exec_with_env [-e K=V ...] -- command args...
 # =============================================================================
 isolation_exec_with_env() {
     local runtime_dir="${IGNITE_RUNTIME_DIR:-}"
@@ -201,7 +201,7 @@ isolation_write_message_file() {
     local tmp_dir="${runtime_dir}/tmp"
     mkdir -p "$tmp_dir"
     local msg_file
-    msg_file="${tmp_dir}/.msg_$(date +%s%N)_$$"
+    msg_file="$(mktemp "${tmp_dir}/.msg_XXXXXXXXXX")"
     printf '%s' "$message" > "$msg_file"
     echo "$msg_file"
 }

@@ -43,7 +43,7 @@ isolation:
   enabled: true              # Enable/disable container isolation
   runtime: podman            # Container runtime (only podman supported)
   image: ignite-agent:latest # Container image
-  resource_memory: 4g        # Memory limit
+  resource_memory: 8g        # Memory limit (~500MB per CLI process × 9 agents + OS)
   resource_cpus: 4           # CPU limit
 ```
 

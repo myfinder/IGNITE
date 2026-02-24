@@ -4,7 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash curl jq python3 git sqlite3 ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js (Claude Code / Codex CLI 依存)
+# Node.js 22 (Claude Code は Node 18+ 必須、Codex CLI は Node 22+ 必須)
+# Ubuntu 24.04 公式の nodejs は v12 で不足するため NodeSource を使用
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*

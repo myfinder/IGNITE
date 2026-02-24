@@ -21,7 +21,7 @@ test: ## 全テスト実行（bats 並列）
 	bats --jobs "$$(($$(nproc) * 8))" tests/
 
 lint: ## shellcheck による静的解析
-	shellcheck -S warning scripts/ignite scripts/lib/*.sh scripts/utils/*.sh scripts/dev-setup.sh
+	shellcheck -S warning scripts/ignite scripts/lib/*.sh scripts/utils/*.sh scripts/dev-setup.sh scripts/install.sh
 
 start: ## テストワークスペース (/tmp/ignite-dev-ws) で起動
 	@mkdir -p $(DEV_WORKSPACE)

@@ -117,8 +117,11 @@ cli_start_agent_server() {
         local msg_file
         msg_file="$(isolation_write_message_file "$init_msg")"
         (
-            isolation_exec bash -c \
-                "cd '$workspace_dir' && cat '$msg_file' | codex exec --json --full-auto -" \
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && cat \"\$_MSG_FILE\" | codex exec --json --full-auto -" \
                 > "$response_file" 2>> "$log_file"
             rm -f "$msg_file"
         ) &
@@ -211,8 +214,12 @@ cli_send_message() {
         local msg_file
         msg_file="$(isolation_write_message_file "$message")"
         response=$(
-            isolation_exec bash -c \
-                "cd '$workspace_dir' && codex exec resume --json --full-auto '$session_id' \"\$(cat '$msg_file')\"" \
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -e "_SESSION_ID=$session_id" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && codex exec resume --json --full-auto \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
                 2>> "$log_file"
         )
         local rc=$?

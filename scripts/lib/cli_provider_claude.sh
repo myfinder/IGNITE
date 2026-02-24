@@ -125,10 +125,14 @@ cli_start_agent_server() {
         local msg_file
         msg_file="$(isolation_write_message_file "$init_msg")"
         (
-            isolation_exec bash -c \
-                "cd '$workspace_dir' && claude -p \"\$(cat '$msg_file')\" \
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -e "_MODEL=$model" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && claude -p \"\$(cat \"\$_MSG_FILE\")\" \
                 --output-format json --dangerously-skip-permissions \
-                --model '$model' $extra_flags" \
+                --model \"\$_MODEL\" $extra_flags" \
                 > "$response_file" 2>> "$log_file"
             rm -f "$msg_file"
         ) &
@@ -236,10 +240,15 @@ cli_send_message() {
         local msg_file
         msg_file="$(isolation_write_message_file "$message")"
         response=$(
-            isolation_exec bash -c \
-                "cd '$workspace_dir' && claude -p \"\$(cat '$msg_file')\" \
-                --resume '$session_id' --output-format json \
-                --dangerously-skip-permissions --model '$model'" \
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -e "_SESSION_ID=$session_id" \
+                -e "_MODEL=$model" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && claude -p \"\$(cat \"\$_MSG_FILE\")\" \
+                --resume \"\$_SESSION_ID\" --output-format json \
+                --dangerously-skip-permissions --model \"\$_MODEL\"" \
                 2>> "$log_file"
         )
         local rc=$?

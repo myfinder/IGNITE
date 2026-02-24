@@ -165,8 +165,12 @@ cli_start_agent_server() {
         local msg_file
         msg_file="$(isolation_write_message_file "$init_msg")"
         (
-            isolation_exec_with_env -e "OPENCODE_CONFIG=.ignite/${config_name}" -- \
-                bash -c "cd '$workspace_dir' && opencode run --format json \"\$(cat '$msg_file')\"" \
+            isolation_exec_with_env \
+                -e "OPENCODE_CONFIG=.ignite/${config_name}" \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && opencode run --format json \"\$(cat \"\$_MSG_FILE\")\"" \
                 > "$response_file" 2>> "$log_file"
             rm -f "$msg_file"
         ) &
@@ -264,13 +268,17 @@ cli_send_message() {
     if isolation_is_enabled 2>/dev/null; then
         local msg_file
         msg_file="$(isolation_write_message_file "$message")"
-        local exec_env_args=()
+        local exec_env_args=(
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+            -e "_SESSION_ID=$session_id"
+        )
         if [[ -n "$config_env" ]]; then
-            exec_env_args=(-e "$config_env")
+            exec_env_args+=(-e "$config_env")
         fi
         response=$(
             isolation_exec_with_env "${exec_env_args[@]}" -- \
-                bash -c "cd '$workspace_dir' && opencode run --format json --session '$session_id' \"\$(cat '$msg_file')\"" \
+                bash -c "cd \"\$_WORK_DIR\" && opencode run --format json --session \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
                 2>> "$log_file"
         )
         local rc=$?

@@ -64,7 +64,7 @@ isolation:
   enabled: true          # コンテナ隔離の有効/無効（podman 未インストール時はエラー停止）
   runtime: podman        # コンテナランタイム（現在 podman のみ対応）
   image: ignite-agent:latest
-  resource_memory: 32g    # コンテナメモリ上限
+  resource_memory: 8g     # コンテナメモリ上限（CLI 1プロセス約500MB × 9エージェント + OS）
   resource_cpus: 4       # コンテナ CPU 上限
 
 insights:
