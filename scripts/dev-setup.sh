@@ -43,6 +43,15 @@ for tool in "${required_tools[@]}"; do
     fi
 done
 
+# bash バージョンチェック（4.0+ 必須: 連想配列等の機能を使用）
+bash_major="${BASH_VERSINFO[0]:-0}"
+if [[ "$bash_major" -lt 4 ]]; then
+    fail "bash 4.0+ が必要です（現在: ${BASH_VERSION:-unknown}）"
+    errors=$((errors + 1))
+else
+    ok "bash バージョン ${BASH_VERSION} (4.0+ OK)"
+fi
+
 echo ""
 
 # =========================================================================

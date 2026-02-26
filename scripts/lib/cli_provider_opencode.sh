@@ -164,12 +164,23 @@ cli_start_agent_server() {
     if isolation_is_enabled 2>/dev/null; then
         local msg_file
         msg_file="$(isolation_write_message_file "$init_msg")"
+
+        local exec_env_args=(
+            -e "OPENCODE_CONFIG=.ignite/${config_name}"
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+        )
+        # extra_env を -e オプションに変換
+        if [[ -n "$extra_env" ]]; then
+            local _kv
+            while IFS= read -r _kv; do
+                [[ -z "$_kv" ]] && continue
+                exec_env_args+=(-e "$_kv")
+            done <<< "$(echo "$extra_env" | tr ' ' '\n')"
+        fi
+
         (
-            isolation_exec_with_env \
-                -e "OPENCODE_CONFIG=.ignite/${config_name}" \
-                -e "_MSG_FILE=$msg_file" \
-                -e "_WORK_DIR=$workspace_dir" \
-                -- bash -c \
+            isolation_exec_with_env "${exec_env_args[@]}" -- bash -c \
                 "cd \"\$_WORK_DIR\" && opencode run --format json \"\$(cat \"\$_MSG_FILE\")\"" \
                 > "$response_file" 2>> "$log_file"
             rm -f "$msg_file"

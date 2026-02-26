@@ -243,9 +243,12 @@ _check_and_recover_agents() {
     [[ "$_SHUTDOWN_REQUESTED" != true ]] || return 0
 
     # コンテナ生存チェック（isolation 有効時）
+    # $_QM_WORKSPACE_DIR を使用（core.sh source 時の WORKSPACE_DIR 上書きリスクを回避）
     if isolation_is_enabled 2>/dev/null && ! isolation_is_container_running 2>/dev/null; then
         log_warn "Isolation container is not running. Restarting..."
-        isolation_restart_container "$WORKSPACE_DIR" "$IGNITE_RUNTIME_DIR" 2>/dev/null || true
+        isolation_restart_container "$_QM_WORKSPACE_DIR" "$_QM_RUNTIME_DIR" 2>/dev/null || {
+            log_error "Container restart failed"
+        }
     fi
 
     # SESSION_NAME を設定（リカバリ関数が参照する）

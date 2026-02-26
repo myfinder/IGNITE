@@ -232,7 +232,9 @@ EOF
     echo "test" > "$TEST_TEMP_DIR/instr.md"
     cli_setup_project_config "$ws_dir" "leader" "$TEST_TEMP_DIR/char.md" "$TEST_TEMP_DIR/instr.md"
     [ -f "$ws_dir/.ignite/.claude_flags_leader" ]
-    [[ "$(cat "$ws_dir/.ignite/.claude_flags_leader")" == *"--append-system-prompt"* ]]
+    # フラグファイルは1行1パス形式（--append-system-prompt は cli_start_agent_server で付与）
+    [[ "$(cat "$ws_dir/.ignite/.claude_flags_leader")" == *"char.md"* ]]
+    [[ "$(cat "$ws_dir/.ignite/.claude_flags_leader")" == *"instr.md"* ]]
 }
 
 @test "cli_setup_project_config: codex で .codex_init_prompt_{role} ファイルを生成" {

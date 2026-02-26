@@ -61,7 +61,7 @@ health:
   init_timeout: 300        # 初期化未完了のタイムアウト（秒、デフォルト5分）
 
 isolation:
-  enabled: true          # コンテナ隔離の有効/無効（podman 未インストール時はエラー停止）
+  enabled: false         # コンテナ隔離の有効/無効（opt-in: podman インストール済みの場合に true に設定）
   runtime: podman        # コンテナランタイム（現在 podman のみ対応）
   image: ignite-agent:latest
   resource_memory: 8g     # コンテナメモリ上限（CLI 1プロセス約500MB × 9エージェント + OS）

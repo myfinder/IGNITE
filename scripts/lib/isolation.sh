@@ -7,11 +7,36 @@
 _ISOLATION_RUNTIME="${_ISOLATION_RUNTIME:-podman}"
 
 # =============================================================================
+# _isolation_get_network_option - Podman バージョンに応じたネットワークオプションを返す
+# Podman 4.0+ では pasta、それ以前は slirp4netns にフォールバック
+# =============================================================================
+_isolation_get_network_option() {
+    local version
+    version=$("$_ISOLATION_RUNTIME" --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+' | head -1)
+    if [[ -z "$version" ]]; then
+        echo "slirp4netns"
+        return
+    fi
+    local major minor
+    major="${version%%.*}"
+    minor="${version#*.}"
+    if [[ "$major" -ge 5 ]] || { [[ "$major" -eq 4 ]] && [[ "$minor" -ge 0 ]]; }; then
+        echo "pasta"
+    else
+        echo "slirp4netns"
+    fi
+}
+
+# =============================================================================
 # isolation_is_enabled - コンテナ隔離が有効か判定
+# 注意: この関数は get_config() に依存するため、cli_load_config() 後に呼ぶこと。
+# 呼び出し側は `isolation_is_enabled 2>/dev/null` パターンで使用する。
+# cli_load_config 前に呼ばれた場合は get_config 未定義で false 扱いになる（安全側倒し）。
+# デフォルト false（opt-in）: 明示的に enabled: true を設定した場合のみ有効。
 # =============================================================================
 isolation_is_enabled() {
     local enabled
-    enabled="$(get_config isolation enabled 'true')"
+    enabled="$(get_config isolation enabled 'false')" || return 1
     [[ "$enabled" == "true" ]]
 }
 
@@ -53,6 +78,8 @@ isolation_check_prerequisites() {
 # =============================================================================
 isolation_get_container_name() {
     local workspace_dir="$1"
+    # パスを正規化（末尾スラッシュ等でハッシュが変わるのを防止）
+    workspace_dir="$(realpath -m "$workspace_dir" 2>/dev/null || echo "$workspace_dir")"
     local hash
     hash="$(echo "$workspace_dir" | md5sum | cut -c1-8)"
     echo "ignite-ws-${hash}"
@@ -124,7 +151,7 @@ isolation_start_container() {
         --name "$container_name" \
         --userns=keep-id \
         --security-opt no-new-privileges \
-        --network=pasta \
+        --network="$(_isolation_get_network_option)" \
         --memory "$memory" \
         --cpus "$cpus" \
         "${env_file_args[@]}" \
@@ -181,12 +208,14 @@ isolation_exec_with_env() {
 
 # =============================================================================
 # isolation_stop_container - コンテナ停止・削除
+# 引数: runtime_dir のみ（workspace_dir は不要。start と非対称だが意図的設計）
 # =============================================================================
 isolation_stop_container() {
     local runtime_dir="${1:-$IGNITE_RUNTIME_DIR}"
+    local stop_timeout="${2:-30}"
     local container_name
     container_name="$(cat "${runtime_dir}/state/container_name" 2>/dev/null)" || return 0
-    "$_ISOLATION_RUNTIME" stop --time 10 "$container_name" 2>/dev/null || true
+    "$_ISOLATION_RUNTIME" stop --time "$stop_timeout" "$container_name" 2>/dev/null || true
     "$_ISOLATION_RUNTIME" rm -f "$container_name" 2>/dev/null || true
     rm -f "${runtime_dir}/state/container_name"
     log_info "Isolation container stopped: $container_name"

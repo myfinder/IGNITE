@@ -4,8 +4,57 @@
 
 # =============================================================================
 # cmd_build_image - エージェント用コンテナイメージをビルド
+# Usage: ignite build-image -w <workspace_dir>
+# cmd_start 経由の自動ビルドでは _BUILD_IMAGE_INTERNAL=1 で呼ばれる（-w 不要）。
 # =============================================================================
 cmd_build_image() {
+    local _internal="${_BUILD_IMAGE_INTERNAL:-}"
+
+    # オプション解析（外部呼び出し時のみ）
+    if [[ -z "$_internal" ]]; then
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -w|--workspace)
+                    WORKSPACE_DIR="$2"
+                    if [[ ! "$WORKSPACE_DIR" = /* ]]; then
+                        WORKSPACE_DIR="$(pwd)/$WORKSPACE_DIR"
+                    fi
+                    shift 2
+                    ;;
+                -h|--help)
+                    echo "Usage: ignite build-image -w <workspace_dir>"
+                    echo ""
+                    echo "ワークスペースの設定に基づいてエージェント用コンテナイメージをビルドします。"
+                    echo ""
+                    echo "Options:"
+                    echo "  -w, --workspace <dir>  ワークスペースディレクトリ（必須）"
+                    echo "  -h, --help             このヘルプを表示"
+                    return 0
+                    ;;
+                *)
+                    print_error "不正なオプション: $1"
+                    echo "Usage: ignite build-image -w <workspace_dir>"
+                    return 1
+                    ;;
+            esac
+        done
+
+        # -w 必須チェック
+        if [[ -z "${WORKSPACE_DIR:-}" ]]; then
+            print_error "ワークスペースの指定が必要です: ignite build-image -w <workspace_dir>"
+            return 1
+        fi
+        if [[ ! -d "${WORKSPACE_DIR}/.ignite" ]]; then
+            print_error "ワークスペースが初期化されていません: ${WORKSPACE_DIR}"
+            print_info "先に ignite init -w ${WORKSPACE_DIR} を実行してください"
+            return 1
+        fi
+
+        setup_workspace_config "$WORKSPACE_DIR"
+        source "${LIB_DIR}/cli_provider.sh"
+        cli_load_config
+    fi
+
     local cli_provider
     cli_provider="$(get_config cli provider 'claude')"
     local version="$VERSION"
@@ -26,6 +75,7 @@ cmd_build_image() {
     print_header "コンテナイメージビルド"
     print_info "Containerfile: $containerfile"
     print_info "CLI Provider: $cli_provider"
+    print_info "Workspace: ${WORKSPACE_DIR:-N/A}"
     print_info "バージョン: v${version}"
     echo ""
 

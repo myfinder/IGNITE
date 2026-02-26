@@ -362,7 +362,7 @@ install_data() {
 
     if [[ -d "$source_containers" ]]; then
         mkdir -p "$DATA_DIR/containers"
-        cp "$source_containers"/* "$DATA_DIR/containers/" 2>/dev/null || true
+        cp "$source_containers"/* "$source_containers"/.* "$DATA_DIR/containers/" 2>/dev/null || true
         if [[ "$UPGRADE" == "true" ]]; then
             print_success "containers を $DATA_DIR/containers にアップグレードしました"
         else

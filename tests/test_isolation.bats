@@ -64,7 +64,7 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "isolation_is_enabled: isolation セクションなしでデフォルト true" {
+@test "isolation_is_enabled: isolation セクションなしでデフォルト false" {
     cat > "$IGNITE_CONFIG_DIR/system.yaml" <<'EOF'
 cli:
   provider: claude
@@ -73,7 +73,7 @@ defaults:
   message_priority: normal
 EOF
     run isolation_is_enabled
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
 }
 
 # =============================================================================
@@ -187,6 +187,48 @@ EOF
     run isolation_get_container_info
     [ "$status" -eq 1 ]
     [ "$output" = "none" ]
+}
+
+# =============================================================================
+# isolation_get_container_name: パス正規化
+# =============================================================================
+
+@test "isolation_get_container_name: 末尾スラッシュで結果が変わらない" {
+    local name1 name2
+    name1=$(isolation_get_container_name "/home/user/workspace1")
+    name2=$(isolation_get_container_name "/home/user/workspace1/")
+    [ "$name1" = "$name2" ]
+}
+
+# =============================================================================
+# isolation_exec_with_env: パース
+# =============================================================================
+
+@test "isolation_exec_with_env: container_name ステートファイルなしでエラー" {
+    rm -f "$IGNITE_RUNTIME_DIR/state/container_name"
+    run isolation_exec_with_env -e "FOO=bar" -- echo "test"
+    [ "$status" -eq 1 ]
+}
+
+# =============================================================================
+# isolation_stop_container: カスタムタイムアウト
+# =============================================================================
+
+@test "isolation_stop_container: ステートファイルなしでカスタムタイムアウトでも安全に return 0" {
+    rm -f "$IGNITE_RUNTIME_DIR/state/container_name"
+    run isolation_stop_container "$IGNITE_RUNTIME_DIR" 60
+    [ "$status" -eq 0 ]
+}
+
+# =============================================================================
+# _isolation_get_network_option: フォールバック
+# =============================================================================
+
+@test "_isolation_get_network_option: 存在しないランタイムで slirp4netns にフォールバック" {
+    _ISOLATION_RUNTIME="__nonexistent_runtime__"
+    run _isolation_get_network_option
+    [ "$status" -eq 0 ]
+    [ "$output" = "slirp4netns" ]
 }
 
 # =============================================================================

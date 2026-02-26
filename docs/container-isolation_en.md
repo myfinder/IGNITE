@@ -5,7 +5,7 @@
 Since IGNITE v0.8.0, agents run inside Podman rootless containers.
 This prevents agents from having unrestricted access to the host environment.
 
-**Enabled by default** — set `isolation.enabled: false` to explicitly disable.
+**Disabled by default (opt-in)** — set `isolation.enabled: true` to explicitly enable.
 
 ## Motivation
 
@@ -93,6 +93,7 @@ On the first `ignite start`, if the image doesn't exist, it will be built automa
 | `$IGNITE_RUNTIME_DIR` (.ignite/) | rw | queue/state/logs/repos/tmp |
 | `$IGNITE_SCRIPTS_DIR` | ro | Auth flows (safe_git_push etc.) |
 | `~/.claude/` | rw | Session state + login auth |
+| `~/.claude.json` | rw | Claude Code global config (file-level mount) |
 | `~/.anthropic/` | ro | API key cache |
 | `~/.config/opencode/` | ro | OpenCode config + auth |
 
@@ -124,6 +125,68 @@ isolation:
   enabled: false
 ```
 
+## Verification Steps
+
+After making changes to container isolation, always perform these integration tests.
+
+### 1. Unit Tests
+
+```bash
+make test
+# All tests (including isolation-related) must pass
+```
+
+### 2. Normal Mode (isolation OFF)
+
+```bash
+# Initialize workspace (apply latest config)
+./scripts/ignite init --force
+
+# Confirm isolation.enabled: false in system.yaml
+grep 'enabled:' .ignite/system.yaml
+
+# Start → all 9 agents healthy → stop
+./scripts/ignite start
+./scripts/ignite status          # Confirm 9/9 healthy
+./scripts/ignite stop -s <session-id>
+
+# Confirm no remaining processes
+ps aux | grep -E 'claude.*session-id|queue_monitor' | grep -v grep
+```
+
+### 3. Isolation Mode (isolation ON)
+
+```bash
+# Enable isolation
+# .ignite/system.yaml: isolation.enabled: true
+
+# Check image exists (build if not)
+podman images | grep ignite-agent
+
+# Start → container up → all 9 agents healthy → stop
+./scripts/ignite start
+podman ps --filter name=ignite-ws   # Container should be running
+./scripts/ignite status              # 9/9 healthy + container info
+
+# Verify resource limits
+podman inspect <container-name> --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}} {{.HostConfig.SecurityOpt}}'
+
+# Stop → confirm container removal
+./scripts/ignite stop -s <session-id>
+podman ps -a --filter name=ignite-ws   # Container should be fully removed
+```
+
+### Checklist
+
+| Item | How to Verify |
+|------|---------------|
+| All 9 agents started | `ignite status` shows 9/9 healthy |
+| Container running | `podman ps` shows ignite-ws-* as running |
+| Resource limits | `podman inspect` shows memory/cpus/security-opt |
+| Clean shutdown | No containers or processes remain after `ignite stop` |
+| Dashboard updated | `cat .ignite/dashboard.md` shows agent logs |
+| queue_monitor | `ignite status` shows queue monitor running |
+
 ## Troubleshooting
 
 ### podman not installed
@@ -150,6 +213,13 @@ podman ps -a | grep ignite-ws
 # Check logs
 podman logs ignite-ws-xxxxxxxx
 ```
+
+### .env changes not reflected
+
+`.ignite/.env` is read at container startup (`podman run --env-file`).
+Changes to `.env` while the container is running are not reflected in `podman exec` calls.
+
+→ After changing `.env`, restart with `ignite stop && ignite start`.
 
 ### git commit requires user.name/email
 

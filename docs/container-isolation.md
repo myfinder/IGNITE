@@ -5,7 +5,7 @@
 IGNITE v0.8.0 以降、エージェントは Podman rootless コンテナ内で実行されます。
 これにより、エージェントがホスト環境に無制限にアクセスすることを防止します。
 
-**デフォルト ON** — `isolation.enabled: false` で明示的に無効化できます。
+**デフォルト OFF（opt-in）** — `isolation.enabled: true` で明示的に有効化してください。
 
 ## 動機
 
@@ -93,6 +93,7 @@ sudo pacman -S podman
 | `$IGNITE_RUNTIME_DIR` (.ignite/) | rw | queue/state/logs/repos/tmp |
 | `$IGNITE_SCRIPTS_DIR` | ro | 認証フロー（safe_git_push 等） |
 | `~/.claude/` | rw | セッション状態 + ログイン認証 |
+| `~/.claude.json` | rw | Claude Code グローバル設定（ファイル単位マウント） |
 | `~/.anthropic/` | ro | API キーキャッシュ |
 | `~/.config/opencode/` | ro | OpenCode 設定 + 認証 |
 
@@ -124,6 +125,68 @@ isolation:
   enabled: false
 ```
 
+## 動作確認手順
+
+コンテナ隔離の変更をした際は、以下の手順で必ず実機テストを行うこと。
+
+### 1. ユニットテスト
+
+```bash
+make test
+# 全テスト（isolation 関連含む）がパスすることを確認
+```
+
+### 2. 通常モード（isolation OFF）
+
+```bash
+# ワークスペース初期化（最新設定を反映）
+./scripts/ignite init --force
+
+# system.yaml で isolation.enabled: false を確認
+grep 'enabled:' .ignite/system.yaml
+
+# 起動 → 全9体 healthy → 停止
+./scripts/ignite start
+./scripts/ignite status          # 9/9 healthy を確認
+./scripts/ignite stop -s <session-id>
+
+# 残存プロセスなしを確認
+ps aux | grep -E 'claude.*session-id|queue_monitor' | grep -v grep
+```
+
+### 3. 隔離モード（isolation ON）
+
+```bash
+# isolation を有効化
+# .ignite/system.yaml: isolation.enabled: true
+
+# イメージ確認（なければビルド）
+podman images | grep ignite-agent
+
+# 起動 → コンテナ起動 → 全9体 healthy → 停止
+./scripts/ignite start
+podman ps --filter name=ignite-ws   # コンテナが running であること
+./scripts/ignite status              # 9/9 healthy + コンテナ情報表示
+
+# リソース制限の確認
+podman inspect <container-name> --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}} {{.HostConfig.SecurityOpt}}'
+
+# 停止 → コンテナ削除まで確認
+./scripts/ignite stop -s <session-id>
+podman ps -a --filter name=ignite-ws   # コンテナが完全に削除されていること
+```
+
+### 確認ポイント
+
+| 項目 | 確認方法 |
+|------|----------|
+| 全9体起動 | `ignite status` で 9/9 healthy |
+| コンテナ起動 | `podman ps` で ignite-ws-* が running |
+| リソース制限 | `podman inspect` で memory/cpus/security-opt |
+| 正常停止 | `ignite stop` 後にコンテナ・プロセスとも残存なし |
+| ダッシュボード更新 | `cat .ignite/dashboard.md` でエージェントログ表示 |
+| queue_monitor | `ignite status` でキューモニター running |
+
 ## トラブルシューティング
 
 ### podman がインストールされていない
@@ -150,6 +213,13 @@ podman ps -a | grep ignite-ws
 # ログ確認
 podman logs ignite-ws-xxxxxxxx
 ```
+
+### .env の変更が反映されない
+
+`.ignite/.env` はコンテナ起動時（`podman run --env-file`）に読み込まれます。
+コンテナ実行中に `.env` を変更しても `podman exec` には反映されません。
+
+→ `.env` 変更後は `ignite stop && ignite start` でコンテナを再起動してください。
 
 ### git commit に user.name/email が必要
 

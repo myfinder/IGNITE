@@ -497,7 +497,7 @@ EOF
         if ! "$_iso_runtime" image exists "$_iso_image" 2>/dev/null; then
             print_info "コンテナイメージが見つかりません。自動ビルドを実行します..."
             source "${LIB_DIR}/cmd_container.sh"
-            cmd_build_image || { print_error "イメージのビルドに失敗しました"; exit 1; }
+            _BUILD_IMAGE_INTERNAL=1 cmd_build_image || { print_error "イメージのビルドに失敗しました"; exit 1; }
         fi
 
         print_info "コンテナを起動中..."
