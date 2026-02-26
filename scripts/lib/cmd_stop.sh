@@ -98,9 +98,14 @@ cmd_stop() {
     _stop_daemon_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
 
     # Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
-    # 1. watchers.yaml に登録されたウォッチャーを停止（PID ファイルは state/ 配下）
-    for _watcher_pid_file in "$IGNITE_RUNTIME_DIR/state"/*_watcher.pid; do
+    # 1. state/ 配下の全ウォッチャー PID ファイルを走査
+    for _watcher_pid_file in "$IGNITE_RUNTIME_DIR/state"/*.pid; do
         [[ -f "$_watcher_pid_file" ]] || continue
+        local _pid_basename
+        _pid_basename=$(basename "$_watcher_pid_file")
+        # ウォッチャー以外の PID ファイルはスキップ
+        [[ "$_pid_basename" == "queue_monitor.pid" ]] && continue
+        [[ "$_pid_basename" == .agent_pid_* ]] && continue
         local _watcher_name
         _watcher_name=$(basename "$_watcher_pid_file" .pid)
         _stop_daemon_process "$_watcher_pid_file" "$_watcher_name"

@@ -120,7 +120,7 @@ MIME メッセージを構築し、指定エージェントのキューに投入
 
 処理内容:
 - 制御文字（`\x00-\x1f`, `\x7f`）を全除去
-- シェルメタキャラクタ（`;`, `|`, `&`, `$`, `` ` ``, `<`, `>`, `(`, `)`）を全角に変換
+- シェルメタキャラクタ・YAML特殊文字（`\`, `"`, `;`, `|`, `&`, `$`, `` ` ``, `<`, `>`, `(`, `)`）を全角に変換
 - 長さ制限を適用
 
 ### カスタム Watcher が実装する関数
@@ -144,6 +144,7 @@ watchers:
     script_path: path/to/script.sh  # 必須: スクリプトパス（相対パスはプロジェクトルート基準）
     config_file: config-name.yaml    # 必須: 設定ファイル名（config/ 配下）
     enabled: true              # 必須: 有効/無効（bool）
+    auto_start: true           # 任意: --with-watcher=auto 時に自動起動（デフォルト: true）
 ```
 
 ### フィールド説明
@@ -155,6 +156,7 @@ watchers:
 | `script_path` | string | Yes | Watcher スクリプトのパス。相対パスはプロジェクトルート（config/ の親）基準で解決 |
 | `config_file` | string | Yes | 設定ファイル名。`config/` ディレクトリ配下に配置 |
 | `enabled` | bool | Yes | `true` で有効、`false` で無効 |
+| `auto_start` | bool | No | `--with-watcher=auto` 時に自動起動するか。デフォルト `true` |
 
 ### バリデーション
 
@@ -252,11 +254,9 @@ source: \"my_service\""
     watcher_update_last_check "my_events"
 }
 
-# ─── 固有設定の読み込みとデーモン起動 ───
-_load_my_config "$_WATCHER_CONFIG_FILE"
-
-# 初期化 + デーモン起動
+# ─── 初期化・固有設定の読み込み・デーモン起動 ───
 watcher_init "my_watcher" "${1:-}"
+_load_my_config "$_WATCHER_CONFIG_FILE"
 watcher_run_daemon
 ```
 
@@ -306,32 +306,28 @@ ignite start --with-watcher
 
 ```bash
 #!/usr/bin/env bats
+load test_helper
 
 setup() {
-    # テスト用の一時ディレクトリ
-    export TEST_DIR="$(mktemp -d)"
-    export IGNITE_CONFIG_DIR="$TEST_DIR/config"
-    export IGNITE_RUNTIME_DIR="$TEST_DIR/runtime"
+    setup_temp_dir
+    export IGNITE_CONFIG_DIR="$TEST_TEMP_DIR/config"
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
     mkdir -p "$IGNITE_CONFIG_DIR" "$IGNITE_RUNTIME_DIR/state" "$IGNITE_RUNTIME_DIR/queue/leader"
-
-    # 依存ライブラリのパスを設定
-    SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../scripts/utils" && pwd)"
-    LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../scripts/lib" && pwd)"
 }
 
 teardown() {
-    rm -rf "$TEST_DIR"
+    cleanup_temp_dir
 }
 
 @test "watcher_init creates PID file" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     [ -f "$IGNITE_RUNTIME_DIR/state/test_watcher.pid" ]
 }
 
 @test "watcher_is_event_processed returns 1 for new event" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     run watcher_is_event_processed "test" "event_001"
@@ -339,7 +335,7 @@ teardown() {
 }
 
 @test "watcher_mark_event_processed then is_processed returns 0" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     watcher_mark_event_processed "test" "event_001"
@@ -348,7 +344,7 @@ teardown() {
 }
 
 @test "_watcher_sanitize_input removes shell metacharacters" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
 
     result=$(_watcher_sanitize_input 'hello; rm -rf /' 256)
     [[ "$result" != *";"* ]]
@@ -386,5 +382,5 @@ bats tests/test_my_watcher.bats
 設定変更を反映するには:
 
 ```bash
-kill -HUP $(cat runtime/state/my_watcher.pid)
+kill -HUP $(cat .ignite/state/my_watcher.pid)
 ```

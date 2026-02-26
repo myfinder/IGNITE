@@ -38,7 +38,7 @@ _load_file_watcher_config() {
     [[ ! -f "$config_file" ]] && return 0
 
     # watch_dir: 監視ディレクトリ（デフォルト: repos）
-    _FW_WATCH_DIR=$(yq -r '.watch_dir // "repos"' "$config_file" 2>/dev/null || echo "repos")
+    _FW_WATCH_DIR=$(yaml_get "$config_file" "watch_dir" "repos")
 
     # 絶対パスに解決
     if [[ "$_FW_WATCH_DIR" != /* ]]; then
@@ -46,7 +46,7 @@ _load_file_watcher_config() {
     fi
 
     # patterns: ファイルパターン（デフォルト: *）
-    _FW_PATTERNS=$(yq -r '.patterns // "*"' "$config_file" 2>/dev/null || echo "*")
+    _FW_PATTERNS=$(yaml_get "$config_file" "patterns" "*")
 
     # スナップショットファイル
     _FW_SNAPSHOT_FILE="${IGNITE_RUNTIME_DIR}/state/file_watcher_snapshot.txt"
@@ -65,8 +65,16 @@ _take_snapshot() {
         return 0
     fi
 
-    # find + stat でファイル一覧を取得（パス:mtime 形式）
-    find "$watch_dir" -maxdepth 3 -name "$patterns" -type f -printf '%p:%T@\n' 2>/dev/null | sort
+    # find + stat でファイル一覧を取得（パス<TAB>mtime 形式）
+    # タブ区切り: ファイル名に `:` が含まれるケースに対応
+    # GNU find と BSD find の両方に対応
+    if find "$watch_dir" -maxdepth 1 -printf '' 2>/dev/null; then
+        # GNU find
+        find "$watch_dir" -maxdepth 3 -name "$patterns" -type f -printf '%p\t%T@\n' 2>/dev/null | sort
+    else
+        # BSD find (macOS) — stat -f で mtime 取得
+        find "$watch_dir" -maxdepth 3 -name "$patterns" -type f -exec stat -f '%N	%m' {} + 2>/dev/null | sort
+    fi
 }
 
 # _diff_snapshots — 2つのスナップショットを比較して差分を返す
@@ -76,22 +84,23 @@ _diff_snapshots() {
 
     # 新規ファイル（new にあって old にない）
     local new_files
-    new_files=$(comm -23 <(echo "$new_snap" | cut -d: -f1 | sort) \
-                         <(echo "$old_snap" | cut -d: -f1 | sort) 2>/dev/null || true)
+    new_files=$(comm -23 <(echo "$new_snap" | cut -f1 | sort) \
+                         <(echo "$old_snap" | cut -f1 | sort) 2>/dev/null || true)
 
     # 削除ファイル（old にあって new にない）
     local deleted_files
-    deleted_files=$(comm -13 <(echo "$new_snap" | cut -d: -f1 | sort) \
-                              <(echo "$old_snap" | cut -d: -f1 | sort) 2>/dev/null || true)
+    deleted_files=$(comm -13 <(echo "$new_snap" | cut -f1 | sort) \
+                              <(echo "$old_snap" | cut -f1 | sort) 2>/dev/null || true)
 
     # 変更ファイル（両方にあるがタイムスタンプが異なる）
     local modified_files=""
-    while IFS=: read -r path mtime; do
+    while IFS=$'\t' read -r path mtime; do
         [[ -z "$path" ]] && continue
         local old_mtime
-        old_mtime=$(echo "$old_snap" | grep "^${path}:" | cut -d: -f2)
+        old_mtime=$(echo "$old_snap" | awk -F'\t' -v p="$path" '$1==p{print $2; exit}')
         if [[ -n "$old_mtime" && "$old_mtime" != "$mtime" ]]; then
-            modified_files="${modified_files}${path}\n"
+            modified_files="${modified_files}${path}
+"
         fi
     done <<< "$new_snap"
 
@@ -107,7 +116,7 @@ _diff_snapshots() {
         done <<< "$deleted_files"
     fi
     if [[ -n "$modified_files" ]]; then
-        echo -e "$modified_files" | while IFS= read -r f; do
+        printf '%s' "$modified_files" | while IFS= read -r f; do
             [[ -n "$f" ]] && echo "modified:$f"
         done
     fi
@@ -155,7 +164,7 @@ watcher_poll() {
         [[ -z "$change_type" ]] && continue
 
         local event_id
-        event_id="${change_type}_$(echo "$file_path" | md5sum | cut -c1-12)_$(date +%s)"
+        event_id="${change_type}_$(echo "$file_path" | md5sum | cut -c1-12)"
 
         # 重複チェック
         if watcher_is_event_processed "file_change" "$event_id"; then
@@ -167,7 +176,7 @@ watcher_poll() {
         safe_path=$(_watcher_sanitize_input "$file_path" 512)
 
         # MIME メッセージ構築
-        local relative_path="${safe_path#${IGNITE_RUNTIME_DIR}/}"
+        local relative_path="${safe_path#"${IGNITE_RUNTIME_DIR}"/}"
         local body_yaml
         body_yaml="event_type: \"file_change\"
 change_type: \"${change_type}\"

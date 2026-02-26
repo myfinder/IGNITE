@@ -27,7 +27,8 @@ _load_watcher_entries() {
             script=$(yq -r ".watchers[$i].script_path // \"\"" "$watchers_file")
             config=$(yq -r ".watchers[$i].config_file // \"\"" "$watchers_file")
             enabled=$(yq -r ".watchers[$i].enabled // false" "$watchers_file")
-            auto_start=$(yq -r ".watchers[$i].auto_start // false" "$watchers_file")
+            auto_start=$(yq -r ".watchers[$i].auto_start" "$watchers_file")
+            [[ "$auto_start" == "null" || -z "$auto_start" ]] && auto_start="true"
             echo "${name}|${script}|${config}|${enabled}|${auto_start}"
         done
     elif [[ -f "$IGNITE_CONFIG_DIR/github-watcher.yaml" ]]; then
@@ -76,7 +77,7 @@ _start_single_watcher() {
     export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
     export IGNITE_SESSION="$SESSION_NAME"
 
-    "$resolved_script" >> "$watcher_log" 2>&1 &
+    "$resolved_script" "$config_path" >> "$watcher_log" 2>&1 &
     local watcher_pid=$!
     # PID ファイルは state/ 配下に統一（watcher_common.sh の watcher_init と同じ場所）
     # watcher_init() が自プロセスの PID で上書きするため、ここでの書き込みは
@@ -230,6 +231,7 @@ cmd_start() {
         validate_system_yaml "${IGNITE_CONFIG_DIR}/system.yaml" || true
         validate_github_watcher_yaml "${IGNITE_CONFIG_DIR}/github-watcher.yaml" || true
         validate_github_app_yaml "${IGNITE_CONFIG_DIR}/github-app.yaml" || true
+        validate_watchers_yaml "$IGNITE_CONFIG_DIR" || true
 
         # 警告の表示
         if [[ ${#_VALIDATION_WARNINGS[@]} -gt 0 ]]; then
@@ -396,13 +398,14 @@ EOF
 
     # 旧Watcherプロセスをクリーンアップ（PIDファイルベース・セッション固有）
     # RUNTIME_DIR 直下（後方互換）と state/ 配下（現行）の両方を掃除
-    for _pid_file in "$IGNITE_RUNTIME_DIR"/*.pid "$IGNITE_RUNTIME_DIR"/state/*_watcher.pid; do
+    for _pid_file in "$IGNITE_RUNTIME_DIR"/*.pid "$IGNITE_RUNTIME_DIR"/state/*.pid; do
         [[ -f "$_pid_file" ]] || continue
         local _pid_basename
         _pid_basename=$(basename "$_pid_file")
-        # queue_monitor/ignite-daemon は別途管理
+        # queue_monitor/ignite-daemon/agent は別途管理
         [[ "$_pid_basename" == "queue_monitor.pid" ]] && continue
         [[ "$_pid_basename" == "ignite-daemon.pid" ]] && continue
+        [[ "$_pid_basename" == .agent_pid_* ]] && continue
         local old_pid
         old_pid=$(cat "$_pid_file")
         if kill -0 "$old_pid" 2>/dev/null; then
@@ -872,8 +875,8 @@ EOF
                         [[ "$_w_enabled" == "true" ]] && _should_start=true
                         ;;
                     *)
-                        # 指定名のwatcherのみ
-                        [[ "$_w_name" == "$with_watcher" ]] && _should_start=true
+                        # 指定名のwatcherのみ（enabled=true の場合）
+                        [[ "$_w_name" == "$with_watcher" && "$_w_enabled" == "true" ]] && _should_start=true
                         ;;
                 esac
 

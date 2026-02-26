@@ -551,21 +551,27 @@ cmd_watcher() {
     cli_load_config
     setup_session_name
 
+    # PID ファイルパスの解決（state/ 優先、旧パスにフォールバック）
+    local _watcher_pid_file="$IGNITE_RUNTIME_DIR/state/github_watcher.pid"
+    if [[ ! -f "$_watcher_pid_file" ]] && [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+        _watcher_pid_file="$IGNITE_RUNTIME_DIR/github_watcher.pid"
+    fi
+
     case "$action" in
         start)
             print_info "GitHub Watcherを起動します..."
             # 既存プロセスの停止（PIDベース）
-            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$_watcher_pid_file" ]]; then
                 local old_pid
-                old_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+                old_pid=$(cat "$_watcher_pid_file")
                 if kill -0 "$old_pid" 2>/dev/null; then
                     kill "$old_pid" 2>/dev/null || true
                     sleep 1
                 fi
-                rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
+                rm -f "$_watcher_pid_file"
             fi
             local watcher_log="$IGNITE_RUNTIME_DIR/logs/github_watcher.log"
-            mkdir -p "$IGNITE_RUNTIME_DIR/logs"
+            mkdir -p "$IGNITE_RUNTIME_DIR/logs" "$IGNITE_RUNTIME_DIR/state"
             export IGNITE_WATCHER_CONFIG="$IGNITE_CONFIG_DIR/github-watcher.yaml"
             export IGNITE_WORKSPACE_DIR="$WORKSPACE_DIR"
             export WORKSPACE_DIR="$WORKSPACE_DIR"
@@ -574,14 +580,14 @@ cmd_watcher() {
             export IGNITE_SESSION="${SESSION_NAME:-}"
             "$IGNITE_SCRIPTS_DIR/utils/github_watcher.sh" >> "$watcher_log" 2>&1 &
             local watcher_pid=$!
-            echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/github_watcher.pid"
+            echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/state/github_watcher.pid"
             print_success "GitHub Watcherをバックグラウンドで起動しました (PID: $watcher_pid)"
             ;;
         stop)
             print_info "GitHub Watcherを停止します..."
-            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$_watcher_pid_file" ]]; then
                 local watcher_pid
-                watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+                watcher_pid=$(cat "$_watcher_pid_file")
                 if kill -0 "$watcher_pid" 2>/dev/null; then
                     kill "$watcher_pid" 2>/dev/null || true
                     local wait_count=0
@@ -596,20 +602,22 @@ cmd_watcher() {
                 else
                     print_warning "GitHub Watcher (PID: $watcher_pid) は既に停止しています"
                 fi
+                rm -f "$_watcher_pid_file"
+                # 旧パスも掃除
                 rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
             else
                 print_warning "PIDファイルが見つかりません"
             fi
             ;;
         status)
-            if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+            if [[ -f "$_watcher_pid_file" ]]; then
                 local watcher_pid
-                watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+                watcher_pid=$(cat "$_watcher_pid_file")
                 if kill -0 "$watcher_pid" 2>/dev/null; then
                     print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
                 else
                     print_warning "GitHub Watcher: 停止中 (stale PID: $watcher_pid)"
-                    rm -f "$IGNITE_RUNTIME_DIR/github_watcher.pid"
+                    rm -f "$_watcher_pid_file"
                 fi
             else
                 print_warning "GitHub Watcher: 停止中"
@@ -676,6 +684,7 @@ cmd_validate() {
                 echo "  -c, --config <name>   検証対象を指定"
                 echo "                        system      - system.yaml"
                 echo "                        watcher     - github-watcher.yaml"
+                echo "                        watchers    - watchers.yaml"
                 echo "                        github-app  - github-app.yaml"
                 echo "                        all (default) - 全ファイル"
                 echo "  -h, --help            この使い方を表示"
@@ -734,19 +743,23 @@ cmd_validate() {
             fi
             validate_github_app_yaml "$f"
             ;;
+        watchers)
+            validate_watchers_yaml "$config_dir"
+            ;;
         all)
             # config_dir 内の全設定ファイルを検証
             if [[ -d "$config_dir" ]]; then
                 validate_system_yaml "${config_dir}/system.yaml"
                 [[ -f "${config_dir}/github-watcher.yaml" ]] && validate_github_watcher_yaml "${config_dir}/github-watcher.yaml"
                 [[ -f "${config_dir}/github-app.yaml" ]] && validate_github_app_yaml "${config_dir}/github-app.yaml"
+                validate_watchers_yaml "$config_dir"
             else
                 validation_error "$config_dir" "(dir)" "設定ディレクトリが見つかりません"
             fi
             ;;
         *)
             print_error "不明な検証対象: $target"
-            echo "有効な値: system, watcher, github-app, all"
+            echo "有効な値: system, watcher, watchers, github-app, all"
             return 1
             ;;
     esac

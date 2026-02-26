@@ -217,6 +217,9 @@ watcher_run_daemon() {
         watcher_cleanup_old_events || log_warn "[${_WATCHER_NAME}] cleanup_old_events failed, continuing..."
 
         # SIGHUP による設定リロード（フラグベース遅延実行）
+        # watcher_poll() 内で独自にリロード処理を行いフラグをリセットする場合、
+        # ここでは何もしない（github_watcher.sh 等）。watcher_poll() がフラグを
+        # 消費しない Watcher では、ここが共通のリロードハンドラとして機能する。
         if [[ "$_WATCHER_RELOAD_REQUESTED" == true ]]; then
             _WATCHER_RELOAD_REQUESTED=false
             watcher_load_config "$_WATCHER_CONFIG_FILE" || log_warn "[${_WATCHER_NAME}] 設定リロード失敗"
@@ -331,7 +334,7 @@ watcher_is_event_processed() {
     local event_id="$2"
     local key="${event_type}_${event_id}"
 
-    jq -e ".processed_events[\"$key\"]" "$_WATCHER_STATE_FILE" > /dev/null 2>&1
+    jq -e --arg k "$key" '.processed_events[$k]' "$_WATCHER_STATE_FILE" > /dev/null 2>&1
 }
 
 # watcher_mark_event_processed — イベントIDを処理済みとして記録
@@ -347,7 +350,7 @@ watcher_mark_event_processed() {
 
     local tmp_file
     tmp_file=$(mktemp)
-    if jq ".processed_events[\"$key\"] = \"$timestamp\"" "$_WATCHER_STATE_FILE" > "$tmp_file"; then
+    if jq --arg k "$key" --arg ts "$timestamp" '.processed_events[$k] = $ts' "$_WATCHER_STATE_FILE" > "$tmp_file"; then
         mv "$tmp_file" "$_WATCHER_STATE_FILE"
     else
         rm -f "$tmp_file"
@@ -365,7 +368,7 @@ watcher_update_last_check() {
 
     local tmp_file
     tmp_file=$(mktemp)
-    if jq ".last_check[\"$check_key\"] = \"$timestamp\"" "$_WATCHER_STATE_FILE" > "$tmp_file"; then
+    if jq --arg k "$check_key" --arg ts "$timestamp" '.last_check[$k] = $ts' "$_WATCHER_STATE_FILE" > "$tmp_file"; then
         mv "$tmp_file" "$_WATCHER_STATE_FILE"
     else
         rm -f "$tmp_file"
@@ -379,7 +382,7 @@ watcher_update_last_check() {
 # 戻り値: ISO 8601タイムスタンプ（未チェックの場合は initialized_at）
 watcher_get_last_check() {
     local check_key="$1"
-    jq -r ".last_check[\"$check_key\"] // .initialized_at // empty" "$_WATCHER_STATE_FILE" 2>/dev/null
+    jq -r --arg k "$check_key" '.last_check[$k] // .initialized_at // empty' "$_WATCHER_STATE_FILE" 2>/dev/null
 }
 
 # watcher_cleanup_old_events — 24時間超過の処理済みイベントを削除
@@ -426,7 +429,7 @@ watcher_send_mime() {
     local issue="${6:-}"
 
     local message_id
-    message_id=$(date +%s%6N)
+    message_id="$(date +%s%6N)_$$"
     local queue_dir="${IGNITE_RUNTIME_DIR}/queue/${to}"
 
     mkdir -p "$queue_dir"
@@ -467,7 +470,9 @@ _watcher_sanitize_input() {
     local sanitized
     sanitized=$(printf '%s' "$input" | tr -d '\000-\037\177')
 
-    # シェルメタキャラクタを無害化（全角に置換）
+    # シェルメタキャラクタ・YAML特殊文字を無害化（全角に置換）
+    sanitized="${sanitized//\\/＼}"
+    sanitized="${sanitized//\"/＂}"
     sanitized="${sanitized//;/；}"
     sanitized="${sanitized//|/｜}"
     sanitized="${sanitized//&/＆}"
@@ -479,5 +484,5 @@ _watcher_sanitize_input() {
     sanitized="${sanitized//)/）}"
 
     # 長さ制限
-    echo "${sanitized:0:$max_length}"
+    printf '%s\n' "${sanitized:0:$max_length}"
 }

@@ -284,6 +284,19 @@ YAML
     [ -z "$result" ]
 }
 
+@test "_watcher_sanitize_input: ダブルクォートとバックスラッシュが全角に変換される" {
+    _source_watcher_common
+
+    local result
+    result=$(_watcher_sanitize_input 'file"test')
+    [[ "$result" != *'"'* ]]
+    [[ "$result" == *'＂'* ]]
+
+    result=$(_watcher_sanitize_input 'path\name')
+    [[ "$result" != *'\'* ]]
+    [[ "$result" == *'＼'* ]]
+}
+
 # =============================================================================
 # 7. watcher_update_last_check / watcher_get_last_check テスト
 # =============================================================================

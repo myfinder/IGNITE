@@ -120,7 +120,7 @@ Sanitizes external data. Default max length is 256 characters.
 
 Processing:
 - Removes all control characters (`\x00-\x1f`, `\x7f`)
-- Converts shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `<`, `>`, `(`, `)`) to fullwidth equivalents
+- Converts shell metacharacters and YAML special characters (`\`, `"`, `;`, `|`, `&`, `$`, `` ` ``, `<`, `>`, `(`, `)`) to fullwidth equivalents
 - Applies length limit
 
 ### Functions to Implement in Custom Watchers
@@ -144,6 +144,7 @@ watchers:
     script_path: path/to/script.sh  # Required: Script path (relative to project root)
     config_file: config-name.yaml    # Required: Config file name (under config/)
     enabled: true              # Required: Enable/disable (bool)
+    auto_start: true           # Optional: Auto-start with --with-watcher=auto (default: true)
 ```
 
 ### Field Description
@@ -155,6 +156,7 @@ watchers:
 | `script_path` | string | Yes | Path to the Watcher script. Relative paths are resolved from the project root (parent of config/) |
 | `config_file` | string | Yes | Config file name. Placed under the `config/` directory |
 | `enabled` | bool | Yes | `true` to enable, `false` to disable |
+| `auto_start` | bool | No | Whether to auto-start with `--with-watcher=auto`. Default `true` |
 
 ### Validation
 
@@ -252,11 +254,9 @@ source: \"my_service\""
     watcher_update_last_check "my_events"
 }
 
-# ─── Load custom config and start daemon ───
-_load_my_config "$_WATCHER_CONFIG_FILE"
-
-# Initialize + start daemon
+# ─── Initialize, load custom config, start daemon ───
 watcher_init "my_watcher" "${1:-}"
+_load_my_config "$_WATCHER_CONFIG_FILE"
 watcher_run_daemon
 ```
 
@@ -306,32 +306,28 @@ Create `test_my_watcher.bats` in the `tests/` directory:
 
 ```bash
 #!/usr/bin/env bats
+load test_helper
 
 setup() {
-    # Temporary directory for tests
-    export TEST_DIR="$(mktemp -d)"
-    export IGNITE_CONFIG_DIR="$TEST_DIR/config"
-    export IGNITE_RUNTIME_DIR="$TEST_DIR/runtime"
+    setup_temp_dir
+    export IGNITE_CONFIG_DIR="$TEST_TEMP_DIR/config"
+    export IGNITE_RUNTIME_DIR="$TEST_TEMP_DIR/runtime"
     mkdir -p "$IGNITE_CONFIG_DIR" "$IGNITE_RUNTIME_DIR/state" "$IGNITE_RUNTIME_DIR/queue/leader"
-
-    # Set dependency library paths
-    SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../scripts/utils" && pwd)"
-    LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../scripts/lib" && pwd)"
 }
 
 teardown() {
-    rm -rf "$TEST_DIR"
+    cleanup_temp_dir
 }
 
 @test "watcher_init creates PID file" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     [ -f "$IGNITE_RUNTIME_DIR/state/test_watcher.pid" ]
 }
 
 @test "watcher_is_event_processed returns 1 for new event" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     run watcher_is_event_processed "test" "event_001"
@@ -339,7 +335,7 @@ teardown() {
 }
 
 @test "watcher_mark_event_processed then is_processed returns 0" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     watcher_init "test_watcher" "$IGNITE_CONFIG_DIR/test-watcher.yaml"
 
     watcher_mark_event_processed "test" "event_001"
@@ -348,7 +344,7 @@ teardown() {
 }
 
 @test "_watcher_sanitize_input removes shell metacharacters" {
-    source "$LIB_DIR/watcher_common.sh"
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
 
     result=$(_watcher_sanitize_input 'hello; rm -rf /' 256)
     [[ "$result" != *";"* ]]
@@ -386,5 +382,5 @@ bats tests/test_my_watcher.bats
 To apply config changes:
 
 ```bash
-kill -HUP $(cat runtime/state/my_watcher.pid)
+kill -HUP $(cat .ignite/state/my_watcher.pid)
 ```

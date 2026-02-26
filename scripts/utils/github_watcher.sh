@@ -1316,6 +1316,7 @@ main() {
     # 注意: load_config/init_state の後に呼ぶ（設定値が必要なため）
     _WATCHER_NAME="github_watcher"
     _WATCHER_CONFIG_FILE="${IGNITE_WATCHER_CONFIG:-${IGNITE_CONFIG_DIR}/${DEFAULT_CONFIG_FILE}}"
+    _WATCHER_PID_FILE="${IGNITE_RUNTIME_DIR}/state/github_watcher.pid"
     _watcher_setup_traps
 
     # 実行モード

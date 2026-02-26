@@ -412,6 +412,10 @@ validate_watchers_yaml() {
         local name
         name=$(yq -r "${prefix}.name // \"\"" "$file" 2>/dev/null)
         if [[ -n "$name" && "$name" != "null" ]]; then
+            # name フォーマットチェック（英小文字・数字・アンダースコアのみ）
+            if [[ ! "$name" =~ ^[a-z_][a-z0-9_]*$ ]]; then
+                validation_error "$file" "${prefix}.name" "watcher名に使用できない文字が含まれています: ${name}" "英小文字・数字・アンダースコアのみ使用してください（例: my_watcher）"
+            fi
             # 重複 name チェック
             if [[ -n "${seen_names[$name]+_}" ]]; then
                 validation_error "$file" "${prefix}.name" "watcher名が重複しています: ${name}" "一意の名前を設定してください"
