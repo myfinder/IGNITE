@@ -168,7 +168,8 @@ watcher_poll() {
 
         # MIME メッセージ構築
         local relative_path="${safe_path#${IGNITE_RUNTIME_DIR}/}"
-        local body_yaml="event_type: \"file_change\"
+        local body_yaml
+        body_yaml="event_type: \"file_change\"
 change_type: \"${change_type}\"
 file_path: \"${relative_path}\"
 timestamp: \"$(date -Iseconds)\"
