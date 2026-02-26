@@ -28,8 +28,10 @@ teardown() {
 # 1. _sanitize_external_input テスト（github_watcher.sh）
 # =============================================================================
 
-# github_watcher.sh から _sanitize_external_input のみ抽出
+# watcher_common.sh から _watcher_sanitize_input を読み込み、
+# github_watcher.sh の後方互換ラッパー _sanitize_external_input を定義
 _load_sanitize_function() {
+    source "$SCRIPTS_DIR/lib/watcher_common.sh"
     eval "$(sed -n '/_sanitize_external_input()/,/^}/p' "$SCRIPTS_DIR/utils/github_watcher.sh")"
 }
 
