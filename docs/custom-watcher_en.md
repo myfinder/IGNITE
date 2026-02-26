@@ -204,8 +204,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Load watcher_common.sh
+# core.sh overwrites env vars, so save and restore them around the source
+_SAVED_WORKSPACE="${WORKSPACE_DIR:-}"
+_SAVED_RUNTIME="${IGNITE_RUNTIME_DIR:-}"
+_SAVED_CONFIG="${IGNITE_CONFIG_DIR:-}"
+
+# Load watcher_common.sh (which includes core.sh)
 source "${SCRIPT_DIR}/../lib/watcher_common.sh"
+
+# Restore saved environment variables
+[[ -n "$_SAVED_WORKSPACE" ]] && export WORKSPACE_DIR="$_SAVED_WORKSPACE"
+[[ -n "$_SAVED_RUNTIME" ]] && export IGNITE_RUNTIME_DIR="$_SAVED_RUNTIME"
+[[ -n "$_SAVED_CONFIG" ]] && export IGNITE_CONFIG_DIR="$_SAVED_CONFIG"
 
 # ─── Watcher-specific config loading ───
 MY_API_TOKEN=""

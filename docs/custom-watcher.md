@@ -204,8 +204,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# watcher_common.sh を読み込み
+# core.sh が環境変数を上書きするため、source 前に退避・復元する
+_SAVED_WORKSPACE="${WORKSPACE_DIR:-}"
+_SAVED_RUNTIME="${IGNITE_RUNTIME_DIR:-}"
+_SAVED_CONFIG="${IGNITE_CONFIG_DIR:-}"
+
+# watcher_common.sh を読み込み（core.sh も含む）
 source "${SCRIPT_DIR}/../lib/watcher_common.sh"
+
+# 退避した環境変数を復元
+[[ -n "$_SAVED_WORKSPACE" ]] && export WORKSPACE_DIR="$_SAVED_WORKSPACE"
+[[ -n "$_SAVED_RUNTIME" ]] && export IGNITE_RUNTIME_DIR="$_SAVED_RUNTIME"
+[[ -n "$_SAVED_CONFIG" ]] && export IGNITE_CONFIG_DIR="$_SAVED_CONFIG"
 
 # ─── Watcher 固有の設定読み込み ───
 MY_API_TOKEN=""
