@@ -178,6 +178,27 @@ cmd_status() {
         echo ""
     fi
 
+    # コンテナ隔離情報
+    if isolation_is_enabled 2>/dev/null; then
+        print_header "コンテナ隔離"
+        local _container_info
+        _container_info="$(isolation_get_container_info 2>/dev/null)"
+        if [[ "$_container_info" != "none" ]] && [[ -n "$_container_info" ]]; then
+            local _c_name _c_status _c_image _c_started
+            IFS='|' read -r _c_name _c_status _c_image _c_started <<< "$_container_info"
+            echo -e "${BLUE}コンテナ名:${NC} $_c_name"
+            echo -e "${BLUE}状態:${NC} $_c_status"
+            echo -e "${BLUE}イメージ:${NC} $_c_image"
+            echo -e "${BLUE}開始時刻:${NC} $_c_started"
+        else
+            echo -e "${RED}コンテナ: 未起動${NC}"
+        fi
+        echo ""
+    else
+        echo -e "${YELLOW}コンテナ隔離: 無効${NC}"
+        echo ""
+    fi
+
     print_header "コマンド"
     echo -e "  ダッシュボード監視: ${YELLOW}watch -n 5 cat $IGNITE_RUNTIME_DIR/dashboard.md${NC}"
     echo -e "  エージェント接続: ${YELLOW}./scripts/ignite attach -s $SESSION_NAME${NC}"

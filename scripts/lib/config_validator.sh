@@ -257,6 +257,32 @@ validate_system_yaml() {
     validate_required "$file" ".defaults.worker_count"
     validate_type     "$file" ".defaults.worker_count" int
     validate_range    "$file" ".defaults.worker_count" 1 32
+
+    # isolation セクション（任意: 存在する場合のみ検証）
+    local _iso_enabled
+    _iso_enabled=$(yq e '.isolation.enabled // ""' "$file" 2>/dev/null)
+    if [[ -n "$_iso_enabled" ]]; then
+        validate_enum "$file" ".isolation.enabled" true false
+        validate_enum "$file" ".isolation.runtime" podman
+        # image: 非空文字列
+        local _iso_image
+        _iso_image=$(yq e '.isolation.image // ""' "$file" 2>/dev/null)
+        if [[ "$_iso_enabled" == "true" ]] && [[ -z "$_iso_image" ]]; then
+            validation_error "$file" ".isolation.image" "isolation 有効時は image の指定が必須です"
+        fi
+        # resource_memory: メモリフォーマット（例: 4g, 512m）
+        local _iso_mem
+        _iso_mem=$(yq e '.isolation.resource_memory // ""' "$file" 2>/dev/null)
+        if [[ -n "$_iso_mem" ]] && [[ ! "$_iso_mem" =~ ^[0-9]+[gmkGMK]?$ ]]; then
+            validation_error "$file" ".isolation.resource_memory" "不正なメモリフォーマット: $_iso_mem（例: 4g, 512m）"
+        fi
+        # resource_cpus: 正の数値
+        local _iso_cpus
+        _iso_cpus=$(yq e '.isolation.resource_cpus // ""' "$file" 2>/dev/null)
+        if [[ -n "$_iso_cpus" ]] && [[ ! "$_iso_cpus" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            validation_error "$file" ".isolation.resource_cpus" "正の数値を指定してください: $_iso_cpus"
+        fi
+    fi
 }
 
 # =============================================================================

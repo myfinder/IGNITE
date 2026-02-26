@@ -16,9 +16,9 @@ setup() {
     source "$SCRIPTS_DIR/lib/yaml_utils.sh"
     # session.sh を読み込み（ガード変数をクリア）
     unset __LIB_SESSION_LOADED
+    # session.sh が参照する IGNITE_DATA_DIR を設定（core.sh 相当）
+    export IGNITE_DATA_DIR="$TEST_TEMP_DIR/data"
     source "$SCRIPTS_DIR/lib/session.sh"
-    # テスト用に XDG_DATA_HOME を一時ディレクトリに設定
-    export XDG_DATA_HOME="$TEST_TEMP_DIR/xdg_data"
 }
 
 teardown() {
@@ -107,18 +107,11 @@ EOF
 
 # --- get_workspaces_list_path ---
 
-@test "get_workspaces_list_path: XDG_DATA_HOME 設定時のパス" {
-    export XDG_DATA_HOME="$TEST_TEMP_DIR/custom_xdg"
+@test "get_workspaces_list_path: IGNITE_DATA_DIR ベースのパスを返す" {
+    IGNITE_DATA_DIR="$TEST_TEMP_DIR/custom_data"
     run get_workspaces_list_path
     [ "$status" -eq 0 ]
-    [ "$output" = "$TEST_TEMP_DIR/custom_xdg/ignite/workspaces.list" ]
-}
-
-@test "get_workspaces_list_path: XDG_DATA_HOME 未設定時のデフォルトパス" {
-    unset XDG_DATA_HOME
-    run get_workspaces_list_path
-    [ "$status" -eq 0 ]
-    [ "$output" = "$HOME/.local/share/ignite/workspaces.list" ]
+    [ "$output" = "$TEST_TEMP_DIR/custom_data/workspaces.list" ]
 }
 
 # --- register_workspace ---
@@ -177,6 +170,8 @@ EOF
 }
 
 @test "register_workspace: ディレクトリ自動作成" {
+    # 存在しないサブディレクトリを指定して自動作成を検証
+    IGNITE_DATA_DIR="$TEST_TEMP_DIR/nonexistent_autodir"
     local list_file
     list_file="$(get_workspaces_list_path)"
     # ディレクトリが存在しないことを確認

@@ -161,15 +161,41 @@ cli_start_agent_server() {
     rm -f "$response_file"
 
     # opencode run をバックグラウンドで実行
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        OPENCODE_CONFIG=".ignite/${config_name}" \
-        opencode run --format json "$init_msg" \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+
+        local exec_env_args=(
+            -e "OPENCODE_CONFIG=.ignite/${config_name}"
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+        )
+        # extra_env を -e オプションに変換
+        if [[ -n "$extra_env" ]]; then
+            local _kv
+            while IFS= read -r _kv; do
+                [[ -z "$_kv" ]] && continue
+                exec_env_args+=(-e "$_kv")
+            done <<< "$(echo "$extra_env" | tr ' ' '\n')"
+        fi
+
+        (
+            isolation_exec_with_env "${exec_env_args[@]}" -- bash -c \
+                "cd \"\$_WORK_DIR\" && opencode run --format json \"\$(cat \"\$_MSG_FILE\")\"" \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            OPENCODE_CONFIG=".ignite/${config_name}" \
+            opencode run --format json "$init_msg" \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存
@@ -250,12 +276,32 @@ cli_send_message() {
     fi
 
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        ${config_env:+export $config_env}
-        opencode run --format json --session "$session_id" "$message" 2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        local exec_env_args=(
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+            -e "_SESSION_ID=$session_id"
+        )
+        if [[ -n "$config_env" ]]; then
+            exec_env_args+=(-e "$config_env")
+        fi
+        response=$(
+            isolation_exec_with_env "${exec_env_args[@]}" -- \
+                bash -c "cd \"\$_WORK_DIR\" && opencode run --format json --session \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            ${config_env:+export $config_env}
+            opencode run --format json --session "$session_id" "$message" 2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     if [[ $rc -ne 0 ]]; then

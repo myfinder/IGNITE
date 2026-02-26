@@ -60,5 +60,12 @@ health:
   max_restart: 3           # queue_monitor のランタイム再起動上限
   init_timeout: 300        # 初期化未完了のタイムアウト（秒、デフォルト5分）
 
+isolation:
+  enabled: false         # コンテナ隔離の有効/無効（opt-in: podman インストール済みの場合に true に設定）
+  runtime: podman        # コンテナランタイム（現在 podman のみ対応）
+  image: ignite-agent:latest
+  resource_memory: 8g     # コンテナメモリ上限（CLI 1プロセス約500MB × 9エージェント + OS）
+  resource_cpus: 4       # コンテナ CPU 上限
+
 insights:
   contribute_upstream: true  # false にすると IGNITE 本体リポへの改善 Issue 起票をスキップ

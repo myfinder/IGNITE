@@ -58,15 +58,14 @@ cli_setup_project_config() {
 
     local flags_file="${ignite_dir}/.claude_flags_${role}"
 
-    # フラグファイルを構築
-    local flags=""
+    # フラグファイルを構築（1行1パス形式: eval 不要で安全に展開可能）
+    : > "$flags_file"
     for f in "${instruction_files[@]}"; do
         [[ -z "$f" ]] && continue
         [[ -f "$f" ]] || continue
-        flags+=" --append-system-prompt $(printf '%q' "$f")"
+        echo "$f" >> "$flags_file"
     done
 
-    echo "$flags" > "$flags_file"
     log_info "Claude Code フラグファイルを生成しました: $flags_file"
 }
 
@@ -103,11 +102,14 @@ cli_start_agent_server() {
     # モデル指定（CLI_MODEL が空なら Claude デフォルト）
     local model="${CLI_MODEL:-$_CLAUDE_DEFAULT_MODEL}"
 
-    # フラグファイルから追加フラグを読み込み
+    # フラグファイルからインストラクションパスを読み込み（1行1パス形式）
     local flags_file="${runtime_dir}/.claude_flags_${role}"
-    local extra_flags=""
-    if [[ -f "$flags_file" ]]; then
-        extra_flags=$(cat "$flags_file")
+    local extra_flags_args=()
+    if [[ -f "$flags_file" ]] && [[ -s "$flags_file" ]]; then
+        while IFS= read -r _path; do
+            [[ -z "$_path" ]] && continue
+            extra_flags_args+=(--append-system-prompt "$_path")
+        done < "$flags_file"
     fi
 
     # ダミーの初期化メッセージで最初のセッションを作成
@@ -121,18 +123,49 @@ cli_start_agent_server() {
     local response_file="${runtime_dir}/state/.claude_init_response_${pane_idx}"
     rm -f "$response_file"
 
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        claude -p "$init_msg" \
-            --output-format json \
-            --dangerously-skip-permissions \
-            --model "$model" \
-            $extra_flags \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+
+        # extra_env を -e オプションに変換
+        local exec_env_args=(
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+            -e "_MODEL=$model"
+        )
+        if [[ -n "$extra_env" ]]; then
+            local _kv
+            while IFS= read -r _kv; do
+                [[ -z "$_kv" ]] && continue
+                exec_env_args+=(-e "$_kv")
+            done <<< "$(echo "$extra_env" | tr ' ' '\n')"
+        fi
+
+        # フラグファイルはコンテナ内からも参照可能（runtime_dir がマウント済み）
+        if [[ -f "$flags_file" ]] && [[ -s "$flags_file" ]]; then
+            exec_env_args+=(-e "_FLAGS_FILE=$flags_file")
+        fi
+
+        (
+            isolation_exec_with_env "${exec_env_args[@]}" -- bash -c \
+                'cd "$_WORK_DIR" && _args=(); if [ -n "${_FLAGS_FILE:-}" ] && [ -f "$_FLAGS_FILE" ]; then while IFS= read -r _f; do [ -n "$_f" ] && _args+=(--append-system-prompt "$_f"); done < "$_FLAGS_FILE"; fi; claude -p "$(cat "$_MSG_FILE")" --output-format json --dangerously-skip-permissions --model "$_MODEL" "${_args[@]}"' \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            claude -p "$init_msg" \
+                --output-format json \
+                --dangerously-skip-permissions \
+                --model "$model" \
+                "${extra_flags_args[@]}" \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存（バックグラウンドプロセスの PID）
@@ -219,16 +252,35 @@ cli_send_message() {
 
     # claude -p --resume で同期的にメッセージ送信
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        claude -p "$message" \
-            --resume "$session_id" \
-            --output-format json \
-            --dangerously-skip-permissions \
-            --model "$model" \
-            2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        response=$(
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -e "_SESSION_ID=$session_id" \
+                -e "_MODEL=$model" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && claude -p \"\$(cat \"\$_MSG_FILE\")\" \
+                --resume \"\$_SESSION_ID\" --output-format json \
+                --dangerously-skip-permissions --model \"\$_MODEL\"" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            claude -p "$message" \
+                --resume "$session_id" \
+                --output-format json \
+                --dangerously-skip-permissions \
+                --model "$model" \
+                2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     # CLAUDECODE 環境変数を復元

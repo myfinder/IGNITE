@@ -68,6 +68,13 @@ cli_load_config() {
         log_error "プロバイダースクリプトが見つかりません: $_provider_script"
         return 1
     fi
+
+    # コンテナ隔離モジュールを source
+    local _isolation_lib="${_cli_provider_dir}/isolation.sh"
+    if [[ -f "$_isolation_lib" ]]; then
+        # shellcheck source=/dev/null
+        source "$_isolation_lib"
+    fi
 }
 
 # =============================================================================

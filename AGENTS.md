@@ -25,28 +25,89 @@ docs/                 # ドキュメント
 
 ## 開発ワークフロー
 
+### セットアップ
+
+リポジトリからの直接実行が正式な開発ワークフローです。`install.sh` によるインストールは不要です。
+
+```bash
+git clone <repo-url> && cd ignite
+make dev          # 依存ツール確認・環境セットアップ
+./scripts/ignite --help   # 直接実行
+```
+
+詳細は [docs/development.md](docs/development.md) を参照してください。
+
 ### 依存関係
 
-- **必須**: opencode, curl, jq
-- **任意**: yq (v4.30+), sqlite3, python3
+- **必須**: bash (4.0+), curl, jq, sqlite3, bats, git, GNU parallel
+- **任意**: yq (v4.30+), python3, podman, shellcheck
+- **実行時**: opencode / claude / codex（いずれか1つの CLI プロバイダ）
+
+### Make ターゲット
+
+```bash
+make help     # ヘルプ表示
+make dev      # 開発環境セットアップ（依存ツール確認）
+make test     # 全テスト実行（bats 並列）
+make lint     # shellcheck による静的解析
+make start    # テストワークスペースで起動
+make stop     # テストワークスペース停止
+make clean    # テストワークスペース削除
+```
 
 ### テスト
 
 ```bash
 # 全テスト実行（並列）
+make test
+# または直接:
 bats --jobs "$(($(nproc) * 8))" tests/
 
 # 特定テストファイル
 bats tests/test_cmd_start_init.bats
 ```
 
-PR を出す前に必ず `bats --jobs "$(($(nproc) * 8))" tests/` を実行してください。
+PR を出す前に必ず `make test` を実行してください。
 並列実行には GNU parallel が必要です（`apt install parallel` / `brew install parallel`）。
+
+### Test plan の検証ルール
+
+PR の Test plan に記載された項目は、**実際にコマンドを実行して動作を確認すること**。
+
+- `--dry-run` やコードリーディングだけで「確認済み」としてはいけない
+- `ignite start` の動作確認であれば、実際に `ignite start` → エージェント起動完了 → `ignite stop` まで通すこと
+- 設定変更のフォールバック確認であれば、設定を変更して実際に起動し、期待通りの分岐が行われることを出力で確認すること
 
 ### 動作確認
 
 systemd サービスの起動テストや queue_monitor のプログレス表示確認など、
 詳細な手順は [docs/testing-guide.md](docs/testing-guide.md) を参照してください。
+
+### コンテナ隔離の動作確認
+
+コンテナ隔離（`scripts/lib/isolation.sh`）に変更を加えた場合は、以下の **2モード** を必ず実機テストすること。
+
+```bash
+# 1. ワークスペースに最新設定を反映
+./scripts/ignite init --force
+
+# 2. 通常モード（isolation OFF）
+#    .ignite/system.yaml: isolation.enabled: false
+./scripts/ignite start
+./scripts/ignite status   # 9/9 healthy を確認
+./scripts/ignite stop -s <session-id>
+
+# 3. 隔離モード（isolation ON）
+#    .ignite/system.yaml: isolation.enabled: true
+./scripts/ignite start
+podman ps --filter name=ignite-ws         # コンテナ running 確認
+./scripts/ignite status                    # 9/9 healthy + コンテナ情報
+./scripts/ignite stop -s <session-id>
+podman ps -a --filter name=ignite-ws      # コンテナ完全削除を確認
+```
+
+確認ポイント: 9体全員 healthy、コンテナのリソース制限適用、停止後の残存プロセス/コンテナなし。
+詳細は [docs/container-isolation.md](docs/container-isolation.md) の「動作確認手順」を参照。
 
 ## コーディング規約
 

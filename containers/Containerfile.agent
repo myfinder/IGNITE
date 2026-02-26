@@ -1,0 +1,30 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl jq python3 git sqlite3 ca-certificates openssl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 (Claude Code は Node 18+ 必須、Codex CLI は Node 22+ 必須)
+# Ubuntu 24.04 公式の nodejs は v12 で不足するため NodeSource を使用
+# セキュリティ: GPG 鍵検証付きでリポジトリを追加
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list; \
+    apt-get update && apt-get install -y nodejs; \
+    rm -rf /var/lib/apt/lists/*
+
+# CLI ツール（ビルド引数で選択）
+# 注意: opencode は公式インストーラを使用（チェックサム検証なし）。
+# セキュリティが重要な環境では手動インストールを推奨。
+ARG CLI_PROVIDER=claude
+RUN if [ "$CLI_PROVIDER" = "claude" ]; then npm install -g @anthropic-ai/claude-code; \
+    elif [ "$CLI_PROVIDER" = "opencode" ]; then curl -fsSL https://opencode.ai/install.sh | bash; \
+    elif [ "$CLI_PROVIDER" = "codex" ]; then npm install -g @openai/codex; fi
+
+# gh CLI は意図的にインストールしない（エージェントによる無断 PR 作成を防止）
+# SSH クライアントは意図的にインストールしない（HTTPS + Token 認証のみ）
+
+WORKDIR /workspace

@@ -133,7 +133,7 @@ session_exists() {
 # 戻り値: workspaces.list の絶対パス
 # =============================================================================
 get_workspaces_list_path() {
-    echo "${XDG_DATA_HOME:-$HOME/.local/share}/ignite/workspaces.list"
+    echo "${IGNITE_DATA_DIR}/workspaces.list"
 }
 
 # =============================================================================

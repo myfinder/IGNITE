@@ -113,14 +113,39 @@ cli_start_agent_server() {
     rm -f "$response_file"
 
     # codex exec をバックグラウンドで実行
-    (
-        cd "$workspace_dir" || exit 1
-        ${extra_env:+eval "$extra_env"}
-        WORKSPACE_DIR="$workspace_dir" \
-        IGNITE_RUNTIME_DIR="$runtime_dir" \
-        echo "$init_msg" | codex exec --json --full-auto - \
-            > "$response_file" 2>> "$log_file"
-    ) &
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$init_msg")"
+
+        local exec_env_args=(
+            -e "_MSG_FILE=$msg_file"
+            -e "_WORK_DIR=$workspace_dir"
+        )
+        # extra_env を -e オプションに変換
+        if [[ -n "$extra_env" ]]; then
+            local _kv
+            while IFS= read -r _kv; do
+                [[ -z "$_kv" ]] && continue
+                exec_env_args+=(-e "$_kv")
+            done <<< "$(echo "$extra_env" | tr ' ' '\n')"
+        fi
+
+        (
+            isolation_exec_with_env "${exec_env_args[@]}" -- bash -c \
+                "cd \"\$_WORK_DIR\" && cat \"\$_MSG_FILE\" | codex exec --json --full-auto -" \
+                > "$response_file" 2>> "$log_file"
+            rm -f "$msg_file"
+        ) &
+    else
+        (
+            cd "$workspace_dir" || exit 1
+            ${extra_env:+eval "$extra_env"}
+            WORKSPACE_DIR="$workspace_dir" \
+            IGNITE_RUNTIME_DIR="$runtime_dir" \
+            echo "$init_msg" | codex exec --json --full-auto - \
+                > "$response_file" 2>> "$log_file"
+        ) &
+    fi
     local bg_pid=$!
 
     # PID を保存
@@ -196,11 +221,27 @@ cli_send_message() {
     local log_file="${runtime_dir}/logs/codex_send.log"
 
     local response
-    response=$(
-        cd "$workspace_dir" || exit 1
-        codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
-    )
-    local rc=$?
+    if isolation_is_enabled 2>/dev/null; then
+        local msg_file
+        msg_file="$(isolation_write_message_file "$message")"
+        response=$(
+            isolation_exec_with_env \
+                -e "_MSG_FILE=$msg_file" \
+                -e "_WORK_DIR=$workspace_dir" \
+                -e "_SESSION_ID=$session_id" \
+                -- bash -c \
+                "cd \"\$_WORK_DIR\" && codex exec resume --json --full-auto \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
+                2>> "$log_file"
+        )
+        local rc=$?
+        rm -f "$msg_file"
+    else
+        response=$(
+            cd "$workspace_dir" || exit 1
+            codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
+        )
+        local rc=$?
+    fi
     [[ $rc -eq 0 ]] && _log_session_response "${_AGENT_NAME:-unknown}" "$session_id" "$response" "$runtime_dir"
 
     if [[ $rc -ne 0 ]]; then
