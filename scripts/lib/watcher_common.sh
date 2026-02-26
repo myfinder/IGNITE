@@ -182,11 +182,21 @@ watcher_run_daemon() {
     while [[ "$_WATCHER_SHUTDOWN_REQUESTED" != true ]]; do
         # セッション/プロセス生存チェック（環境変数が設定されている場合のみ）
         if [[ -n "${IGNITE_SESSION:-}" ]]; then
+            # per-message パターン: PID ファイルは初期化後に削除されるため、
+            # session ファイルの存在で Leader 生存を判断する
             local leader_pid
             leader_pid=$(cat "${IGNITE_RUNTIME_DIR}/state/.agent_pid_0" 2>/dev/null || true)
-            if [[ -z "$leader_pid" ]] || ! kill -0 "$leader_pid" 2>/dev/null; then
+            if [[ -n "$leader_pid" ]] && ! kill -0 "$leader_pid" 2>/dev/null; then
+                # PID ファイルがあるのにプロセスが死んでいる → 確実に終了
                 log_warn "[${_WATCHER_NAME}] Leader プロセスが終了しました。Watcherを終了します"
                 exit 0
+            elif [[ -z "$leader_pid" ]]; then
+                # PID ファイルがない → session ファイルで確認（per-message パターン対応）
+                local session_file="${IGNITE_RUNTIME_DIR}/state/.agent_session_0"
+                if [[ ! -f "$session_file" ]]; then
+                    log_warn "[${_WATCHER_NAME}] Leader セッションが見つかりません。Watcherを終了します"
+                    exit 0
+                fi
             fi
         fi
 
