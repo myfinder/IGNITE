@@ -122,7 +122,10 @@ watcher_init() {
 
     _WATCHER_NAME="$watcher_name"
 
-    # 設定ファイルの解決
+    # 設定ファイルの解決（引数 → 環境変数 → 名前から導出）
+    if [[ -z "$config_file" && -n "${IGNITE_WATCHER_CONFIG:-}" ]]; then
+        config_file="$IGNITE_WATCHER_CONFIG"
+    fi
     if [[ -z "$config_file" ]]; then
         local config_filename
         # watcher名からYAMLファイル名を導出（アンダースコア→ハイフン）

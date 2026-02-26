@@ -77,7 +77,9 @@ _start_single_watcher() {
     export IGNITE_CONFIG_DIR="$IGNITE_CONFIG_DIR"
     export IGNITE_SESSION="$SESSION_NAME"
 
-    "$resolved_script" "$config_path" >> "$watcher_log" 2>&1 &
+    # config パスは IGNITE_WATCHER_CONFIG 環境変数で渡す（line 72）
+    # 引数渡しは行わない（github_watcher.sh 等の独自引数パーサーと衝突するため）
+    "$resolved_script" >> "$watcher_log" 2>&1 &
     local watcher_pid=$!
     # PID ファイルは state/ 配下に統一（watcher_common.sh の watcher_init と同じ場所）
     # watcher_init() が自プロセスの PID で上書きするため、ここでの書き込みは
