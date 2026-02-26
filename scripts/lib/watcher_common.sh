@@ -101,6 +101,13 @@ watcher_poll() { :; }
 #   $2 — イベントデータ（JSON文字列）
 watcher_on_event() { :; }
 
+# watcher_heartbeat — ハートビートコールバック
+# watcher_run_daemon のメインループで毎サイクル呼び出される。
+# queue_monitor がハートビートファイルで Watcher の死活を判定するため、
+# 定期的にハートビートを書き込む Watcher はこの関数を上書きすること。
+# デフォルトは空実装（ハートビート不要なウォッチャーはそのまま）。
+watcher_heartbeat() { :; }
+
 # =============================================================================
 # 初期化
 # =============================================================================
@@ -202,6 +209,9 @@ watcher_run_daemon() {
 
         # poll型: カスタム Watcher の watcher_poll() を呼び出す
         watcher_poll || log_warn "[${_WATCHER_NAME}] watcher_poll failed, continuing..."
+
+        # ハートビート書き込み（queue_monitor の死活判定に使用）
+        watcher_heartbeat || true
 
         # 定期的に古いイベントをクリーンアップ
         watcher_cleanup_old_events || log_warn "[${_WATCHER_NAME}] cleanup_old_events failed, continuing..."

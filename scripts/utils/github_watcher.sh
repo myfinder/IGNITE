@@ -1215,6 +1215,9 @@ run_daemon() {
     # watcher_common.sh のポーリング間隔をGitHub固有設定で上書き
     _WATCHER_POLL_INTERVAL="$POLL_INTERVAL"
 
+    # ハートビートコールバックをオーバーライド（queue_monitor の死活判定に使用）
+    watcher_heartbeat() { _write_watcher_heartbeat; }
+
     # watcher_common.sh のデーモンループに委譲
     # 注意: SIGHUPリロードは watcher_poll() 内で GitHub 固有設定含めて処理
     watcher_run_daemon

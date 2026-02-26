@@ -78,7 +78,11 @@ _start_single_watcher() {
 
     "$resolved_script" >> "$watcher_log" 2>&1 &
     local watcher_pid=$!
-    echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/${watcher_name}.pid"
+    # PID ファイルは state/ 配下に統一（watcher_common.sh の watcher_init と同じ場所）
+    # watcher_init() が自プロセスの PID で上書きするため、ここでの書き込みは
+    # watcher_init() 完了前の一時的な値として機能する
+    mkdir -p "$IGNITE_RUNTIME_DIR/state"
+    echo "$watcher_pid" > "$IGNITE_RUNTIME_DIR/state/${watcher_name}.pid"
 
     print_success "${watcher_name}起動完了 (PID: $watcher_pid)"
     print_info "ログ: $watcher_log"
@@ -391,7 +395,8 @@ EOF
     echo ""
 
     # 旧Watcherプロセスをクリーンアップ（PIDファイルベース・セッション固有）
-    for _pid_file in "$IGNITE_RUNTIME_DIR"/*.pid; do
+    # RUNTIME_DIR 直下（後方互換）と state/ 配下（現行）の両方を掃除
+    for _pid_file in "$IGNITE_RUNTIME_DIR"/*.pid "$IGNITE_RUNTIME_DIR"/state/*_watcher.pid; do
         [[ -f "$_pid_file" ]] || continue
         local _pid_basename
         _pid_basename=$(basename "$_pid_file")
