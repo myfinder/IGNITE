@@ -1,0 +1,43 @@
+# Slack Watcher 設定ファイル
+# このファイルをコピーして使用してください:
+#   cp config/slack-watcher.yaml.example config/slack-watcher.yaml
+#
+# トークンは .ignite/.env に設定してください:
+#   SLACK_BOT_TOKEN=xoxb-...
+#   SLACK_APP_TOKEN=xapp-...
+
+# spool 確認間隔（秒）
+interval: 5
+
+# 監視対象イベント
+events:
+  app_mention: true        # @mention イベント
+  channel_message: false   # チャンネルメッセージ（大量になるため注意）
+
+# トリガー設定
+triggers:
+  task_keywords:           # slack_task として扱うキーワード
+    # --- 実装・修正系 ---
+    - "実装して"
+    - "修正して"
+    - "implement"
+    - "fix"
+    # --- レビュー系 ---
+    - "レビューして"
+    - "review"
+    # --- 質疑応答・調査系 ---
+    - "教えて"
+    - "調べて"
+    - "説明して"
+    - "どうすれば"
+    - "なぜ"
+    - "explain"
+    - "how to"
+    - "why"
+    - "what is"
+
+# アクセス制御
+access_control:
+  enabled: false           # true にすると allowed_users/allowed_channels で制限
+  allowed_users: []        # 許可する Slack ユーザー ID（例: ["U01ABC123"]）
+  allowed_channels: []     # 許可する Slack チャンネル ID（例: ["C01ABC123"]）

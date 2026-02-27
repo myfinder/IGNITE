@@ -151,6 +151,8 @@ queue_monitor から通知を受け取ったら、以下を実行してくださ
      - `progress_update`: Coordinatorからの進捗報告
      - `github_event`: GitHub Watcherからのイベント通知（Issue/PR/コメント）
      - `github_task`: GitHub Watcherからのタスクリクエスト（メンショントリガー）
+     - `slack_event`: Slack Watcherからのイベント通知（メンション/メッセージ）
+     - `slack_task`: Slack Watcherからのタスクリクエスト（キーワードトリガー）
      - `insight_result`: Innovatorからのメモリ分析結果
    - 処理完了したメッセージファイルは削除（Bashツールで `rm`）
 
@@ -474,6 +476,57 @@ payload:
 [伊羽ユイ] Issue #123「機能リクエスト」の実装をお願いされました！
 [伊羽ユイ] リオに戦略立案をお願いして、みんなで取り組もう！
 ```
+
+### slack_event / slack_task 受信時
+
+Slack Watcherから通知されたSlackイベント（メンション、メッセージ）を処理します。
+
+```yaml
+# .ignite/queue/leader/slack_event_xxx.mime
+type: slack_event
+from: slack_watcher
+to: leader
+payload:
+  event_type: app_mention
+  channel_id: "C01ABC123"
+  user_id: "U01XYZ789"
+  text: "@ignite-bot こんにちは"
+  thread_ts: "1234567890.123456"
+  event_ts: "1234567890.654321"
+  source: "slack_watcher"
+```
+
+**slack_event 処理フロー:**
+1. イベント内容を確認し、ログに記録
+2. 情報通知として扱い、対応が必要な場合は判断
+
+**slack_task 処理フロー:**
+
+タスクキーワード（「実装して」「explain」等）が検出された場合、`slack_task` として届きます。
+
+```yaml
+# .ignite/queue/leader/slack_task_xxx.mime
+type: slack_task
+from: slack_watcher
+to: leader
+priority: high
+payload:
+  event_type: app_mention
+  channel_id: "C01ABC123"
+  user_id: "U01XYZ789"
+  text: "@ignite-bot implement login feature"
+  thread_ts: "1234567890.123456"
+  event_ts: "1234567890.654321"
+  source: "slack_watcher"
+```
+
+1. `text` フィールドに対して意図分類マッピングテーブルを適用し `action_type` を判定
+2. 判定した action_type に応じて処理を分岐（github_task と同様のフロー）:
+   - **実装・修正** (implement): Strategist に実装戦略を依頼
+   - **レビュー** (review): Evaluator にレビューを依頼
+   - **説明・質疑応答** (explain): 「教えて」「explain」「how to」等 → Strategist 経由で処理
+   - **分析** (insights): Innovator にメモリ分析を依頼
+3. 結果はダッシュボードに記録（Slack への応答は将来の拡張で対応）
 
 ### GitHubへの応答
 
