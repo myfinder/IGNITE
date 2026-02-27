@@ -231,7 +231,7 @@ cat .ignite/.env
 2. Check that **Socket Mode** is enabled
 3. Bot Token: Verify the bot has been added to the channel
 4. User Token: Verify the user has joined the channel
-4. Check the spool directory: `ls .ignite/tmp/slack_events/`
+5. Check the spool directory: `ls .ignite/tmp/slack_events/`
 
 ### Log inspection
 

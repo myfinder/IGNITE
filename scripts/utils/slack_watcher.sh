@@ -43,7 +43,6 @@ source "${SCRIPT_DIR}/../lib/watcher_common.sh"
 # 定数・デフォルト設定
 # =============================================================================
 
-DEFAULT_CONFIG_FILE="slack-watcher.yaml"
 SLACK_SPOOL_DIR="${IGNITE_RUNTIME_DIR}/tmp/slack_events"
 SLACK_VENV_DIR="${IGNITE_RUNTIME_DIR}/venv"
 SLACK_REQUIREMENTS="${SCRIPT_DIR}/slack_requirements.txt"
@@ -58,7 +57,6 @@ _SLACK_PYTHON_RESTART_MAX=5
 _SLACK_PYTHON_LAST_START=0
 
 # ハートビート設定
-HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-10}"
 WATCHER_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR:-}/state/slack_watcher_heartbeat.json"
 
 # Slack 固有設定（load_slack_config で設定）

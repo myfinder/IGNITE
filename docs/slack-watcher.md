@@ -231,7 +231,7 @@ cat .ignite/.env
 2. **Socket Mode** が有効か確認
 3. Bot Token 使用時: Bot がチャンネルに追加されているか確認
 4. User Token 使用時: ユーザーがチャンネルに参加しているか確認
-4. spool ディレクトリを確認: `ls .ignite/tmp/slack_events/`
+5. spool ディレクトリを確認: `ls .ignite/tmp/slack_events/`
 
 ### ログ確認
 

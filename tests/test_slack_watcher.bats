@@ -472,6 +472,58 @@ JSON
     [ ! -f "$SLACK_SPOOL_DIR/slack_event_9999999999_000000.json" ]
 }
 
+@test "process_spool_events: slack_task は priority=high、slack_event は priority=normal" {
+    _define_slack_functions
+    watcher_init "slack_watcher" "$IGNITE_CONFIG_DIR/slack-watcher.yaml"
+
+    # タスクキーワードあり（slack_task → high）
+    cat > "$SLACK_SPOOL_DIR/slack_event_1111111111_000001.json" <<'JSON'
+{
+    "event_type": "app_mention",
+    "channel_id": "C01ABC",
+    "user_id": "U01XYZ",
+    "text": "@bot implement something",
+    "thread_ts": "",
+    "event_ts": "1111111111.000001",
+    "ts": "1111111111.000001"
+}
+JSON
+
+    # タスクキーワードなし（slack_event → normal）
+    cat > "$SLACK_SPOOL_DIR/slack_event_2222222222_000002.json" <<'JSON'
+{
+    "event_type": "app_mention",
+    "channel_id": "C01ABC",
+    "user_id": "U01XYZ",
+    "text": "@bot hello",
+    "thread_ts": "",
+    "event_ts": "2222222222.000002",
+    "ts": "2222222222.000002"
+}
+JSON
+
+    # watcher_send_mime をモック（priority=$7 を記録）
+    local priority_log="$BATS_TMPDIR/priority_log.txt"
+    : > "$priority_log"
+
+    watcher_send_mime() {
+        local from="$1" to="$2" msg_type="$3" body_yaml="$4"
+        local priority="${7:-normal}"
+        echo "${msg_type}:${priority}" >> "$BATS_TMPDIR/priority_log.txt"
+        local mime_file="$IGNITE_RUNTIME_DIR/queue/${to}/${from}_${msg_type}_$(date +%s%N).mime"
+        echo "$body_yaml" > "$mime_file"
+        echo "$mime_file"
+    }
+
+    run process_spool_events
+    [ "$status" -eq 0 ]
+    [ "$output" = "2" ]
+
+    # priority 値を検証
+    grep -q "slack_task:high" "$BATS_TMPDIR/priority_log.txt"
+    grep -q "slack_event:normal" "$BATS_TMPDIR/priority_log.txt"
+}
+
 # =============================================================================
 # 4. トークン検証テスト
 # =============================================================================
