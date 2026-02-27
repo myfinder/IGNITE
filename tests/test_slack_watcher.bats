@@ -169,7 +169,10 @@ _define_slack_functions() {
                 continue
             fi
             local event_type event_ts channel_id user_id text thread_ts
-            event_type=$(echo "$event_json" | jq -r '.event_type // ""')
+            if ! event_type=$(echo "$event_json" | jq -r '.event_type // ""' 2>/dev/null); then
+                rm -f "$event_file"
+                continue
+            fi
             event_ts=$(echo "$event_json" | jq -r '.event_ts // ""')
             channel_id=$(echo "$event_json" | jq -r '.channel_id // ""')
             user_id=$(echo "$event_json" | jq -r '.user_id // ""')
@@ -447,6 +450,24 @@ JSON
     [ "$status" -eq 0 ]
     # 0件処理なので "0" が出力される
     [ "$output" = "0" ]
+}
+
+@test "process_spool_events: 壊れた JSON はスキップされる" {
+    _define_slack_functions
+    watcher_init "slack_watcher" "$IGNITE_CONFIG_DIR/slack-watcher.yaml"
+
+    # 壊れた JSON ファイルを作成
+    echo "not valid json{{{" > "$SLACK_SPOOL_DIR/slack_event_9999999999_000000.json"
+
+    watcher_send_mime() {
+        echo "SHOULD_NOT_BE_CALLED"
+    }
+
+    run process_spool_events
+    [ "$status" -eq 0 ]
+    [ "$output" = "0" ]
+    # 壊れたファイルは削除される
+    [ ! -f "$SLACK_SPOOL_DIR/slack_event_9999999999_000000.json" ]
 }
 
 # =============================================================================

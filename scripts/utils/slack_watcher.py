@@ -21,6 +21,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import tempfile
@@ -83,7 +84,9 @@ def _write_spool(spool_dir: Path, event_data: dict) -> None:
     spool_dir.mkdir(parents=True, exist_ok=True)
 
     event_ts = event_data.get("event_ts", str(time.time()))
-    filename = f"slack_event_{event_ts.replace('.', '_')}.json"
+    # Sanitize event_ts for safe filename (digits and dots only)
+    safe_ts = re.sub(r"[^0-9.]", "", event_ts) or str(time.time())
+    filename = f"slack_event_{safe_ts.replace('.', '_')}.json"
     target = spool_dir / filename
 
     # Atomic write: write to temp file, then rename
@@ -109,6 +112,7 @@ def _load_config(config_path: Optional[str]) -> dict:
     """Load watcher config from YAML file."""
     config = {
         "events": {"app_mention": True, "channel_message": False},
+        "mention_filter": {"enabled": False, "user_ids": []},
     }
     if not config_path or not os.path.exists(config_path):
         return config
@@ -120,6 +124,12 @@ def _load_config(config_path: Optional[str]) -> dict:
             data = yaml.safe_load(f) or {}
         if "events" in data:
             config["events"].update(data["events"])
+        if "mention_filter" in data:
+            mf = data["mention_filter"]
+            config["mention_filter"]["enabled"] = bool(mf.get("enabled", False))
+            config["mention_filter"]["user_ids"] = [
+                str(uid) for uid in (mf.get("user_ids") or [])
+            ]
         return config
     except ImportError:
         # yaml not available, try basic parsing
@@ -167,12 +177,22 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
             _write_spool(spool_dir, event_data)
 
     if config["events"].get("channel_message", False):
+        # mention_filter: User Token 使用時に特定ユーザーへの mention のみ処理
+        mention_filter = config.get("mention_filter", {})
+        mf_enabled = mention_filter.get("enabled", False)
+        mf_user_ids = mention_filter.get("user_ids", [])
 
         @app.event("message")
         def handle_message(event: dict) -> None:
             # Skip bot messages and message subtypes (edits, deletes, etc.)
             if event.get("bot_id") or event.get("subtype"):
                 return
+
+            # mention_filter が有効な場合、対象ユーザーへの mention を含むメッセージのみ通過
+            if mf_enabled and mf_user_ids:
+                text = event.get("text", "")
+                if not any(f"<@{uid}>" in text for uid in mf_user_ids):
+                    return
 
             event_ts = event.get("event_ts", event.get("ts", ""))
             if _is_duplicate(event_ts):

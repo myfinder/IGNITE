@@ -26,6 +26,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/core.sh"
 source "${SCRIPT_DIR}/../lib/cli_provider.sh"
+# core.sh が SCRIPT_DIR を上書きするため再設定
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # WORKSPACE_DIR が未設定の場合、IGNITE_WORKSPACE_DIR からフォールバック
 WORKSPACE_DIR="${WORKSPACE_DIR:-${IGNITE_WORKSPACE_DIR:-}}"
@@ -399,9 +400,13 @@ process_spool_events() {
             continue
         fi
 
-        # フィールド抽出
+        # JSON バリデーション + フィールド抽出
         local event_type event_ts channel_id user_id text thread_ts
-        event_type=$(echo "$event_json" | jq -r '.event_type // ""')
+        if ! event_type=$(echo "$event_json" | jq -r '.event_type // ""' 2>/dev/null); then
+            log_warn "[slack_watcher] 不正な JSON をスキップ: ${event_file}"
+            rm -f "$event_file"
+            continue
+        fi
         event_ts=$(echo "$event_json" | jq -r '.event_ts // ""')
         channel_id=$(echo "$event_json" | jq -r '.channel_id // ""')
         user_id=$(echo "$event_json" | jq -r '.user_id // ""')
