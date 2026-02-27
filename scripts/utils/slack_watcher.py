@@ -15,6 +15,8 @@ IPC: ファイルスプール（JSON）
   python3 slack_watcher.py --spool-dir /path/to/spool --config /path/to/config.yaml
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -24,6 +26,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Dict, Optional
 
 try:
     from slack_bolt import App
@@ -50,7 +53,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # In-memory deduplication (event_ts based)
 # ---------------------------------------------------------------------------
-_SEEN_EVENTS: dict[str, float] = {}
+_SEEN_EVENTS: Dict[str, float] = {}
 _SEEN_EVENTS_MAX = 10000
 _SEEN_EVENTS_TTL = 3600  # 1 hour
 
@@ -102,7 +105,7 @@ def _write_spool(spool_dir: Path, event_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Config loader
 # ---------------------------------------------------------------------------
-def _load_config(config_path: str | None) -> dict:
+def _load_config(config_path: Optional[str]) -> dict:
     """Load watcher config from YAML file."""
     config = {
         "events": {"app_mention": True, "channel_message": False},
@@ -143,6 +146,9 @@ def _create_app(bot_token: str, spool_dir: Path, config: dict) -> App:
                 logger.debug("Duplicate app_mention event: %s", event_ts)
                 return
 
+            # Note: Slack event payload does not include channel_name/user_name.
+            # Resolving names would require additional API calls (conversations.info,
+            # users.info). Phase 1 uses IDs only; name resolution is a future enhancement.
             event_data = {
                 "event_type": "app_mention",
                 "channel_id": event.get("channel", ""),
@@ -195,7 +201,7 @@ def _create_app(bot_token: str, spool_dir: Path, config: dict) -> App:
 # ---------------------------------------------------------------------------
 # Signal handling
 # ---------------------------------------------------------------------------
-_handler: SocketModeHandler | None = None
+_handler: Optional[SocketModeHandler] = None
 
 
 def _signal_handler(signum: int, frame) -> None:  # noqa: ARG001

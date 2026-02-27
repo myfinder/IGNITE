@@ -419,6 +419,7 @@ watcher_cleanup_old_events() {
 #   $4 — body_yaml（ボディYAML文字列。生成は呼び出し側の責務）
 #   $5 — repo（リポジトリ、例: "owner/repo"）省略可
 #   $6 — issue（Issue番号）省略可
+#   $7 — priority（"normal" または "high"）省略時は "normal"
 # 戻り値: 生成されたMIMEファイルのパス（stdout）
 # 注意:
 #   ボディYAMLの生成は各Watcher固有の責務。
@@ -430,6 +431,7 @@ watcher_send_mime() {
     local body_yaml="$4"
     local repo="${5:-}"
     local issue="${6:-}"
+    local priority="${7:-normal}"
 
     local message_id
     message_id="$(date +%s%6N)_$$"
@@ -440,7 +442,7 @@ watcher_send_mime() {
     local message_file="${queue_dir}/${from}_${msg_type}_${message_id}.mime"
 
     # MIME構築引数
-    local mime_args=(--from "$from" --to "$to" --type "$msg_type" --priority normal)
+    local mime_args=(--from "$from" --to "$to" --type "$msg_type" --priority "$priority")
     [[ -n "$repo" ]] && mime_args+=(--repo "$repo")
     [[ -n "$issue" ]] && mime_args+=(--issue "$issue")
 

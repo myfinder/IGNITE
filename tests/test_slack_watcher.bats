@@ -187,28 +187,31 @@ _define_slack_functions() {
                 rm -f "$event_file"
                 continue
             fi
-            local safe_text safe_user safe_channel
+            local safe_text safe_user safe_channel safe_event_type safe_thread_ts safe_event_ts
             safe_text=$(_watcher_sanitize_input "$text" 1024)
             safe_user=$(_watcher_sanitize_input "$user_id" 64)
             safe_channel=$(_watcher_sanitize_input "$channel_id" 64)
+            safe_event_type=$(_watcher_sanitize_input "$event_type" 64)
+            safe_thread_ts=$(_watcher_sanitize_input "$thread_ts" 64)
+            safe_event_ts=$(_watcher_sanitize_input "$event_ts" 64)
             local msg_type="slack_event"
             if has_task_keyword "$text"; then
                 msg_type="slack_task"
             fi
             local body_yaml
-            body_yaml="event_type: \"${event_type}\"
+            body_yaml="event_type: \"${safe_event_type}\"
 channel_id: \"${safe_channel}\"
 user_id: \"${safe_user}\"
 text: \"${safe_text}\"
-thread_ts: \"${thread_ts}\"
-event_ts: \"${event_ts}\"
+thread_ts: \"${safe_thread_ts}\"
+event_ts: \"${safe_event_ts}\"
 source: \"slack_watcher\""
             local mime_file
             if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml"); then
                 watcher_mark_event_processed "$event_type" "$event_ts"
                 count=$((count + 1))
+                rm -f "$event_file"
             fi
-            rm -f "$event_file"
         done <<< "$event_files"
         echo "$count"
     }

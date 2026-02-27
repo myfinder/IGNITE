@@ -51,6 +51,11 @@ SLACK_PYTHON_SCRIPT="${SCRIPT_DIR}/slack_watcher.py"
 # Python 子プロセスの PID
 _SLACK_PYTHON_PID=""
 
+# Python 再起動制御
+_SLACK_PYTHON_RESTART_COUNT=0
+_SLACK_PYTHON_RESTART_MAX=5
+_SLACK_PYTHON_LAST_START=0
+
 # ハートビート設定
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-10}"
 WATCHER_HEARTBEAT_FILE="${IGNITE_RUNTIME_DIR:-}/state/slack_watcher_heartbeat.json"
@@ -267,12 +272,29 @@ stop_python_receiver() {
     fi
 }
 
-# check_python_health — Python プロセスの生存確認、死亡時は再起動
+# check_python_health — Python プロセスの生存確認、死亡時は再起動（バックオフ付き）
 check_python_health() {
-    if [[ -z "$_SLACK_PYTHON_PID" ]] || ! kill -0 "$_SLACK_PYTHON_PID" 2>/dev/null; then
-        log_warn "[slack_watcher] Python レシーバーが停止しています。再起動します..."
-        start_python_receiver
+    if [[ -n "$_SLACK_PYTHON_PID" ]] && kill -0 "$_SLACK_PYTHON_PID" 2>/dev/null; then
+        # プロセス生存中 — 60秒以上安定稼働したらカウンタリセット
+        local now
+        now=$(date +%s)
+        if (( now - _SLACK_PYTHON_LAST_START > 60 )); then
+            _SLACK_PYTHON_RESTART_COUNT=0
+        fi
+        return 0
     fi
+
+    # 再起動上限チェック
+    if (( _SLACK_PYTHON_RESTART_COUNT >= _SLACK_PYTHON_RESTART_MAX )); then
+        log_error "[slack_watcher] Python レシーバーの再起動上限 (${_SLACK_PYTHON_RESTART_MAX}回) に達しました。停止します"
+        _WATCHER_SHUTDOWN_REQUESTED=true
+        return 1
+    fi
+
+    _SLACK_PYTHON_RESTART_COUNT=$((_SLACK_PYTHON_RESTART_COUNT + 1))
+    log_warn "[slack_watcher] Python レシーバーが停止しています。再起動します (${_SLACK_PYTHON_RESTART_COUNT}/${_SLACK_PYTHON_RESTART_MAX})..."
+    _SLACK_PYTHON_LAST_START=$(date +%s)
+    start_python_receiver
 }
 
 # =============================================================================
@@ -403,13 +425,17 @@ process_spool_events() {
             continue
         fi
 
-        # サニタイズ
-        local safe_text safe_user safe_channel
+        # サニタイズ（全フィールド。spool JSON は Python 経由だが防御的にサニタイズ）
+        local safe_text safe_user safe_channel safe_event_type safe_thread_ts safe_event_ts
         safe_text=$(_watcher_sanitize_input "$text" 1024)
         safe_user=$(_watcher_sanitize_input "$user_id" 64)
         safe_channel=$(_watcher_sanitize_input "$channel_id" 64)
+        safe_event_type=$(_watcher_sanitize_input "$event_type" 64)
+        safe_thread_ts=$(_watcher_sanitize_input "$thread_ts" 64)
+        safe_event_ts=$(_watcher_sanitize_input "$event_ts" 64)
 
         # メッセージタイプ判定: タスクキーワードがあれば slack_task、なければ slack_event
+        # 注意: サニタイズ前の $text を使用（サニタイズ後は全角変換でキーワードマッチしなくなるため）
         local msg_type="slack_event"
         if has_task_keyword "$text"; then
             msg_type="slack_task"
@@ -418,28 +444,30 @@ process_spool_events() {
         # MIME ボディ YAML 構築
         local body_yaml
         body_yaml=$(cat <<YAML
-event_type: "${event_type}"
+event_type: "${safe_event_type}"
 channel_id: "${safe_channel}"
 user_id: "${safe_user}"
 text: "${safe_text}"
-thread_ts: "${thread_ts}"
-event_ts: "${event_ts}"
+thread_ts: "${safe_thread_ts}"
+event_ts: "${safe_event_ts}"
 source: "slack_watcher"
 YAML
 )
 
-        # MIME 送信
+        # MIME 送信（slack_task は priority: high）
+        local priority="normal"
+        [[ "$msg_type" == "slack_task" ]] && priority="high"
         local mime_file
-        if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml"); then
+        if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml" "" "" "$priority"); then
             log_event "Sent ${msg_type}: channel=${safe_channel} user=${safe_user} → ${mime_file}"
             watcher_mark_event_processed "$event_type" "$event_ts"
             count=$((count + 1))
+            # 成功時のみ spool ファイル削除
+            rm -f "$event_file"
         else
-            log_warn "[slack_watcher] MIME 送信失敗: ${event_type}_${event_ts}"
+            # 失敗時は spool に残す（次サイクルでリトライ）
+            log_warn "[slack_watcher] MIME 送信失敗: ${event_type}_${event_ts}（次サイクルでリトライ）"
         fi
-
-        # spool ファイル削除
-        rm -f "$event_file"
 
     done <<< "$event_files"
 
