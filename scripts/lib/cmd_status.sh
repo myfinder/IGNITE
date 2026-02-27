@@ -132,18 +132,39 @@ cmd_status() {
 
     echo ""
 
-    # GitHub Watcher状態
-    print_header "GitHub Watcher"
-    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
-        local watcher_pid
-        watcher_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
-        if kill -0 "$watcher_pid" 2>/dev/null; then
-            print_success "GitHub Watcher: 実行中 (PID: $watcher_pid)"
+    # Watcher 状態
+    print_header "Watchers"
+    local _watcher_found=false
+    # state/ 配下のウォッチャー PID ファイルを走査
+    for _wpf in "$IGNITE_RUNTIME_DIR/state"/*.pid; do
+        [[ -f "$_wpf" ]] || continue
+        local _wpf_basename
+        _wpf_basename=$(basename "$_wpf")
+        # ウォッチャー以外はスキップ
+        [[ "$_wpf_basename" == "queue_monitor.pid" ]] && continue
+        [[ "$_wpf_basename" == .agent_pid_* ]] && continue
+        local _wname
+        _wname="${_wpf_basename%.pid}"
+        local _wpid
+        _wpid=$(cat "$_wpf")
+        if kill -0 "$_wpid" 2>/dev/null; then
+            print_success "${_wname}: 実行中 (PID: $_wpid)"
         else
-            print_warning "GitHub Watcher: 停止（PIDファイルあり）"
+            print_warning "${_wname}: 停止（PIDファイルあり）"
         fi
-    else
-        print_info "GitHub Watcher: 未起動"
+        _watcher_found=true
+    done
+    # 旧パスの github_watcher.pid もチェック（後方互換）
+    if [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+        local _legacy_pid
+        _legacy_pid=$(cat "$IGNITE_RUNTIME_DIR/github_watcher.pid")
+        if kill -0 "$_legacy_pid" 2>/dev/null; then
+            print_success "github_watcher: 実行中 (PID: $_legacy_pid)"
+            _watcher_found=true
+        fi
+    fi
+    if [[ "$_watcher_found" == false ]]; then
+        print_info "Watcher: 未起動"
     fi
 
     # キューモニター状態

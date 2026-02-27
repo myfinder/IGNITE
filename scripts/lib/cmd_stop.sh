@@ -97,7 +97,20 @@ cmd_stop() {
     # watcher より先に停止しないと、watcher 停止後に再起動される可能性がある
     _stop_daemon_process "$IGNITE_RUNTIME_DIR/queue_monitor.pid" "キューモニター"
 
-    # GitHub Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
+    # Watcher を停止（queue_monitor 停止後なので再起動ループは発生しない）
+    # 1. state/ 配下の全ウォッチャー PID ファイルを走査
+    for _watcher_pid_file in "$IGNITE_RUNTIME_DIR/state"/*.pid; do
+        [[ -f "$_watcher_pid_file" ]] || continue
+        local _pid_basename
+        _pid_basename=$(basename "$_watcher_pid_file")
+        # ウォッチャー以外の PID ファイルはスキップ
+        [[ "$_pid_basename" == "queue_monitor.pid" ]] && continue
+        [[ "$_pid_basename" == .agent_pid_* ]] && continue
+        local _watcher_name
+        _watcher_name=$(basename "$_watcher_pid_file" .pid)
+        _stop_daemon_process "$_watcher_pid_file" "$_watcher_name"
+    done
+    # 2. github_watcher の従来パス（後方互換）
     _stop_daemon_process "$IGNITE_RUNTIME_DIR/github_watcher.pid" "GitHub Watcher"
 
     # エージェントプロセス停止（PID ベース → 共通 _kill_process_tree 使用）

@@ -493,7 +493,12 @@ _check_and_recover_watcher() {
     # シャットダウン中は watcher の復旧を試みない（再起動ループ防止）
     [[ "$_SHUTDOWN_REQUESTED" != true ]] || return 0
 
-    local pid_file="$IGNITE_RUNTIME_DIR/github_watcher.pid"
+    # PID ファイルは state/ 配下に統一（cmd_start.sh / watcher_common.sh と同一パス）
+    # 後方互換: RUNTIME_DIR 直下にもフォールバック
+    local pid_file="$IGNITE_RUNTIME_DIR/state/github_watcher.pid"
+    if [[ ! -f "$pid_file" ]] && [[ -f "$IGNITE_RUNTIME_DIR/github_watcher.pid" ]]; then
+        pid_file="$IGNITE_RUNTIME_DIR/github_watcher.pid"
+    fi
     local heartbeat_file="$IGNITE_RUNTIME_DIR/state/github_watcher_heartbeat.json"
     local state_dir="$IGNITE_RUNTIME_DIR/state"
     local restart_count_file="$state_dir/.restart_count_watcher"
