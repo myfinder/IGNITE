@@ -129,11 +129,11 @@ _define_slack_functions() {
                 key=$(echo "$key" | tr -d '[:space:]')
                 value=$(echo "$value" | sed 's/^["'"'"']//;s/["'"'"']$//')
                 case "$key" in
-                    SLACK_BOT_TOKEN|SLACK_APP_TOKEN) export "$key=$value" ;;
+                    SLACK_TOKEN|SLACK_APP_TOKEN) export "$key=$value" ;;
                 esac
             done < "$env_file"
         fi
-        [[ -z "${SLACK_BOT_TOKEN:-}" ]] && return 1
+        [[ -z "${SLACK_TOKEN:-}" ]] && return 1
         [[ -z "${SLACK_APP_TOKEN:-}" ]] && return 1
         [[ ! "${SLACK_APP_TOKEN}" =~ ^xapp- ]] && return 1
         return 0
@@ -453,40 +453,40 @@ JSON
 # 4. トークン検証テスト
 # =============================================================================
 
-@test "validate_tokens: SLACK_BOT_TOKEN 未設定でエラー" {
+@test "validate_tokens: SLACK_TOKEN 未設定でエラー" {
     _define_slack_functions
-    unset SLACK_BOT_TOKEN
+    unset SLACK_TOKEN
     unset SLACK_APP_TOKEN
     ! validate_tokens
 }
 
 @test "validate_tokens: SLACK_APP_TOKEN が xapp- で始まらない場合エラー" {
     _define_slack_functions
-    export SLACK_BOT_TOKEN="xoxb-test-token"
+    export SLACK_TOKEN="xoxb-test-token"
     export SLACK_APP_TOKEN="invalid-token"
     ! validate_tokens
 }
 
 @test "validate_tokens: 正しいトークンで成功" {
     _define_slack_functions
-    export SLACK_BOT_TOKEN="xoxb-test-token"
+    export SLACK_TOKEN="xoxb-test-token"
     export SLACK_APP_TOKEN="xapp-test-token"
     validate_tokens
 }
 
 @test "validate_tokens: .env ファイルからトークンを読み込む" {
     _define_slack_functions
-    unset SLACK_BOT_TOKEN
+    unset SLACK_TOKEN
     unset SLACK_APP_TOKEN
 
     # .env ファイルを作成
     cat > "$IGNITE_RUNTIME_DIR/.env" <<'ENV'
-SLACK_BOT_TOKEN=xoxb-from-env
+SLACK_TOKEN=xoxb-from-env
 SLACK_APP_TOKEN=xapp-from-env
 ENV
 
     validate_tokens
-    [ "$SLACK_BOT_TOKEN" = "xoxb-from-env" ]
+    [ "$SLACK_TOKEN" = "xoxb-from-env" ]
     [ "$SLACK_APP_TOKEN" = "xapp-from-env" ]
 }
 

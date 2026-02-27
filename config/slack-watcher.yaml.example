@@ -3,16 +3,34 @@
 #   cp config/slack-watcher.yaml.example config/slack-watcher.yaml
 #
 # トークンは .ignite/.env に設定してください:
-#   SLACK_BOT_TOKEN=xoxb-...
+#   SLACK_TOKEN=xoxb-...    # Bot Token または xoxp-... (User Token)
 #   SLACK_APP_TOKEN=xapp-...
+#
+# --- トークンの種類 ---
+# Bot Token (xoxb-): Bot としてイベント受信。プライベートチャンネルは Bot の招待が必要。
+#   Slack App → OAuth & Permissions → Bot Token Scopes:
+#     app_mentions:read, channels:history, groups:history (プライベート)
+#
+# User Token (xoxp-): ユーザーとしてイベント受信。参加中の全チャンネル（プライベート含む）を監視可能。
+#   Slack App → OAuth & Permissions → User Token Scopes:
+#     channels:history, groups:history
+#   ※ ユーザー自身への @mention を検知したい場合は User Token + channel_message: true +
+#     mention_filter を使用してください。
 
 # spool 確認間隔（秒）
 interval: 5
 
 # 監視対象イベント
 events:
-  app_mention: true        # @mention イベント
-  channel_message: false   # チャンネルメッセージ（大量になるため注意）
+  app_mention: true        # @mention イベント（Bot Token 使用時）
+  channel_message: false   # チャンネルメッセージ（User Token で自分宛 mention 検知時は true に）
+
+# メンションフィルタ（channel_message: true 時に特定ユーザーへの mention のみ処理）
+# User Token で自分宛の mention を検知する場合に設定してください。
+# Slack User ID はプロフィール → 「…」→「メンバーIDをコピー」で取得できます。
+mention_filter:
+  enabled: false
+  user_ids: []             # 例: ["U01XYZ789"]
 
 # トリガー設定
 triggers:

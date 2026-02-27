@@ -203,7 +203,7 @@ validate_tokens() {
             key=$(echo "$key" | tr -d '[:space:]')
             value=$(echo "$value" | sed 's/^["'"'"']//;s/["'"'"']$//')
             case "$key" in
-                SLACK_BOT_TOKEN|SLACK_APP_TOKEN)
+                SLACK_TOKEN|SLACK_APP_TOKEN)
                     export "$key=$value"
                     ;;
             esac
@@ -211,9 +211,9 @@ validate_tokens() {
     fi
 
     # トークン検証
-    if [[ -z "${SLACK_BOT_TOKEN:-}" ]]; then
-        log_error "[slack_watcher] SLACK_BOT_TOKEN が設定されていません"
-        log_error "[slack_watcher] ${env_file} に SLACK_BOT_TOKEN=xoxb-... を設定してください"
+    if [[ -z "${SLACK_TOKEN:-}" ]]; then
+        log_error "[slack_watcher] SLACK_TOKEN が設定されていません"
+        log_error "[slack_watcher] ${env_file} に SLACK_TOKEN=xoxb-... または xoxp-... を設定してください"
         return 1
     fi
     if [[ -z "${SLACK_APP_TOKEN:-}" ]]; then
@@ -550,13 +550,13 @@ Slack チャンネル/メンション監視デーモン
   -h, --help      このヘルプを表示
 
 環境変数:
-  SLACK_BOT_TOKEN          Slack Bot Token (xoxb-...)
+  SLACK_TOKEN              Slack Token (Bot: xoxb-... / User: xoxp-...)
   SLACK_APP_TOKEN          Slack App-Level Token (xapp-...)
   IGNITE_WATCHER_CONFIG    設定ファイルのパス
 
 トークン設定:
   .ignite/.env に以下を設定:
-    SLACK_BOT_TOKEN=xoxb-...
+    SLACK_TOKEN=xoxb-...    # Bot Token または xoxp-... (User Token)
     SLACK_APP_TOKEN=xapp-...
 
 使用例:

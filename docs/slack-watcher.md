@@ -32,21 +32,62 @@ slack_watcher.py (Python Socket Mode receiver)
 
 1. [Slack API](https://api.slack.com/apps) で新しい App を作成
 2. **Socket Mode** を有効化し、App-Level Token (`xapp-...`) を生成
-3. **Event Subscriptions** を有効化し、以下のイベントを追加:
-   - `app_mention` — ボットへのメンション
-   - `message.channels` — チャンネルメッセージ（オプション）
-4. **OAuth & Permissions** でスコープを追加:
-   - `app_mentions:read`
-   - `channels:history`（チャンネルメッセージ監視時）
-   - `chat:write`（将来の応答機能用）
-5. ワークスペースにインストールし、Bot User OAuth Token (`xoxb-...`) を取得
+3. **Event Subscriptions** を有効化し、イベントを追加（下記の利用パターンを参照）
+4. **OAuth & Permissions** でスコープを追加（下記の利用パターンを参照）
+5. ワークスペースにインストールしてトークンを取得
+
+### 利用パターン
+
+Slack Watcher は **Bot Token** と **User Token** の2種類のトークンに対応しています。用途に応じて選択してください。
+
+#### パターン A: Bot として監視（Bot Token: `xoxb-`）
+
+Bot への `@mention` を検知する標準的な使い方です。
+
+**Slack App 設定:**
+- **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `groups:history`（プライベート）, `chat:write`（応答用）
+- **Event Subscriptions**: `app_mention`, `message.channels`（オプション）, `message.groups`（オプション）
+- プライベートチャンネルを監視するには、Bot をそのチャンネルに **招待** する必要があります
+
+**slack-watcher.yaml:**
+```yaml
+events:
+  app_mention: true
+  channel_message: false
+```
+
+#### パターン B: ユーザーとして監視（User Token: `xoxp-`）
+
+自分（人間ユーザー）宛の `@mention` をプライベートチャンネル含めて検知したい場合に使います。
+
+**Slack App 設定:**
+- **User Token Scopes**: `channels:history`, `groups:history`
+- **Event Subscriptions**: `message.channels`, `message.groups`
+- ユーザーが参加している全チャンネル（プライベート含む）のメッセージを受信できます。Bot の招待は不要です。
+- ユーザー認可フロー（OAuth）でトークンを取得してください
+
+**slack-watcher.yaml:**
+```yaml
+events:
+  app_mention: false       # User Token では app_mention は不要
+  channel_message: true    # チャンネルメッセージから自分宛 mention を検知
+mention_filter:
+  enabled: true
+  user_ids: ["U01XYZ789"] # 自分の Slack User ID
+```
+
+> Slack User ID はプロフィール →「…」→「メンバーIDをコピー」で取得できます。
 
 ### 2. トークン設定
 
 `.ignite/.env` にトークンを追加:
 
 ```bash
-SLACK_BOT_TOKEN=xoxb-your-bot-token
+# Bot Token の場合
+SLACK_TOKEN=xoxb-your-bot-token
+# User Token の場合
+SLACK_TOKEN=xoxp-your-user-token
+
 SLACK_APP_TOKEN=xapp-your-app-token
 ```
 
@@ -61,8 +102,10 @@ cp config/slack-watcher.yaml.example config/slack-watcher.yaml
 | キー | デフォルト | 説明 |
 |------|----------|------|
 | `interval` | `5` | spool 確認間隔（秒） |
-| `events.app_mention` | `true` | @mention イベントの監視 |
+| `events.app_mention` | `true` | @mention イベントの監視（Bot Token 用） |
 | `events.channel_message` | `false` | チャンネルメッセージの監視 |
+| `mention_filter.enabled` | `false` | メンションフィルタの有効化（User Token 用） |
+| `mention_filter.user_ids` | `[]` | フィルタ対象の Slack User ID |
 | `triggers.task_keywords` | (リスト) | `slack_task` として扱うキーワード |
 | `access_control.enabled` | `false` | アクセス制御の有効化 |
 | `access_control.allowed_users` | `[]` | 許可する Slack ユーザー ID |
@@ -178,14 +221,15 @@ rm -rf .ignite/venv/
 cat .ignite/.env
 
 # SLACK_APP_TOKEN が xapp- で始まることを確認
-# SLACK_BOT_TOKEN が xoxb- で始まることを確認
+# SLACK_TOKEN が xoxb- または xoxp- で始まることを確認
 ```
 
 ### イベントが届かない
 
 1. Slack App の **Event Subscriptions** が有効か確認
 2. **Socket Mode** が有効か確認
-3. Bot がチャンネルに追加されているか確認
+3. Bot Token 使用時: Bot がチャンネルに追加されているか確認
+4. User Token 使用時: ユーザーがチャンネルに参加しているか確認
 4. spool ディレクトリを確認: `ls .ignite/tmp/slack_events/`
 
 ### ログ確認

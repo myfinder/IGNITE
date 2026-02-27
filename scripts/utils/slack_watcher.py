@@ -133,9 +133,9 @@ def _load_config(config_path: Optional[str]) -> dict:
 # ---------------------------------------------------------------------------
 # Slack App setup
 # ---------------------------------------------------------------------------
-def _create_app(bot_token: str, spool_dir: Path, config: dict) -> App:
+def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
     """Create and configure the Slack Bolt app."""
-    app = App(token=bot_token)
+    app = App(token=slack_token)
 
     if config["events"].get("app_mention", True):
 
@@ -237,11 +237,11 @@ def main() -> None:
     spool_dir = Path(args.spool_dir)
 
     # Token validation
-    bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+    slack_token = os.environ.get("SLACK_TOKEN", "")
     app_token = os.environ.get("SLACK_APP_TOKEN", "")
 
-    if not bot_token:
-        logger.error("SLACK_BOT_TOKEN is not set")
+    if not slack_token:
+        logger.error("SLACK_TOKEN is not set")
         sys.exit(1)
     if not app_token:
         logger.error("SLACK_APP_TOKEN is not set")
@@ -254,7 +254,7 @@ def main() -> None:
     config = _load_config(args.config)
 
     # Create Slack app
-    app = _create_app(bot_token, spool_dir, config)
+    app = _create_app(slack_token, spool_dir, config)
 
     # Setup signal handlers
     signal.signal(signal.SIGTERM, _signal_handler)
