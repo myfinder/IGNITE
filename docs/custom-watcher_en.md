@@ -20,9 +20,10 @@ The Custom Watcher Framework is a common foundation for monitoring external serv
 └──────────────────────────────────────────────────┘
 ```
 
-### Reference Implementation
+### Reference Implementations
 
-`scripts/utils/github_watcher.sh` is the most complete reference implementation. The sample code in this guide is based on patterns from github_watcher.sh.
+- `scripts/utils/github_watcher.sh` — The most complete reference implementation (GitHub API integration, custom config management, heartbeat support)
+- `scripts/utils/file_watcher.sh` — A simple reference implementation (file change monitoring). Best suited as a template for new Watchers
 
 ## API Reference — watcher_common.sh
 
@@ -35,7 +36,14 @@ Initializes the Watcher. Performs config loading, state management initializatio
 | Argument | Description |
 |----------|-------------|
 | `watcher_name` | Watcher name (e.g., `slack_watcher`). Used for state file name, PID file name, and log prefix |
-| `config_file` | Config file path (optional: defaults to `$IGNITE_CONFIG_DIR/{watcher-name}.yaml`, underscores converted to hyphens) |
+| `config_file` | Config file path (optional) |
+
+**Config file resolution order:**
+1. If `config_file` argument is provided, use it
+2. If argument is empty and `IGNITE_WATCHER_CONFIG` environment variable is set, use it
+3. If both are empty, derive from `$IGNITE_CONFIG_DIR/{watcher-name}.yaml` (underscores converted to hyphens)
+
+> When started via `ignite start --with-watcher`, the `IGNITE_WATCHER_CONFIG` environment variable is automatically set.
 
 ### Configuration
 
@@ -57,9 +65,10 @@ Starts the main polling loop. Repeatedly executes the following:
 
 1. Leader process liveness check (when `IGNITE_SESSION` is set)
 2. `watcher_poll()` invocation (overridden by each Watcher)
-3. `watcher_cleanup_old_events()` — automatic deletion of events older than 24 hours
-4. Config reload on SIGHUP reception
-5. Wait for `_WATCHER_POLL_INTERVAL` seconds (in 1-second increments for SIGTERM responsiveness)
+3. `watcher_heartbeat()` invocation (for queue_monitor liveness detection)
+4. `watcher_cleanup_old_events()` — automatic deletion of events older than 24 hours
+5. Config reload on SIGHUP reception (executed after `watcher_poll()` completes)
+6. Wait for `_WATCHER_POLL_INTERVAL` seconds (in 1-second increments for SIGTERM responsiveness)
 
 Shutdown is controlled by the `_WATCHER_SHUTDOWN_REQUESTED` flag, safely stopping after the current `watcher_poll()` completes.
 
@@ -129,6 +138,12 @@ Processing:
 
 Performs one cycle of event retrieval and processing. `watcher_common.sh` provides an empty implementation, which each Watcher overrides by redefining the function.
 
+#### `watcher_heartbeat` (optional)
+
+Heartbeat callback. Called every cycle in the `watcher_run_daemon` main loop. Since `queue_monitor` uses heartbeat files to determine Watcher liveness, Watchers that need periodic heartbeat writes should override this function. Default is a no-op.
+
+Reference: `github_watcher.sh` overrides this function to write a JSON heartbeat file.
+
 #### `watcher_on_event <event_type> <event_data>` (planned for Phase 3)
 
 Event callback for push-type Watchers. Currently only a stub implementation.
@@ -139,7 +154,7 @@ Event callback for push-type Watchers. Currently only a stub implementation.
 
 ```yaml
 watchers:
-  - name: watcher_name        # Required: Watcher identifier (unique)
+  - name: watcher_name        # Required: Watcher identifier (unique, lowercase + digits + underscores only)
     description: "Description" # Optional: Description text
     script_path: path/to/script.sh  # Required: Script path (relative to project root)
     config_file: config-name.yaml    # Required: Config file name (under config/)
@@ -151,7 +166,7 @@ watchers:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Unique identifier for the Watcher. Duplicates cause a validation error |
+| `name` | string | Yes | Unique identifier for the Watcher. Only `^[a-z_][a-z0-9_]*$` allowed (e.g., `my_watcher`). No hyphens or uppercase |
 | `description` | string | No | Description of the Watcher |
 | `script_path` | string | Yes | Path to the Watcher script. Relative paths are resolved from the project root (parent of config/) |
 | `config_file` | string | Yes | Config file name. Placed under the `config/` directory |
@@ -165,6 +180,7 @@ watchers:
 - The `watchers` section is an array
 - Each entry has the required fields (`name`, `script_path`, `config_file`, `enabled`)
 - Each field has the correct type
+- `name` matches `^[a-z_][a-z0-9_]*$` (lowercase letters, digits, and underscores only)
 - `name` values are not duplicated
 - `script_path` file exists (warning if not found)
 
@@ -183,6 +199,28 @@ cp config/watchers.yaml.example config/watchers.yaml
 
 # 3. Run validation
 ignite validate
+```
+
+## Startup Options
+
+### `--with-watcher` / `--no-watcher`
+
+| Option | Behavior |
+|--------|----------|
+| `--with-watcher` or `--with-watcher=auto` | Start only watchers with `enabled: true` and `auto_start: true` (default) |
+| `--with-watcher=all` | Start all watchers with `enabled: true` |
+| `--with-watcher=<name>` | Start only the named watcher (`enabled: true` required) |
+| `--no-watcher` | Do not start any watchers |
+
+### `ignite watcher` Subcommand
+
+Manually manage individual watchers (github_watcher):
+
+```bash
+ignite watcher start     # Start GitHub Watcher
+ignite watcher stop      # Stop GitHub Watcher
+ignite watcher status    # Show GitHub Watcher status
+ignite watcher once      # Run a single poll cycle
 ```
 
 ## Creating a New Watcher
@@ -290,12 +328,14 @@ watchers:
     script_path: scripts/utils/github_watcher.sh
     config_file: github-watcher.yaml
     enabled: true
+    auto_start: true
 
   - name: my_watcher
     description: "My Custom Service monitoring"
     script_path: scripts/utils/my_watcher.sh
     config_file: my-watcher.yaml
     enabled: true
+    auto_start: true
 ```
 
 ### Step 5: Validate and Test
@@ -304,8 +344,14 @@ watchers:
 # Validate
 ignite validate
 
-# Start IGNITE with Watchers
-ignite start --with-watcher
+# Start all watchers
+ignite start --with-watcher=all
+
+# Check status
+ignite status
+
+# Stop
+ignite stop
 ```
 
 ## Testing
@@ -385,7 +431,7 @@ bats tests/test_my_watcher.bats
 
 | Signal | Behavior |
 |--------|----------|
-| `SIGHUP` | Schedules config file reload. Re-executes `watcher_load_config` at the start of the next loop |
+| `SIGHUP` | Schedules config file reload. Re-executes `watcher_load_config` after the current `watcher_poll()` completes |
 | `SIGTERM` / `SIGINT` | Graceful shutdown. Safely stops after the current `watcher_poll()` completes |
 | `EXIT` | PID file deletion + exit log output |
 
@@ -394,3 +440,35 @@ To apply config changes:
 ```bash
 kill -HUP $(cat .ignite/state/my_watcher.pid)
 ```
+
+## Troubleshooting
+
+### Environment variables are overwritten
+
+`watcher_common.sh` internally sources `core.sh`. `core.sh` initializes `WORKSPACE_DIR`, `IGNITE_RUNTIME_DIR`, and `IGNITE_CONFIG_DIR`, so you must save and restore them around the source. See the template in Step 2.
+
+### Checking logs
+
+Each watcher's logs are output to `.ignite/logs/{watcher_name}.log`:
+
+```bash
+tail -f .ignite/logs/my_watcher.log
+```
+
+### Checking PID files
+
+Watcher PID files are located at `.ignite/state/{watcher_name}.pid`:
+
+```bash
+# Check if running
+cat .ignite/state/my_watcher.pid
+kill -0 $(cat .ignite/state/my_watcher.pid) && echo "running" || echo "stopped"
+```
+
+### Watcher doesn't start
+
+1. Run `ignite validate` to check for validation errors
+2. Verify `name` follows naming conventions (lowercase letters, digits, and underscores only)
+3. Verify `script_path` file exists and has execute permissions
+4. Verify `enabled: true` is set
+5. Check the log file for error messages
