@@ -62,7 +62,8 @@ Use this to detect `@mentions` to yourself (a human user), including in private 
 
 **Slack App settings:**
 - **User Token Scopes**: `channels:history`, `groups:history`
-- **Event Subscriptions**: `message.channels`, `message.groups`
+- **Event Subscriptions** → **Subscribe to events on behalf of users**: `message.channels`, `message.groups`
+  - Note: Add these under "Subscribe to events on behalf of users", NOT "Subscribe to bot events"
 - Receives messages from all channels the user has joined (including private). No bot invitation required.
 - Obtain the token through the user authorization (OAuth) flow
 

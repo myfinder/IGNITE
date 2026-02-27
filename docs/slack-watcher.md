@@ -62,7 +62,8 @@ events:
 
 **Slack App 設定:**
 - **User Token Scopes**: `channels:history`, `groups:history`
-- **Event Subscriptions**: `message.channels`, `message.groups`
+- **Event Subscriptions** → **Subscribe to events on behalf of users** に追加: `message.channels`, `message.groups`
+  - 注意: 「Subscribe to bot events」ではなく「Subscribe to events on behalf of users」セクションに登録してください
 - ユーザーが参加している全チャンネル（プライベート含む）のメッセージを受信できます。Bot の招待は不要です。
 - ユーザー認可フロー（OAuth）でトークンを取得してください
 

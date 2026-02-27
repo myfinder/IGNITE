@@ -21,6 +21,8 @@
 interval: 5
 
 # 監視対象イベント
+# 注意: app_mention と channel_message を同時に true にすると、Bot へのメンションが
+# 両方のイベントとして届き二重処理される可能性があります。通常はどちらか一方を有効にしてください。
 events:
   app_mention: true        # @mention イベント（Bot Token 使用時）
   channel_message: false   # チャンネルメッセージ（User Token で自分宛 mention 検知時は true に）

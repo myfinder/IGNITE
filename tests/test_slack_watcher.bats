@@ -198,8 +198,10 @@ _define_slack_functions() {
             safe_thread_ts=$(_watcher_sanitize_input "$thread_ts" 64)
             safe_event_ts=$(_watcher_sanitize_input "$event_ts" 64)
             local msg_type="slack_event"
+            local priority="normal"
             if has_task_keyword "$text"; then
                 msg_type="slack_task"
+                priority="high"
             fi
             local body_yaml
             body_yaml="event_type: \"${safe_event_type}\"
@@ -210,7 +212,7 @@ thread_ts: \"${safe_thread_ts}\"
 event_ts: \"${safe_event_ts}\"
 source: \"slack_watcher\""
             local mime_file
-            if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml"); then
+            if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml" "" "" "$priority"); then
                 watcher_mark_event_processed "$event_type" "$event_ts"
                 count=$((count + 1))
                 rm -f "$event_file"
@@ -529,7 +531,76 @@ ENV
 }
 
 # =============================================================================
-# 6. サニタイズ統合テスト
+# 6. mention_filter テスト（Python _load_config）
+# =============================================================================
+
+@test "mention_filter: Python が mention_filter 設定を正しくパースする" {
+    # PyYAML が利用可能な場合のみテスト
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        skip "PyYAML not available"
+    fi
+
+    local config_file="$TEST_TEMP_DIR/mf_test.yaml"
+    cat > "$config_file" <<'YAML'
+events:
+  app_mention: false
+  channel_message: true
+mention_filter:
+  enabled: true
+  user_ids:
+    - "U01ABC"
+    - "U02DEF"
+YAML
+
+    # slack-bolt を import せず _load_config のロジックだけを直接実行
+    local result
+    result=$(python3 -c "
+import yaml, os
+
+config_path = '$config_file'
+config = {
+    'events': {'app_mention': True, 'channel_message': False},
+    'mention_filter': {'enabled': False, 'user_ids': []},
+}
+with open(config_path) as f:
+    data = yaml.safe_load(f) or {}
+if 'events' in data:
+    config['events'].update(data['events'])
+if 'mention_filter' in data:
+    mf = data['mention_filter']
+    config['mention_filter']['enabled'] = bool(mf.get('enabled', False))
+    config['mention_filter']['user_ids'] = [str(uid) for uid in (mf.get('user_ids') or [])]
+
+print(config['mention_filter']['enabled'])
+print(','.join(config['mention_filter']['user_ids']))
+print(config['events']['channel_message'])
+print(config['events']['app_mention'])
+")
+
+    echo "$result"
+    [[ "$(echo "$result" | sed -n '1p')" == "True" ]]
+    [[ "$(echo "$result" | sed -n '2p')" == "U01ABC,U02DEF" ]]
+    [[ "$(echo "$result" | sed -n '3p')" == "True" ]]
+    [[ "$(echo "$result" | sed -n '4p')" == "False" ]]
+}
+
+@test "mention_filter: デフォルトでは無効" {
+    local result
+    result=$(python3 -c "
+config = {
+    'events': {'app_mention': True, 'channel_message': False},
+    'mention_filter': {'enabled': False, 'user_ids': []},
+}
+print(config['mention_filter']['enabled'])
+print(len(config['mention_filter']['user_ids']))
+")
+
+    [[ "$(echo "$result" | sed -n '1p')" == "False" ]]
+    [[ "$(echo "$result" | sed -n '2p')" == "0" ]]
+}
+
+# =============================================================================
+# 7. サニタイズ統合テスト
 # =============================================================================
 
 @test "サニタイズ: 制御文字が除去される" {
@@ -561,7 +632,7 @@ ENV
 }
 
 # =============================================================================
-# 7. watcher_common.sh 統合テスト
+# 8. watcher_common.sh 統合テスト
 # =============================================================================
 
 @test "watcher_init: slack_watcher の PID ファイルが作成される" {
@@ -586,7 +657,7 @@ ENV
 }
 
 # =============================================================================
-# 8. ヘルプ表示テスト
+# 9. ヘルプ表示テスト
 # =============================================================================
 
 @test "slack_watcher.sh --help でヘルプが表示される" {

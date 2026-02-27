@@ -153,7 +153,9 @@ setup_venv() {
         local req_hash=""
         local cached_hash=""
         if [[ -f "$SLACK_REQUIREMENTS" ]]; then
-            req_hash=$(md5sum "$SLACK_REQUIREMENTS" 2>/dev/null | cut -d' ' -f1 || true)
+            # md5sum (Linux) / md5 (macOS) フォールバック
+            req_hash=$(md5sum "$SLACK_REQUIREMENTS" 2>/dev/null | cut -d' ' -f1 \
+                    || md5 -q "$SLACK_REQUIREMENTS" 2>/dev/null || true)
         fi
         if [[ -f "${SLACK_VENV_DIR}/.requirements_hash" ]]; then
             cached_hash=$(cat "${SLACK_VENV_DIR}/.requirements_hash" 2>/dev/null || true)
@@ -179,8 +181,9 @@ setup_venv() {
             log_error "[slack_watcher] パッケージインストールに失敗しました"
             return 1
         fi
-        # ハッシュをキャッシュ
-        md5sum "$SLACK_REQUIREMENTS" 2>/dev/null | cut -d' ' -f1 > "${SLACK_VENV_DIR}/.requirements_hash" || true
+        # ハッシュをキャッシュ（md5sum / md5 フォールバック）
+        { md5sum "$SLACK_REQUIREMENTS" 2>/dev/null | cut -d' ' -f1 \
+          || md5 -q "$SLACK_REQUIREMENTS" 2>/dev/null; } > "${SLACK_VENV_DIR}/.requirements_hash" 2>/dev/null || true
     fi
 
     log_info "[slack_watcher] venv セットアップ完了: ${SLACK_VENV_DIR}"
