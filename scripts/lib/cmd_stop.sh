@@ -78,6 +78,16 @@ cmd_stop() {
         echo ""
         print_info "実行中のセッション一覧:"
         list_sessions 2>/dev/null || true
+        # セッションが見つからなくてもコンテナが残っている場合は停止する
+        if isolation_is_enabled 2>/dev/null; then
+            local _orphan_container
+            _orphan_container="$(cat "${IGNITE_RUNTIME_DIR}/state/container_name" 2>/dev/null || true)"
+            if [[ -n "$_orphan_container" ]]; then
+                print_info "孤立コンテナを停止中: $_orphan_container"
+                isolation_stop_container "$IGNITE_RUNTIME_DIR"
+                print_success "孤立コンテナ停止完了"
+            fi
+        fi
         exit 1
     fi
 
