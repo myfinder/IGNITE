@@ -66,6 +66,31 @@ sudo dnf install podman
 sudo pacman -S podman
 ```
 
+### cgroup 設定（GCE / クラウド VM 等）
+
+クラウド VM など systemd user session が利用できない環境では、`podman build` 時に以下のエラーが発生します:
+
+```
+sd-bus call: Interactive authentication required.: Permission denied
+```
+
+この場合、cgroup manager を明示的に `cgroupfs` に設定してください:
+
+```bash
+mkdir -p ~/.config/containers
+cat > ~/.config/containers/containers.conf <<'EOF'
+[engine]
+cgroup_manager = "cgroupfs"
+events_logger = "file"
+EOF
+```
+
+併せて lingering を有効化しておくことを推奨します:
+
+```bash
+sudo loginctl enable-linger $(id -u)
+```
+
 ## コンテナイメージ
 
 ### 自動ビルド
