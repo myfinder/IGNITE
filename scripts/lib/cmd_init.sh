@@ -144,6 +144,7 @@ cmd_init() {
 queue/
 logs/
 state/
+sessions/
 context/
 archive/
 repos/
@@ -290,6 +291,7 @@ _init_generate_gitignore() {
 queue/
 logs/
 state/
+sessions/
 context/
 archive/
 repos/
