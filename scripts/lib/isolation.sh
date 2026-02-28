@@ -99,6 +99,23 @@ _isolation_copy_cli_config() {
         "${HOME}/.config/opencode"
         "${HOME}/.codex"
     )
+    # コンテナ内の HOME ディレクトリは root 所有の場合があるため、
+    # コピー先の親ディレクトリをまとめて作成しておく（--user 0 で実行）
+    local _mkdir_targets=()
+    for _dir in "${_copy_dirs[@]}"; do
+        [[ -d "$_dir" ]] && _mkdir_targets+=("$(dirname "$_dir")")
+    done
+    for _file in "${_copy_files[@]}"; do
+        [[ -f "$_file" ]] && _mkdir_targets+=("$(dirname "$_file")")
+    done
+    if [[ ${#_mkdir_targets[@]} -gt 0 ]]; then
+        local _uid _gid
+        _uid="$(id -u)"
+        _gid="$(id -g)"
+        "$_ISOLATION_RUNTIME" exec --user 0 "$container_name" \
+            sh -c "mkdir -p ${_mkdir_targets[*]} && chown -R ${_uid}:${_gid} ${HOME}" 2>/dev/null || true
+    fi
+
     for _dir in "${_copy_dirs[@]}"; do
         if [[ -d "$_dir" ]]; then
             "$_ISOLATION_RUNTIME" cp "$_dir" "${container_name}:${_dir}" 2>/dev/null || {
