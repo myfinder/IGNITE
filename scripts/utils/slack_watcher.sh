@@ -139,7 +139,7 @@ setup_venv() {
         return 1
     fi
 
-    # venv が既に存在する場合はスキップ
+    # venv が既に存在する場合はキャッシュ判定
     if [[ -f "${SLACK_VENV_DIR}/bin/python3" ]]; then
         # requirements.txt のハッシュで変更を検出
         local req_hash=""
@@ -153,9 +153,19 @@ setup_venv() {
             cached_hash=$(cat "${SLACK_VENV_DIR}/.requirements_hash" 2>/dev/null || true)
         fi
         if [[ -n "$req_hash" && "$req_hash" == "$cached_hash" ]]; then
-            log_info "[slack_watcher] venv キャッシュ済み、セットアップスキップ"
-            return 0
+            # ハッシュ一致でも実際にパッケージがインポートできるか検証
+            if "${SLACK_VENV_DIR}/bin/python3" -c "import slack_bolt" 2>/dev/null; then
+                log_info "[slack_watcher] venv キャッシュ済み、セットアップスキップ"
+                return 0
+            fi
+            log_warn "[slack_watcher] venv が壊れています（slack_bolt インポート失敗）。再作成します"
         fi
+    fi
+
+    # 壊れた venv が残っている場合は削除してクリーンに再作成
+    if [[ -d "$SLACK_VENV_DIR" ]]; then
+        log_info "[slack_watcher] 既存の venv を削除して再作成します"
+        rm -rf "$SLACK_VENV_DIR"
     fi
 
     log_info "[slack_watcher] Python venv をセットアップ中..."
