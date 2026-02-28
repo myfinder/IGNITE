@@ -24,6 +24,7 @@ The Custom Watcher Framework is a common foundation for monitoring external serv
 
 - `scripts/utils/github_watcher.sh` — The most complete reference implementation (GitHub API integration, custom config management, heartbeat support)
 - `scripts/utils/file_watcher.sh` — A simple reference implementation (file change monitoring). Best suited as a template for new Watchers
+- `scripts/utils/slack_watcher.sh` — A push-type Watcher implementation (Shell + Python hybrid, Socket Mode WebSocket). See [docs/slack-watcher_en.md](slack-watcher_en.md) for details
 
 ## API Reference — watcher_common.sh
 

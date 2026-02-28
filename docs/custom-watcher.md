@@ -24,6 +24,7 @@ Custom Watcher Framework は、外部サービスのイベントを監視して 
 
 - `scripts/utils/github_watcher.sh` — 最も完全なリファレンス実装（GitHub API 連携、独自設定管理、ハートビート対応）
 - `scripts/utils/file_watcher.sh` — シンプルなリファレンス実装（ファイル変更監視）。新規 Watcher のテンプレートとして最適
+- `scripts/utils/slack_watcher.sh` — Push 型 Watcher の実装例（Shell + Python ハイブリッド構成、Socket Mode WebSocket）。詳細は [docs/slack-watcher.md](slack-watcher.md) を参照
 
 ## API 仕様 — watcher_common.sh
 

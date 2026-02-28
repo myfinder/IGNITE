@@ -148,8 +148,13 @@ context/
 archive/
 repos/
 tmp/
+venv/
 dashboard.md
 runtime.yaml
+memory.db
+memory.db-wal
+memory.db-shm
+*.pid
 opencode_*.json
 .claude_flags_*
 
@@ -172,9 +177,11 @@ GITIGNORE
             _copy_config_template "system.yaml" "$ignite_dir"
             _copy_config_template "characters.yaml" "$ignite_dir"
 
-            # github-watcher.yaml / github-app.yaml は .example からコピー
+            # watcher 設定は .example からコピー
             _copy_example_config "github-watcher.yaml" "$ignite_dir"
             _copy_example_config "github-app.yaml" "$ignite_dir"
+            _copy_example_config "slack-watcher.yaml" "$ignite_dir"
+            _copy_example_config "watchers.yaml" "$ignite_dir"
         fi
     fi
 
@@ -198,6 +205,15 @@ GITIGNORE
 
 # --- GitHub Token (GitHub App 未使用時のフォールバック) ---
 # GH_TOKEN=ghp_...
+
+# --- Slack Watcher (Slack 監視機能使用時に必要) ---
+# Slack App の OAuth & Permissions で取得した Bot/User Token
+# SLACK_TOKEN=xoxb-your-bot-token
+# User Token の場合: SLACK_TOKEN=xoxp-your-user-token
+#
+# Slack App の Settings > Basic Information > App-Level Tokens で生成
+# Socket Mode を有効にして connections:write スコープを付与
+# SLACK_APP_TOKEN=xapp-your-app-level-token
 ENVEOF
     print_success ".env.example を生成しました"
 
@@ -219,8 +235,10 @@ ENVEOF
     echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
         echo "      ├── characters.yaml"
+        echo "      ├── watchers.yaml.example"
         echo "      ├── github-watcher.yaml.example"
         echo "      ├── github-app.yaml.example"
+        echo "      ├── slack-watcher.yaml.example"
     fi
     echo "      ├── .env.example"
     echo "      ├── instructions/"
@@ -276,9 +294,15 @@ context/
 archive/
 repos/
 tmp/
+venv/
 dashboard.md
 runtime.yaml
+memory.db
+memory.db-wal
+memory.db-shm
+*.pid
 opencode_*.json
+.claude_flags_*
 
 # secrets (never commit)
 .env
@@ -307,6 +331,15 @@ _init_generate_env_example() {
 
 # --- GitHub Token (GitHub App 未使用時のフォールバック) ---
 # GH_TOKEN=ghp_...
+
+# --- Slack Watcher (Slack 監視機能使用時に必要) ---
+# Slack App の OAuth & Permissions で取得した Bot/User Token
+# SLACK_TOKEN=xoxb-your-bot-token
+# User Token の場合: SLACK_TOKEN=xoxp-your-user-token
+#
+# Slack App の Settings > Basic Information > App-Level Tokens で生成
+# Socket Mode を有効にして connections:write スコープを付与
+# SLACK_APP_TOKEN=xapp-your-app-level-token
 ENVEOF
 }
 
@@ -324,6 +357,8 @@ _init_prepare_template_dir() {
         _copy_config_template "characters.yaml" "$dest_dir"
         _copy_example_config "github-watcher.yaml" "$dest_dir"
         _copy_example_config "github-app.yaml" "$dest_dir"
+        _copy_example_config "slack-watcher.yaml" "$dest_dir"
+        _copy_example_config "watchers.yaml" "$dest_dir"
     fi
 
     _init_generate_env_example "$dest_dir"

@@ -69,6 +69,16 @@ for tool in "${optional_tools[@]}"; do
     fi
 done
 
+# Slack Watcher 用 Python パッケージ（オプショナル）
+if command -v python3 &>/dev/null; then
+    if python3 -c "import slack_bolt" 2>/dev/null; then
+        slack_bolt_ver=$(python3 -c "import slack_bolt; print(slack_bolt.__version__)" 2>/dev/null || echo "unknown")
+        ok "slack-bolt ($slack_bolt_ver) — Slack Watcher 用"
+    else
+        warn "slack-bolt が見つかりません（Slack Watcher 使用時に必要。pip install slack-bolt で導入）"
+    fi
+fi
+
 echo ""
 
 # =========================================================================

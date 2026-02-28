@@ -48,10 +48,16 @@ _start_single_watcher() {
     local script_path="$2"
     local config_file="$3"
 
-    # script_path 解決（相対パスはIGNITE_CONFIG_DIR親ディレクトリ基準）
+    # script_path 解決
+    # 1. 絶対パス → そのまま使用
+    # 2. 相対パス → ワークスペースルート基準で解決
+    # 3. ワークスペースに見つからない → PROJECT_ROOT（インストール先）にフォールバック
     local resolved_script="$script_path"
     if [[ "$resolved_script" != /* ]]; then
         resolved_script="$(dirname "$IGNITE_CONFIG_DIR")/${resolved_script}"
+        if [[ ! -f "$resolved_script" ]]; then
+            resolved_script="${PROJECT_ROOT}/${script_path}"
+        fi
     fi
 
     local config_path="$IGNITE_CONFIG_DIR/$config_file"

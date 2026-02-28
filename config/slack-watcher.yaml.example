@@ -1,0 +1,70 @@
+# Slack Watcher 設定ファイル
+# このファイルをコピーして使用してください:
+#   cp config/slack-watcher.yaml.example config/slack-watcher.yaml
+#
+# トークンは .ignite/.env に設定してください:
+#   SLACK_TOKEN=xoxb-...    # Bot Token または xoxp-... (User Token)
+#   SLACK_APP_TOKEN=xapp-...
+#
+# --- トークンの種類 ---
+# Bot Token (xoxb-): Bot としてイベント受信。プライベートチャンネルは Bot の招待が必要。
+#   Slack App → OAuth & Permissions → Bot Token Scopes:
+#     app_mentions:read, channels:history, groups:history (プライベート)
+#
+# User Token (xoxp-): ユーザーとしてイベント受信。参加中の全チャンネル（プライベート含む）を監視可能。
+#   Slack App → OAuth & Permissions → User Token Scopes:
+#     channels:history, groups:history
+#   ※ ユーザー自身への @mention を検知したい場合は User Token + channel_message: true +
+#     mention_filter を使用してください。
+
+# spool 確認間隔（秒）
+interval: 5
+
+# 監視対象イベント
+# 注意: app_mention と channel_message を同時に true にすると、Bot へのメンションが
+# 両方のイベントとして届き二重処理される可能性があります。通常はどちらか一方を有効にしてください。
+events:
+  app_mention: true        # @mention イベント（Bot Token 使用時）
+  channel_message: false   # チャンネルメッセージ（User Token で自分宛 mention 検知時は true に）
+
+# メンションフィルタ — 「誰宛の mention を処理するか」（メンション先のフィルタ）
+# User Token で自分宛の mention を検知する場合に設定してください。
+# ここに指定した User ID 宛の mention だけが処理されます。送信者は問いません。
+# Slack User ID の取得方法:
+#   source .ignite/.env
+#   curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .user_id
+#   ※ プロフィール →「メンバーIDをコピー」は Enterprise Grid 環境で
+#     異なる ID を返す場合があるため、上記 API での確認を推奨します。
+mention_filter:
+  enabled: false
+  user_ids: []             # 例: ["U01XYZ789"]
+
+# トリガー設定
+triggers:
+  task_keywords:           # slack_task として扱うキーワード
+    # --- 実装・修正系 ---
+    - "実装して"
+    - "修正して"
+    - "implement"
+    - "fix"
+    # --- レビュー系 ---
+    - "レビューして"
+    - "review"
+    # --- 質疑応答・調査系 ---
+    - "教えて"
+    - "調べて"
+    - "説明して"
+    - "どうすれば"
+    - "なぜ"
+    - "explain"
+    - "how to"
+    - "why"
+    - "what is"
+
+# アクセス制御 — 「誰からのメッセージを処理するか」（送信者のフィルタ）
+# 公開チャンネルで使う場合など、特定のユーザー/チャンネルからの指示のみ受け付けたい場合に設定。
+# mention_filter が「誰宛か」を制御するのに対し、access_control は「誰が送ったか」を制御します。
+access_control:
+  enabled: false           # true にすると allowed_users/allowed_channels で制限
+  allowed_users: []        # メッセージの送信者を制限（例: ["U01ABC123"]）
+  allowed_channels: []     # メッセージのチャンネルを制限（例: ["C01ABC123"]）
