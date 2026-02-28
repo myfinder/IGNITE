@@ -137,10 +137,23 @@ sudo loginctl enable-linger $(id -u)
 | `$WORKSPACE_DIR` | rw | ワークスペース操作 |
 | `$IGNITE_RUNTIME_DIR` (.ignite/) | rw | queue/state/logs/repos/tmp |
 | `$IGNITE_SCRIPTS_DIR` | ro | 認証フロー（safe_git_push 等） |
-| `~/.claude/` | rw | セッション状態 + ログイン認証 |
-| `~/.claude.json` | rw | Claude Code グローバル設定（ファイル単位マウント） |
-| `~/.anthropic/` | ro | API キーキャッシュ |
-| `~/.config/opencode/` | ro | OpenCode 設定 + 認証 |
+
+### 起動時コピー（バインドマウントしないもの）
+
+以下のファイルはバインドマウントではなく、コンテナ起動時に `podman cp` でコピーされます。
+
+| コピー元 | 理由 |
+|---------|------|
+| `~/.claude/` | Claude Code セッション状態 + ログイン認証 |
+| `~/.claude.json` | Claude Code グローバル設定 |
+| `~/.anthropic/` | Anthropic API キーキャッシュ |
+| `~/.config/opencode/` | OpenCode 設定 + 認証 |
+| `~/.codex/` | Codex CLI 設定 + 認証 |
+
+**背景**: CLI ツールは設定ファイルを非アトミックに読み書きするため、
+複数コンテナがバインドマウントで同一ファイルを共有するとファイル破損が発生します（Issue #354）。
+各コンテナが独立したコピーを持つことで、書き込み競合を構造的に回避しています。
+コンテナ内での変更はホストに書き戻されません（次回起動時にホストから最新がコピーされます）。
 
 ### 意図的にマウントしないもの
 

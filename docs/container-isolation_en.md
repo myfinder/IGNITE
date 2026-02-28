@@ -137,10 +137,23 @@ On the first `ignite start`, if the image doesn't exist, it will be built automa
 | `$WORKSPACE_DIR` | rw | Workspace operations |
 | `$IGNITE_RUNTIME_DIR` (.ignite/) | rw | queue/state/logs/repos/tmp |
 | `$IGNITE_SCRIPTS_DIR` | ro | Auth flows (safe_git_push etc.) |
-| `~/.claude/` | rw | Session state + login auth |
-| `~/.claude.json` | rw | Claude Code global config (file-level mount) |
-| `~/.anthropic/` | ro | API key cache |
-| `~/.config/opencode/` | ro | OpenCode config + auth |
+
+### Copied on Startup (Not Bind-Mounted)
+
+The following files are copied into the container via `podman cp` at startup instead of bind-mounting.
+
+| Source | Reason |
+|--------|--------|
+| `~/.claude/` | Claude Code session state + login auth |
+| `~/.claude.json` | Claude Code global config |
+| `~/.anthropic/` | Anthropic API key cache |
+| `~/.config/opencode/` | OpenCode config + auth |
+| `~/.codex/` | Codex CLI config + auth |
+
+**Background**: CLI tools perform non-atomic reads/writes on their config files.
+When multiple containers bind-mount the same files, concurrent writes cause file corruption (Issue #354).
+Each container gets an independent copy, structurally eliminating write conflicts.
+Changes inside the container are not written back to the host (the latest version is copied from the host on next startup).
 
 ### Intentionally Not Mounted
 

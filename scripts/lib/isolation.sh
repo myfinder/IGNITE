@@ -85,6 +85,59 @@ isolation_get_container_name() {
 }
 
 # =============================================================================
+# _isolation_copy_cli_config - CLI 設定ファイルをコンテナ内にコピー
+# バインドマウントの代わりにコピーすることで、複数コンテナ間の書き込み競合を防止
+# 対象: ~/.claude/, ~/.claude.json, ~/.anthropic/, ~/.config/opencode/, ~/.codex/
+# =============================================================================
+_isolation_copy_cli_config() {
+    local container_name="$1"
+
+    # コピー対象ディレクトリ
+    local _copy_dirs=(
+        "${HOME}/.claude"
+        "${HOME}/.anthropic"
+        "${HOME}/.config/opencode"
+        "${HOME}/.codex"
+    )
+    # コンテナ内の HOME ディレクトリは root 所有の場合があるため、
+    # コピー先の親ディレクトリをまとめて作成しておく（--user 0 で実行）
+    local _mkdir_targets=()
+    for _dir in "${_copy_dirs[@]}"; do
+        [[ -d "$_dir" ]] && _mkdir_targets+=("$(dirname "$_dir")")
+    done
+    for _file in "${_copy_files[@]}"; do
+        [[ -f "$_file" ]] && _mkdir_targets+=("$(dirname "$_file")")
+    done
+    if [[ ${#_mkdir_targets[@]} -gt 0 ]]; then
+        local _uid _gid
+        _uid="$(id -u)"
+        _gid="$(id -g)"
+        "$_ISOLATION_RUNTIME" exec --user 0 "$container_name" \
+            sh -c "mkdir -p ${_mkdir_targets[*]} && chown -R ${_uid}:${_gid} ${HOME}" 2>/dev/null || true
+    fi
+
+    for _dir in "${_copy_dirs[@]}"; do
+        if [[ -d "$_dir" ]]; then
+            "$_ISOLATION_RUNTIME" cp "$_dir" "${container_name}:${_dir}" 2>/dev/null || {
+                log_warn "Failed to copy ${_dir}/ into container"
+            }
+        fi
+    done
+
+    # コピー対象ファイル
+    local _copy_files=(
+        "${HOME}/.claude.json"
+    )
+    for _file in "${_copy_files[@]}"; do
+        if [[ -f "$_file" ]]; then
+            "$_ISOLATION_RUNTIME" cp "$_file" "${container_name}:${_file}" 2>/dev/null || {
+                log_warn "Failed to copy ${_file} into container"
+            }
+        fi
+    done
+}
+
+# =============================================================================
 # isolation_start_container - コンテナ起動
 # =============================================================================
 isolation_start_container() {
@@ -123,27 +176,13 @@ isolation_start_container() {
     # オプショナルマウント: 存在する場合のみ追加
     local _opt_mounts_ro=(
         "${IGNITE_SCRIPTS_DIR}:${IGNITE_SCRIPTS_DIR}"
-        "${HOME}/.anthropic:${HOME}/.anthropic"
-        "${HOME}/.config/opencode:${HOME}/.config/opencode"
     )
-    local _opt_mounts_rw=(
-        "${HOME}/.claude:${HOME}/.claude"
-    )
-    # オプショナルファイルマウント（ディレクトリではなくファイル単位）
-    local _opt_file_mounts_rw=(
-        "${HOME}/.claude.json:${HOME}/.claude.json"
-    )
+    # CLI 設定・認証ディレクトリはバインドマウントしない（Issue #354）
+    # 複数コンテナが同一ファイルを同時に読み書きすると破損が発生するため、
+    # コンテナ起動後に podman cp でコピーする（書き込み競合の構造的解消）
     for _mount in "${_opt_mounts_ro[@]}"; do
         local _src="${_mount%%:*}"
         [[ -d "$_src" ]] && mount_args+=(-v "${_mount}:ro")
-    done
-    for _mount in "${_opt_mounts_rw[@]}"; do
-        local _src="${_mount%%:*}"
-        [[ -d "$_src" ]] && mount_args+=(-v "${_mount}:rw")
-    done
-    for _mount in "${_opt_file_mounts_rw[@]}"; do
-        local _src="${_mount%%:*}"
-        [[ -f "$_src" ]] && mount_args+=(-v "${_mount}:rw")
     done
 
     if ! "$_ISOLATION_RUNTIME" run -d \
@@ -166,6 +205,11 @@ isolation_start_container() {
     fi
 
     echo "$container_name" > "${runtime_dir}/state/container_name"
+
+    # CLI 設定・認証ファイルをコンテナ内にコピー（バインドマウントの代替）
+    # 各コンテナが独立したコピーを持つことで、書き込み競合を構造的に回避する
+    _isolation_copy_cli_config "$container_name"
+
     log_info "Isolation container started: $container_name"
 }
 
