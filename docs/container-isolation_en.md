@@ -232,6 +232,77 @@ podman ps -a --filter name=ignite-ws   # Container should be fully removed
 | Dashboard updated | `cat .ignite/dashboard.md` shows agent logs |
 | queue_monitor | `ignite status` shows queue monitor running |
 
+## Podman Operations
+
+### Checking Containers
+
+```bash
+# List running containers
+podman ps --filter name=ignite-ws
+
+# List all containers (including stopped)
+podman ps -a --filter name=ignite-ws
+```
+
+### Inspecting Container Contents
+
+```bash
+# Run a command inside the container
+podman exec ignite-ws-xxxxxxxx <command>
+
+# Verify CLI is installed correctly
+podman exec ignite-ws-xxxxxxxx which claude
+podman exec ignite-ws-xxxxxxxx claude --version
+
+# Check authentication files
+podman exec ignite-ws-xxxxxxxx ls -la ~/.claude/
+
+# Open a shell inside the container (for debugging)
+podman exec -it ignite-ws-xxxxxxxx bash
+```
+
+### Image Management
+
+```bash
+# List images
+podman images | grep ignite-agent
+
+# Delete images (to force rebuild)
+podman rmi ignite-agent:latest ignite-agent:v0.8.0
+
+# When using provider-specific image names
+podman rmi ignite-agent-codex:latest ignite-agent-codex:v0.8.0
+```
+
+### Manual Container Stop/Remove
+
+```bash
+# Force remove a specific container
+podman rm -f ignite-ws-xxxxxxxx
+
+# Remove all IGNITE containers
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+```
+
+### Resource Monitoring
+
+```bash
+# Check container resource limits
+podman inspect ignite-ws-xxxxxxxx --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}} {{.HostConfig.SecurityOpt}}'
+
+# Real-time resource usage
+podman stats --filter name=ignite-ws --no-stream
+```
+
+### Full Reset
+
+```bash
+# Reset all Podman data (deletes all images, containers, and cache)
+podman system reset --force
+```
+
+> **Note**: `podman system reset` deletes all images. The next `ignite start` will automatically rebuild the image.
+
 ## Troubleshooting
 
 ### podman not installed
@@ -257,6 +328,38 @@ podman ps -a | grep ignite-ws
 
 # Check logs
 podman logs ignite-ws-xxxxxxxx
+```
+
+### CLI not found (all agent startups fail)
+
+```
+[ERROR] Claude Code の初期化レスポンスが取得できませんでした
+```
+
+The CLI may not be installed inside the container.
+This happens when build cache causes the CLI installation step to be skipped.
+
+```bash
+# Check if CLI exists
+podman exec ignite-ws-xxxxxxxx which claude   # → "not found" means not installed
+
+# Fix: delete image and rebuild
+ignite stop
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+podman rmi ignite-agent:latest ignite-agent:v0.8.0
+ignite start -w .   # Image will be automatically rebuilt
+```
+
+### ignite stop leaves containers running
+
+When the session is not found (e.g., after all agent startups fail), container cleanup may be skipped (fixed in v0.8.0).
+
+```bash
+# Manually remove containers
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+
+# Also remove state file
+rm -f .ignite/state/container_name
 ```
 
 ### .env changes not reflected

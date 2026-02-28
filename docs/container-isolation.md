@@ -232,6 +232,77 @@ podman ps -a --filter name=ignite-ws   # コンテナが完全に削除されて
 | ダッシュボード更新 | `cat .ignite/dashboard.md` でエージェントログ表示 |
 | queue_monitor | `ignite status` でキューモニター running |
 
+## Podman 運用コマンド
+
+### コンテナの確認
+
+```bash
+# 実行中のコンテナ一覧
+podman ps --filter name=ignite-ws
+
+# 停止済みを含む全コンテナ
+podman ps -a --filter name=ignite-ws
+```
+
+### コンテナ内の確認
+
+```bash
+# コンテナ内でコマンド実行
+podman exec ignite-ws-xxxxxxxx <command>
+
+# CLI が正しくインストールされているか確認
+podman exec ignite-ws-xxxxxxxx which claude
+podman exec ignite-ws-xxxxxxxx claude --version
+
+# 認証情報の確認
+podman exec ignite-ws-xxxxxxxx ls -la ~/.claude/
+
+# コンテナ内のシェルに入る（デバッグ用）
+podman exec -it ignite-ws-xxxxxxxx bash
+```
+
+### イメージの管理
+
+```bash
+# イメージ一覧
+podman images | grep ignite-agent
+
+# イメージの削除（再ビルドしたい場合）
+podman rmi ignite-agent:latest ignite-agent:v0.8.0
+
+# CLI プロバイダー別にイメージ名を分けている場合
+podman rmi ignite-agent-codex:latest ignite-agent-codex:v0.8.0
+```
+
+### コンテナの手動停止・削除
+
+```bash
+# 特定のコンテナを強制削除
+podman rm -f ignite-ws-xxxxxxxx
+
+# IGNITE 関連コンテナを全削除
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+```
+
+### リソース確認
+
+```bash
+# コンテナのリソース制限を確認
+podman inspect ignite-ws-xxxxxxxx --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}} {{.HostConfig.SecurityOpt}}'
+
+# コンテナのリアルタイムリソース使用量
+podman stats --filter name=ignite-ws --no-stream
+```
+
+### 全リセット
+
+```bash
+# Podman の全データを初期化（イメージ・コンテナ・キャッシュを全削除）
+podman system reset --force
+```
+
+> **注意**: `podman system reset` は全イメージを削除します。次回 `ignite start` 時にイメージが自動リビルドされます。
+
 ## トラブルシューティング
 
 ### podman がインストールされていない
@@ -257,6 +328,38 @@ podman ps -a | grep ignite-ws
 
 # ログ確認
 podman logs ignite-ws-xxxxxxxx
+```
+
+### CLI が見つからない（エージェント起動が全失敗）
+
+```
+[ERROR] Claude Code の初期化レスポンスが取得できませんでした
+```
+
+コンテナ内に CLI がインストールされていない可能性があります。
+ビルドキャッシュが原因で CLI インストールステップがスキップされた場合に発生します。
+
+```bash
+# CLI の存在確認
+podman exec ignite-ws-xxxxxxxx which claude   # → "not found" なら未インストール
+
+# 解決: イメージを削除して再ビルド
+ignite stop
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+podman rmi ignite-agent:latest ignite-agent:v0.8.0
+ignite start -w .   # イメージが自動リビルドされる
+```
+
+### ignite stop してもコンテナが残る
+
+セッションが見つからない場合（エージェント起動全失敗後など）、コンテナ停止処理がスキップされることがあります（v0.8.0 で修正済み）。
+
+```bash
+# 手動でコンテナを削除
+podman rm -f $(podman ps -a --filter name=ignite-ws -q)
+
+# state ファイルも削除
+rm -f .ignite/state/container_name
 ```
 
 ### .env の変更が反映されない
