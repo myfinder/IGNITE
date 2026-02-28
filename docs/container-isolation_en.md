@@ -47,6 +47,20 @@ isolation:
   resource_cpus: 4           # CPU limit
 ```
 
+> **When running multiple workspaces with different CLI providers on the same host**, use different image names.
+> Each image only contains the CLI specified by `cli.provider`, so reusing an image built for a different
+> provider will cause agent startup failures.
+>
+> ```yaml
+> # Workspace using Claude Code
+> isolation:
+>   image: ignite-agent-claude:latest
+>
+> # Workspace using Codex CLI
+> isolation:
+>   image: ignite-agent-codex:latest
+> ```
+
 ## Prerequisites
 
 - **Linux only** (macOS not supported)

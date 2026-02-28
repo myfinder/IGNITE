@@ -47,6 +47,20 @@ isolation:
   resource_cpus: 4           # CPU 上限
 ```
 
+> **同一ホストで CLI プロバイダーが異なる複数ワークスペースを運用する場合**、イメージ名を分けてください。
+> イメージには `cli.provider` で指定された CLI のみがインストールされるため、
+> 先にビルドされたイメージが別ワークスペースで使い回されると CLI が見つからずエージェント起動に失敗します。
+>
+> ```yaml
+> # Claude Code を使うワークスペース
+> isolation:
+>   image: ignite-agent-claude:latest
+>
+> # Codex CLI を使うワークスペース
+> isolation:
+>   image: ignite-agent-codex:latest
+> ```
+
 ## 前提条件
 
 - **Linux のみ対応**（macOS 非対応）
