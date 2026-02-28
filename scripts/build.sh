@@ -214,8 +214,11 @@ copy_utils() {
 
     cp "$SCRIPT_DIR/utils"/*.sh "$BUILD_DIR/share/scripts/utils/"
     chmod +x "$BUILD_DIR/share/scripts/utils"/*.sh
+    # Python スクリプト・依存定義もコピー（slack_watcher.py, slack_requirements.txt 等）
+    cp "$SCRIPT_DIR/utils"/*.py "$BUILD_DIR/share/scripts/utils/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/utils"/*.txt "$BUILD_DIR/share/scripts/utils/" 2>/dev/null || true
     local count
-    count=$(ls -1 "$BUILD_DIR/share/scripts/utils"/*.sh 2>/dev/null | wc -l)
+    count=$(ls -1 "$BUILD_DIR/share/scripts/utils"/*.sh "$BUILD_DIR/share/scripts/utils"/*.py "$BUILD_DIR/share/scripts/utils"/*.txt 2>/dev/null | wc -l)
     print_success "$count 個のユーティリティスクリプトをコピーしました"
 }
 
