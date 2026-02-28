@@ -51,20 +51,24 @@ isolation:
 
 - **Linux のみ対応**（macOS 非対応）
 - **Podman** がインストール済みであること
+- **passt** がインストール済みであること（pasta ネットワーク用）
 - **Rootless モード** を推奨
 
-### Podman インストール
+### 必要パッケージの一括インストール
 
 ```bash
 # Ubuntu/Debian
-sudo apt install podman
+sudo apt install podman passt
 
 # Fedora/RHEL
-sudo dnf install podman
+sudo dnf install podman passt
 
 # Arch
-sudo pacman -S podman
+sudo pacman -S podman passt
 ```
+
+> **注意**: `passt` は Podman rootless の高速ネットワークモード（`--network=pasta`）に必要です。
+> インストールされていない場合、コンテナ起動時に `unable to find network with name or ID pasta` エラーが発生します。
 
 ### cgroup 設定（GCE / クラウド VM 等）
 
@@ -90,6 +94,8 @@ EOF
 ```bash
 sudo loginctl enable-linger $(id -u)
 ```
+
+> **設定変更後は SSH を再接続**してください。`containers.conf` の変更は現在のシェルセッションには即時反映されません。
 
 ## コンテナイメージ
 

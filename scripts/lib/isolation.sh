@@ -11,19 +11,18 @@ _ISOLATION_RUNTIME="${_ISOLATION_RUNTIME:-podman}"
 # Podman 4.0+ では pasta、それ以前は slirp4netns にフォールバック
 # =============================================================================
 _isolation_get_network_option() {
-    local version
+    # Podman 5.0+ は pasta をネイティブサポート
+    # Podman 4.x は pasta 未サポートの場合あり（Debian bookworm 等）
+    local version major
     version=$("$_ISOLATION_RUNTIME" --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+' | head -1)
-    if [[ -z "$version" ]]; then
-        echo "slirp4netns"
-        return
-    fi
-    local major minor
     major="${version%%.*}"
-    minor="${version#*.}"
-    if [[ "$major" -ge 5 ]] || { [[ "$major" -eq 4 ]] && [[ "$minor" -ge 0 ]]; }; then
+
+    if [[ "${major:-0}" -ge 5 ]] && command -v pasta &>/dev/null; then
         echo "pasta"
-    else
+    elif command -v slirp4netns &>/dev/null; then
         echo "slirp4netns"
+    else
+        echo "bridge"
     fi
 }
 

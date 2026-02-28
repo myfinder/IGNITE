@@ -51,20 +51,24 @@ isolation:
 
 - **Linux only** (macOS not supported)
 - **Podman** must be installed
+- **passt** must be installed (for pasta networking)
 - **Rootless mode** recommended
 
-### Installing Podman
+### Installing Required Packages
 
 ```bash
 # Ubuntu/Debian
-sudo apt install podman
+sudo apt install podman passt
 
 # Fedora/RHEL
-sudo dnf install podman
+sudo dnf install podman passt
 
 # Arch
-sudo pacman -S podman
+sudo pacman -S podman passt
 ```
+
+> **Note**: `passt` is required for Podman rootless fast networking (`--network=pasta`).
+> Without it, container startup will fail with `unable to find network with name or ID pasta`.
 
 ### cgroup Configuration (GCE / Cloud VMs)
 
@@ -90,6 +94,8 @@ It is also recommended to enable lingering:
 ```bash
 sudo loginctl enable-linger $(id -u)
 ```
+
+> **Reconnect SSH after changing settings.** Changes to `containers.conf` are not immediately reflected in the current shell session.
 
 ## Container Image
 
