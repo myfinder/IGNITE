@@ -85,6 +85,28 @@ isolation_get_container_name() {
 }
 
 # =============================================================================
+# _isolation_copy_claude_config - ~/.claude/ と ~/.claude.json をコンテナ内にコピー
+# バインドマウントの代わりにコピーすることで、複数コンテナ間の書き込み競合を防止
+# =============================================================================
+_isolation_copy_claude_config() {
+    local container_name="$1"
+
+    # ~/.claude/ ディレクトリをコピー
+    if [[ -d "${HOME}/.claude" ]]; then
+        "$_ISOLATION_RUNTIME" cp "${HOME}/.claude" "${container_name}:${HOME}/.claude" 2>/dev/null || {
+            log_warn "Failed to copy ~/.claude/ into container"
+        }
+    fi
+
+    # ~/.claude.json ファイルをコピー
+    if [[ -f "${HOME}/.claude.json" ]]; then
+        "$_ISOLATION_RUNTIME" cp "${HOME}/.claude.json" "${container_name}:${HOME}/.claude.json" 2>/dev/null || {
+            log_warn "Failed to copy ~/.claude.json into container"
+        }
+    fi
+}
+
+# =============================================================================
 # isolation_start_container - コンテナ起動
 # =============================================================================
 isolation_start_container() {
@@ -126,24 +148,12 @@ isolation_start_container() {
         "${HOME}/.anthropic:${HOME}/.anthropic"
         "${HOME}/.config/opencode:${HOME}/.config/opencode"
     )
-    local _opt_mounts_rw=(
-        "${HOME}/.claude:${HOME}/.claude"
-    )
-    # オプショナルファイルマウント（ディレクトリではなくファイル単位）
-    local _opt_file_mounts_rw=(
-        "${HOME}/.claude.json:${HOME}/.claude.json"
-    )
+    # 注意: ~/.claude/ と ~/.claude.json はバインドマウントしない（Issue #354）
+    # 複数コンテナが同一ファイルを同時に読み書きすると JSON 破損が発生するため、
+    # コンテナ起動後に podman cp でコピーする（書き込み競合の構造的解消）
     for _mount in "${_opt_mounts_ro[@]}"; do
         local _src="${_mount%%:*}"
         [[ -d "$_src" ]] && mount_args+=(-v "${_mount}:ro")
-    done
-    for _mount in "${_opt_mounts_rw[@]}"; do
-        local _src="${_mount%%:*}"
-        [[ -d "$_src" ]] && mount_args+=(-v "${_mount}:rw")
-    done
-    for _mount in "${_opt_file_mounts_rw[@]}"; do
-        local _src="${_mount%%:*}"
-        [[ -f "$_src" ]] && mount_args+=(-v "${_mount}:rw")
     done
 
     if ! "$_ISOLATION_RUNTIME" run -d \
@@ -166,6 +176,11 @@ isolation_start_container() {
     fi
 
     echo "$container_name" > "${runtime_dir}/state/container_name"
+
+    # ~/.claude/ と ~/.claude.json をコンテナ内にコピー（バインドマウントの代替）
+    # 各コンテナが独立したコピーを持つことで、書き込み競合を構造的に回避する
+    _isolation_copy_claude_config "$container_name"
+
     log_info "Isolation container started: $container_name"
 }
 
