@@ -27,9 +27,14 @@ events:
   app_mention: true        # @mention イベント（Bot Token 使用時）
   channel_message: false   # チャンネルメッセージ（User Token で自分宛 mention 検知時は true に）
 
-# メンションフィルタ（channel_message: true 時に特定ユーザーへの mention のみ処理）
+# メンションフィルタ — 「誰宛の mention を処理するか」（メンション先のフィルタ）
 # User Token で自分宛の mention を検知する場合に設定してください。
-# Slack User ID はプロフィール → 「…」→「メンバーIDをコピー」で取得できます。
+# ここに指定した User ID 宛の mention だけが処理されます。送信者は問いません。
+# Slack User ID の取得方法:
+#   source .ignite/.env
+#   curl -s -H "Authorization: Bearer $SLACK_TOKEN" https://slack.com/api/auth.test | jq .user_id
+#   ※ プロフィール →「メンバーIDをコピー」は Enterprise Grid 環境で
+#     異なる ID を返す場合があるため、上記 API での確認を推奨します。
 mention_filter:
   enabled: false
   user_ids: []             # 例: ["U01XYZ789"]
@@ -56,8 +61,10 @@ triggers:
     - "why"
     - "what is"
 
-# アクセス制御
+# アクセス制御 — 「誰からのメッセージを処理するか」（送信者のフィルタ）
+# 公開チャンネルで使う場合など、特定のユーザー/チャンネルからの指示のみ受け付けたい場合に設定。
+# mention_filter が「誰宛か」を制御するのに対し、access_control は「誰が送ったか」を制御します。
 access_control:
   enabled: false           # true にすると allowed_users/allowed_channels で制限
-  allowed_users: []        # 許可する Slack ユーザー ID（例: ["U01ABC123"]）
-  allowed_channels: []     # 許可する Slack チャンネル ID（例: ["C01ABC123"]）
+  allowed_users: []        # メッセージの送信者を制限（例: ["U01ABC123"]）
+  allowed_channels: []     # メッセージのチャンネルを制限（例: ["C01ABC123"]）

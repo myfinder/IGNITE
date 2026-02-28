@@ -447,9 +447,20 @@ process_spool_events() {
             msg_type="slack_task"
         fi
 
+        # thread_messages → thread_context YAML 変換
+        local thread_context=""
+        local thread_messages_json
+        thread_messages_json=$(echo "$event_json" | jq -c '.thread_messages // []' 2>/dev/null)
+        if [[ -n "$thread_messages_json" && "$thread_messages_json" != "[]" && "$thread_messages_json" != "null" ]]; then
+            thread_context=$(echo "$thread_messages_json" | jq -r '
+                .[] | "  - user: \"" + (.user // "") + "\"\n    text: \"" + ((.text // "") | gsub("\n"; "\\n") | gsub("\""; "\\\"")) + "\"\n    ts: \"" + (.ts // "") + "\""
+            ' 2>/dev/null || true)
+        fi
+
         # MIME ボディ YAML 構築
         local body_yaml
-        body_yaml=$(cat <<YAML
+        if [[ -n "$thread_context" ]]; then
+            body_yaml=$(cat <<YAML
 event_type: "${safe_event_type}"
 channel_id: "${safe_channel}"
 user_id: "${safe_user}"
@@ -457,8 +468,23 @@ text: "${safe_text}"
 thread_ts: "${safe_thread_ts}"
 event_ts: "${safe_event_ts}"
 source: "slack_watcher"
+thread_context:
+${thread_context}
 YAML
 )
+        else
+            body_yaml=$(cat <<YAML
+event_type: "${safe_event_type}"
+channel_id: "${safe_channel}"
+user_id: "${safe_user}"
+text: "${safe_text}"
+thread_ts: "${safe_thread_ts}"
+event_ts: "${safe_event_ts}"
+source: "slack_watcher"
+thread_context: ""
+YAML
+)
+        fi
 
         # MIME 送信（slack_task は priority: high）
         local priority="normal"

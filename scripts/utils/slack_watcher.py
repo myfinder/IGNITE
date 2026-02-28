@@ -27,7 +27,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 try:
     from slack_bolt import App
@@ -74,6 +74,26 @@ def _is_duplicate(event_ts: str) -> bool:
 
     _SEEN_EVENTS[event_ts] = now
     return False
+
+
+# ---------------------------------------------------------------------------
+# Thread message fetcher
+# ---------------------------------------------------------------------------
+def _fetch_thread_messages(client, channel: str, thread_ts: str) -> List[dict]:
+    """Fetch thread replies via conversations.replies (up to 50 messages)."""
+    if not thread_ts:
+        return []
+    try:
+        result = client.conversations_replies(
+            channel=channel, ts=thread_ts, limit=50
+        )
+        return [
+            {"user": m.get("user", ""), "text": m.get("text", ""), "ts": m.get("ts", "")}
+            for m in result.get("messages", [])
+        ]
+    except Exception as e:
+        logger.warning("Failed to fetch thread: %s", e)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +170,7 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
     if config["events"].get("app_mention", True):
 
         @app.event("app_mention")
-        def handle_app_mention(event: dict, say) -> None:  # noqa: ARG001
+        def handle_app_mention(event: dict, client, say) -> None:  # noqa: ARG001
             event_ts = event.get("event_ts", "")
             if _is_duplicate(event_ts):
                 logger.debug("Duplicate app_mention event: %s", event_ts)
@@ -159,14 +179,17 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
             # Note: Slack event payload does not include channel_name/user_name.
             # Resolving names would require additional API calls (conversations.info,
             # users.info). Phase 1 uses IDs only; name resolution is a future enhancement.
+            channel_id = event.get("channel", "")
+            thread_ts = event.get("thread_ts", "")
             event_data = {
                 "event_type": "app_mention",
-                "channel_id": event.get("channel", ""),
+                "channel_id": channel_id,
                 "user_id": event.get("user", ""),
                 "text": event.get("text", ""),
-                "thread_ts": event.get("thread_ts", ""),
+                "thread_ts": thread_ts,
                 "event_ts": event_ts,
                 "ts": event.get("ts", ""),
+                "thread_messages": _fetch_thread_messages(client, channel_id, thread_ts),
             }
 
             logger.info(
@@ -183,7 +206,7 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
         mf_user_ids = mention_filter.get("user_ids", [])
 
         @app.event("message")
-        def handle_message(event: dict) -> None:
+        def handle_message(event: dict, client) -> None:
             # Skip bot messages and message subtypes (edits, deletes, etc.)
             if event.get("bot_id") or event.get("subtype"):
                 return
@@ -198,14 +221,17 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
             if _is_duplicate(event_ts):
                 return
 
+            channel_id = event.get("channel", "")
+            thread_ts = event.get("thread_ts", "")
             event_data = {
                 "event_type": "channel_message",
-                "channel_id": event.get("channel", ""),
+                "channel_id": channel_id,
                 "user_id": event.get("user", ""),
                 "text": event.get("text", ""),
-                "thread_ts": event.get("thread_ts", ""),
+                "thread_ts": thread_ts,
                 "event_ts": event_ts,
                 "ts": event.get("ts", ""),
+                "thread_messages": _fetch_thread_messages(client, channel_id, thread_ts),
             }
 
             logger.info(

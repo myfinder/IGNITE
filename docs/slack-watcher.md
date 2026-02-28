@@ -105,12 +105,12 @@ cp config/slack-watcher.yaml.example config/slack-watcher.yaml
 | `interval` | `5` | spool 確認間隔（秒） |
 | `events.app_mention` | `true` | @mention イベントの監視（Bot Token 用） |
 | `events.channel_message` | `false` | チャンネルメッセージの監視 |
-| `mention_filter.enabled` | `false` | メンションフィルタの有効化（User Token 用） |
-| `mention_filter.user_ids` | `[]` | フィルタ対象の Slack User ID |
+| `mention_filter.enabled` | `false` | **誰宛の mention を処理するか**（メンション先フィルタ、User Token 用） |
+| `mention_filter.user_ids` | `[]` | メンション先として検知する Slack User ID（この ID 宛のメンションを処理対象とする。送信者は問わない） |
 | `triggers.task_keywords` | (リスト) | `slack_task` として扱うキーワード |
-| `access_control.enabled` | `false` | アクセス制御の有効化 |
-| `access_control.allowed_users` | `[]` | 許可する Slack ユーザー ID |
-| `access_control.allowed_channels` | `[]` | 許可する Slack チャンネル ID |
+| `access_control.enabled` | `false` | **誰からのメッセージを処理するか**（送信者フィルタ） |
+| `access_control.allowed_users` | `[]` | メッセージの送信者を制限する Slack ユーザー ID |
+| `access_control.allowed_channels` | `[]` | メッセージのチャンネルを制限する Slack チャンネル ID |
 
 ### 4. watchers.yaml への登録
 
@@ -178,6 +178,66 @@ payload:
   source: "slack_watcher"
 ```
 
+## 応答機能
+
+Slack Watcher は受信したメッセージに対して、Leader（LLM）が応答を判断し、Slack スレッドに返信を投稿できます。
+
+### スレッドコンテキスト取得
+
+メンション検知時にスレッド内の会話履歴を自動取得します:
+
+- `thread_ts` がある場合: `conversations.replies` で最新50件のメッセージを取得
+- `thread_ts` がない場合（単発メンション）: スレッド取得をスキップ、テキスト単体で Leader に渡す
+- 取得した会話履歴は `thread_context` フィールドとして MIME body に含まれる
+
+### Slack への投稿
+
+`post_to_slack.sh` を使用してスレッドに返信を投稿します:
+
+```bash
+# 直接メッセージ投稿
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --body "応答内容"
+
+# テンプレートを使用
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template acknowledge
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template success --context "処理結果"
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template error --context "エラー詳細"
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template progress --context "50% 完了"
+
+# ファイルから本文読み込み
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --body-file /tmp/resp.txt
+```
+
+テンプレートタイプ:
+
+| タイプ | 用途 |
+|--------|------|
+| `acknowledge` | タスク受付時の応答 |
+| `success` | 処理完了時の応答 |
+| `error` | エラー発生時の応答 |
+| `progress` | 進捗報告 |
+
+### 応答フロー
+
+```
+[受信]
+Slack mention → slack_watcher.py
+  ├─ thread_ts あり → conversations.replies(limit=50) でスレッド全文取得
+  ├─ thread_ts なし → スキップ（テキスト単体）
+  └─ spool JSON に thread_messages[] を含めて書き込み
+
+[MIME 構築]
+slack_watcher.sh
+  └─ spool JSON → thread_context を YAML 化 → MIME body に含めて Leader キューへ
+
+[判断・応答]
+Leader (LLM)
+  ├─ thread_context + text で文脈を理解
+  ├─ 回答が必要か判断
+  ├─ 必要 → post_to_slack.sh でスレッドに返信
+  └─ 不要 → ログ記録のみ（Slack に投稿しない）
+```
+
 ## タスクキーワード
 
 以下のキーワードがテキストに含まれる場合、`slack_task` として Leader に送信されます:
@@ -242,6 +302,67 @@ tail -f .ignite/logs/slack_watcher.log
 # ハートビート確認
 cat .ignite/state/slack_watcher_heartbeat.json
 ```
+
+## 知識ベースとスキルのカスタマイズ
+
+Slack からの質問に対して Leader が回答する際、ワークスペースに配置した知識ベースやスクリプトを活用できます。これらは IGNITE 本体のリポジトリに含める必要はなく、ワークスペース内に配置するだけで機能します。
+
+### 知識ベース（静的ナレッジ）
+
+ワークスペースに `CLAUDE.md`（または `AGENTS.md`）と `knowledge/` ディレクトリを配置すると、Leader がドメイン固有の質問に回答できるようになります。
+
+```
+workspace/
+├── CLAUDE.md              # ナレッジのルーティング定義
+├── AGENTS.md              # CLAUDE.md への symlink（OpenCode/Codex 用）
+└── knowledge/
+    ├── product-a.md       # プロダクト A の仕様ドキュメント
+    └── product-b.md       # プロダクト B の仕様ドキュメント
+```
+
+**CLAUDE.md の例:**
+```markdown
+# ワークスペース知識ベース
+
+## 知識ベース一覧
+
+| トピック | ファイル | キーワード |
+|---------|---------|-----------|
+| Product A | `knowledge/product-a.md` | プロダクトA, ログイン, API |
+| Product B | `knowledge/product-b.md` | プロダクトB, 設定, デプロイ |
+
+## 回答ルール
+
+1. 質問内容に関連するキーワードがあれば、該当するナレッジファイルを読んで回答する
+2. ナレッジに記載がない場合は「知識ベースに該当情報がありません」と正直に伝える
+3. 回答は簡潔に、Slack mrkdwn 形式で構成する
+```
+
+- ナレッジファイルの更新・追加時にシステムの再起動は **不要**（per-message パターンのため、次のメッセージ処理時に最新内容が読み込まれる）
+- `AGENTS.md` は `CLAUDE.md` への symlink にしておくと、CLI プロバイダーに依存せず同一の知識ベースが参照される
+
+### スキル（動的な情報取得スクリプト）
+
+静的なナレッジだけでは回答できない場合に、Leader が外部 API を呼び出して情報を取得するスクリプトをワークスペースに配置できます。
+
+```
+workspace/
+├── CLAUDE.md
+├── knowledge/
+└── scripts/
+    └── search_github_docs.sh   # GitHub リポジトリからドキュメントを検索
+```
+
+**例: GitHub リポジトリのドキュメントを検索するスクリプト**
+
+`.env` に設定された `GITHUB_TOKEN`（PAT）を使い、`curl` で GitHub REST API を呼び出してリポジトリ内のドキュメントや Issue を検索します。
+
+```bash
+# 使用例
+./scripts/search_github_docs.sh --repo owner/repo --query "ログイン方法"
+```
+
+CLAUDE.md にスクリプトの存在と使い方を記述しておくことで、Leader が必要に応じて自律的にスクリプトを実行し、取得した情報をもとに Slack で回答します。
 
 ## 関連ドキュメント
 

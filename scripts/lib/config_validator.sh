@@ -423,14 +423,17 @@ validate_watchers_yaml() {
             seen_names[$name]=1
         fi
 
-        # script_path の存在チェック（config_dir の親ディレクトリ基準で解決）
+        # script_path の存在チェック
+        # 相対パスは config_dir の親（ワークスペースルート）基準 → PROJECT_ROOT フォールバック
         local script_path
         script_path=$(yq -r "${prefix}.script_path // \"\"" "$file" 2>/dev/null)
         if [[ -n "$script_path" && "$script_path" != "null" ]]; then
             local resolved_path="${script_path}"
             if [[ "$resolved_path" != /* ]]; then
-                # 相対パスは config_dir の親（プロジェクトルート）基準
                 resolved_path="$(dirname "$config_dir")/${resolved_path}"
+                if [[ ! -f "$resolved_path" ]]; then
+                    resolved_path="${PROJECT_ROOT}/${script_path}"
+                fi
             fi
             if [[ ! -f "$resolved_path" ]]; then
                 validation_warn "$file" "${prefix}.script_path" \

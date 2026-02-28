@@ -16,13 +16,17 @@ watchers:
     auto_start: true    # ignite start で自動起動するか
 
   # Slack チャンネル/メンション監視
-  # 使用するには config/slack-watcher.yaml と .ignite/.env のトークン設定が必要
+  # セットアップ手順: docs/slack-watcher.md を参照
+  # 1. Slack App 作成（Socket Mode + Event Subscriptions 有効化）
+  # 2. .ignite/.env に SLACK_TOKEN, SLACK_APP_TOKEN を設定
+  # 3. .ignite/slack-watcher.yaml を作成
+  # 4. enabled: true に変更
   - name: slack_watcher
     description: "Slack チャンネル/メンション監視"
     script_path: scripts/utils/slack_watcher.sh
     config_file: slack-watcher.yaml
     enabled: false
-    auto_start: false
+    auto_start: true
 
   # カスタム watcher 追加例:
   # - name: my_watcher

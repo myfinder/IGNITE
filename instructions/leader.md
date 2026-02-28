@@ -526,7 +526,57 @@ payload:
    - **レビュー** (review): Evaluator にレビューを依頼
    - **説明・質疑応答** (explain): 「教えて」「explain」「how to」等 → Strategist 経由で処理
    - **分析** (insights): Innovator にメモリ分析を依頼
-3. 結果はダッシュボードに記録（Slack への応答は将来の拡張で対応）
+3. 結果は Slack スレッドに応答を投稿する（`post_to_slack.sh` を使用）
+
+### Slackへの応答
+
+Bot名義でSlackスレッドに応答する場合、投稿ユーティリティを使用します:
+
+```bash
+# スレッドに直接メッセージ投稿
+./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --body "応答内容"
+
+# テンプレートを使用した応答
+./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --template acknowledge
+./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --template success --context "処理結果の詳細"
+./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --template error --context "エラーの詳細"
+```
+
+#### thread_ts の決定ルール
+
+- MIME body に `thread_ts` が含まれている場合はそれを使用
+- `thread_ts` が空の場合は `event_ts` を使用（新規スレッドとして返信）
+
+#### Slack Bot応答フロー
+
+**slack_task を受信した場合:**
+
+1. **受付応答**: まず受付メッセージを投稿
+   ```bash
+   ./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --template acknowledge
+   ```
+2. **タスク委任**: 意図分類に基づき Sub-Leader に委任（github_task と同様のフロー）
+3. **結果投稿**: タスク完了後に結果をスレッドに投稿
+   ```bash
+   ./scripts/utils/post_to_slack.sh --channel {channel_id} --thread-ts {thread_ts} --template success --context "処理結果"
+   ```
+
+**slack_event を受信した場合:**
+
+1. `thread_context` フィールドでスレッドの文脈を確認
+2. 回答が必要かどうかを判断:
+   - **回答必要**: `post_to_slack.sh` で応答を投稿（mrkdwn 形式で構築）
+   - **回答不要**: ログ記録のみ（Slack に投稿しない）
+3. 応答は Slack mrkdwn 形式で構築すること（`*bold*`, `_italic_`, `` `code` ``, ```code block``` 等）
+
+#### Slack Task の結果出力ルール
+
+slack_task 起点のタスクでは、結果は**必ず Slack スレッドに出力**する。
+
+- タスクの結果・分析・調査内容は `post_to_slack.sh` で Slack スレッドに投稿する
+- `workspace/` 配下にレポートファイル、サマリファイル、分析結果ファイルを作成しない
+- 一時ファイルが必要な場合は `.ignite/tmp/` に作成し、Slack 投稿後に削除する
+- **.ignite/ の構造改変禁止**: `.ignite/` はシステム管理ディレクトリ。読み取りと、指定された手段のみ許可
 
 ### GitHubへの応答
 

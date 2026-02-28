@@ -203,14 +203,38 @@ _define_slack_functions() {
                 msg_type="slack_task"
                 priority="high"
             fi
+
+            # thread_messages → thread_context YAML 変換
+            local thread_context=""
+            local thread_messages_json
+            thread_messages_json=$(echo "$event_json" | jq -c '.thread_messages // []' 2>/dev/null)
+            if [[ -n "$thread_messages_json" && "$thread_messages_json" != "[]" && "$thread_messages_json" != "null" ]]; then
+                thread_context=$(echo "$thread_messages_json" | jq -r '
+                    .[] | "  - user: \"" + (.user // "") + "\"\n    text: \"" + ((.text // "") | gsub("\n"; "\\n") | gsub("\""; "\\\"")) + "\"\n    ts: \"" + (.ts // "") + "\""
+                ' 2>/dev/null || true)
+            fi
+
             local body_yaml
-            body_yaml="event_type: \"${safe_event_type}\"
+            if [[ -n "$thread_context" ]]; then
+                body_yaml="event_type: \"${safe_event_type}\"
 channel_id: \"${safe_channel}\"
 user_id: \"${safe_user}\"
 text: \"${safe_text}\"
 thread_ts: \"${safe_thread_ts}\"
 event_ts: \"${safe_event_ts}\"
-source: \"slack_watcher\""
+source: \"slack_watcher\"
+thread_context:
+${thread_context}"
+            else
+                body_yaml="event_type: \"${safe_event_type}\"
+channel_id: \"${safe_channel}\"
+user_id: \"${safe_user}\"
+text: \"${safe_text}\"
+thread_ts: \"${safe_thread_ts}\"
+event_ts: \"${safe_event_ts}\"
+source: \"slack_watcher\"
+thread_context: \"\""
+            fi
             local mime_file
             if mime_file=$(watcher_send_mime "slack_watcher" "leader" "$msg_type" "$body_yaml" "" "" "$priority"); then
                 watcher_mark_event_processed "$event_type" "$event_ts"
@@ -717,4 +741,116 @@ print(len(config['mention_filter']['user_ids']))
     [ "$status" -eq 0 ]
     [[ "$output" == *"Slack"* ]]
     [[ "$output" == *"使用方法"* ]]
+}
+
+# =============================================================================
+# 10. thread_context テスト
+# =============================================================================
+
+@test "process_spool_events: thread_messages 含む JSON → thread_context が MIME body に含まれる" {
+    _define_slack_functions
+    watcher_init "slack_watcher" "$IGNITE_CONFIG_DIR/slack-watcher.yaml"
+
+    # thread_messages を含む JSON を配置
+    cat > "$SLACK_SPOOL_DIR/slack_event_3333333333_000001.json" <<'JSON'
+{
+    "event_type": "app_mention",
+    "channel_id": "C01ABC123",
+    "user_id": "U01XYZ789",
+    "text": "@bot implement this",
+    "thread_ts": "3333333333.000000",
+    "event_ts": "3333333333.000001",
+    "ts": "3333333333.000001",
+    "thread_messages": [
+        {"user": "U01AAA", "text": "Original message", "ts": "3333333333.000000"},
+        {"user": "U01BBB", "text": "Reply message", "ts": "3333333333.000001"}
+    ]
+}
+JSON
+
+    local captured_body=""
+    watcher_send_mime() {
+        local from="$1" to="$2" msg_type="$3" body_yaml="$4"
+        captured_body="$body_yaml"
+        local mime_file="$IGNITE_RUNTIME_DIR/queue/${to}/${from}_${msg_type}_test.mime"
+        echo "$body_yaml" > "$mime_file"
+        echo "$mime_file"
+    }
+
+    run process_spool_events
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+
+    # MIME ファイルの内容に thread_context が含まれることを確認
+    local mime_content
+    mime_content=$(cat "$IGNITE_RUNTIME_DIR/queue/leader/slack_watcher_slack_task_test.mime")
+    [[ "$mime_content" == *"thread_context:"* ]]
+    [[ "$mime_content" == *"Original message"* ]]
+    [[ "$mime_content" == *"Reply message"* ]]
+}
+
+@test "process_spool_events: thread_messages が空の場合 thread_context は空文字" {
+    _define_slack_functions
+    watcher_init "slack_watcher" "$IGNITE_CONFIG_DIR/slack-watcher.yaml"
+
+    cat > "$SLACK_SPOOL_DIR/slack_event_4444444444_000001.json" <<'JSON'
+{
+    "event_type": "app_mention",
+    "channel_id": "C01ABC123",
+    "user_id": "U01XYZ789",
+    "text": "@bot hello",
+    "thread_ts": "",
+    "event_ts": "4444444444.000001",
+    "ts": "4444444444.000001",
+    "thread_messages": []
+}
+JSON
+
+    watcher_send_mime() {
+        local from="$1" to="$2" msg_type="$3" body_yaml="$4"
+        local mime_file="$IGNITE_RUNTIME_DIR/queue/${to}/${from}_${msg_type}_test.mime"
+        echo "$body_yaml" > "$mime_file"
+        echo "$mime_file"
+    }
+
+    run process_spool_events
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+
+    local mime_content
+    mime_content=$(cat "$IGNITE_RUNTIME_DIR/queue/leader/slack_watcher_slack_event_test.mime")
+    [[ "$mime_content" == *'thread_context: ""'* ]]
+}
+
+@test "process_spool_events: thread_messages フィールドなしの場合 thread_context は空文字" {
+    _define_slack_functions
+    watcher_init "slack_watcher" "$IGNITE_CONFIG_DIR/slack-watcher.yaml"
+
+    # thread_messages フィールドが存在しない JSON（既存の spool 互換性）
+    cat > "$SLACK_SPOOL_DIR/slack_event_5555555555_000001.json" <<'JSON'
+{
+    "event_type": "app_mention",
+    "channel_id": "C01ABC123",
+    "user_id": "U01XYZ789",
+    "text": "@bot hello",
+    "thread_ts": "",
+    "event_ts": "5555555555.000001",
+    "ts": "5555555555.000001"
+}
+JSON
+
+    watcher_send_mime() {
+        local from="$1" to="$2" msg_type="$3" body_yaml="$4"
+        local mime_file="$IGNITE_RUNTIME_DIR/queue/${to}/${from}_${msg_type}_test.mime"
+        echo "$body_yaml" > "$mime_file"
+        echo "$mime_file"
+    }
+
+    run process_spool_events
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+
+    local mime_content
+    mime_content=$(cat "$IGNITE_RUNTIME_DIR/queue/leader/slack_watcher_slack_event_test.mime")
+    [[ "$mime_content" == *'thread_context: ""'* ]]
 }

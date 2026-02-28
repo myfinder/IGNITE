@@ -105,12 +105,12 @@ Configuration options:
 | `interval` | `5` | Spool check interval (seconds) |
 | `events.app_mention` | `true` | Monitor @mention events (for Bot Token) |
 | `events.channel_message` | `false` | Monitor channel messages |
-| `mention_filter.enabled` | `false` | Enable mention filter (for User Token) |
-| `mention_filter.user_ids` | `[]` | Slack User IDs to filter mentions for |
+| `mention_filter.enabled` | `false` | **Whose mentions to process** (mention target filter, for User Token) |
+| `mention_filter.user_ids` | `[]` | Slack User IDs to detect as mention targets (messages mentioning these IDs are processed, regardless of sender) |
 | `triggers.task_keywords` | (list) | Keywords that trigger `slack_task` |
-| `access_control.enabled` | `false` | Enable access control |
-| `access_control.allowed_users` | `[]` | Allowed Slack user IDs |
-| `access_control.allowed_channels` | `[]` | Allowed Slack channel IDs |
+| `access_control.enabled` | `false` | **Whose messages to process** (sender filter) |
+| `access_control.allowed_users` | `[]` | Restrict by message sender's Slack User ID |
+| `access_control.allowed_channels` | `[]` | Restrict by Slack channel ID |
 
 ### 4. Register in watchers.yaml
 
@@ -178,6 +178,66 @@ payload:
   source: "slack_watcher"
 ```
 
+## Response Feature
+
+Slack Watcher allows the Leader (LLM) to evaluate incoming messages and post replies to Slack threads.
+
+### Thread Context Retrieval
+
+Automatically fetches conversation history when a mention is detected:
+
+- If `thread_ts` is present: Fetches up to 50 messages via `conversations.replies`
+- If `thread_ts` is absent (standalone mention): Skips thread retrieval, passes text alone to Leader
+- Retrieved conversation history is included as `thread_context` field in the MIME body
+
+### Posting to Slack
+
+Use `post_to_slack.sh` to post replies to threads:
+
+```bash
+# Direct message posting
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --body "Response content"
+
+# Using templates
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template acknowledge
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template success --context "Result details"
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template error --context "Error details"
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --template progress --context "50% complete"
+
+# Read body from file
+./scripts/utils/post_to_slack.sh --channel C01ABC --thread-ts 1234.5678 --body-file /tmp/resp.txt
+```
+
+Template types:
+
+| Type | Use Case |
+|------|----------|
+| `acknowledge` | Task receipt acknowledgment |
+| `success` | Completion notification |
+| `error` | Error notification |
+| `progress` | Progress report |
+
+### Response Flow
+
+```
+[Receive]
+Slack mention → slack_watcher.py
+  ├─ thread_ts present → Fetch full thread via conversations.replies(limit=50)
+  ├─ thread_ts absent → Skip (text only)
+  └─ Write spool JSON including thread_messages[]
+
+[MIME Construction]
+slack_watcher.sh
+  └─ spool JSON → Convert thread_context to YAML → Include in MIME body → Leader queue
+
+[Decision & Response]
+Leader (LLM)
+  ├─ Understand context from thread_context + text
+  ├─ Determine if response is needed
+  ├─ Needed → Post reply to thread via post_to_slack.sh
+  └─ Not needed → Log only (no Slack posting)
+```
+
 ## Task Keywords
 
 When the following keywords are found in text, the message is sent as `slack_task` to the Leader:
@@ -242,6 +302,67 @@ tail -f .ignite/logs/slack_watcher.log
 # Heartbeat check
 cat .ignite/state/slack_watcher_heartbeat.json
 ```
+
+## Knowledge Base and Skill Customization
+
+You can enhance the Leader's ability to answer Slack questions by placing knowledge base files and scripts in the workspace. These do not need to be part of the IGNITE repository — placing them in the workspace is sufficient.
+
+### Knowledge Base (Static Knowledge)
+
+Place `CLAUDE.md` (or `AGENTS.md`) and a `knowledge/` directory in the workspace to enable the Leader to answer domain-specific questions.
+
+```
+workspace/
+├── CLAUDE.md              # Knowledge routing definitions
+├── AGENTS.md              # Symlink to CLAUDE.md (for OpenCode/Codex)
+└── knowledge/
+    ├── product-a.md       # Product A specification docs
+    └── product-b.md       # Product B specification docs
+```
+
+**CLAUDE.md example:**
+```markdown
+# Workspace Knowledge Base
+
+## Knowledge Base Index
+
+| Topic | File | Keywords |
+|-------|------|----------|
+| Product A | `knowledge/product-a.md` | product-a, login, API |
+| Product B | `knowledge/product-b.md` | product-b, config, deploy |
+
+## Response Rules
+
+1. If the question matches keywords, read the relevant knowledge file and answer
+2. If no relevant information exists, honestly reply "No information found in the knowledge base"
+3. Keep responses concise, formatted in Slack mrkdwn
+```
+
+- No system restart is required when updating or adding knowledge files (per-message pattern ensures the latest content is loaded on the next message processing)
+- Creating `AGENTS.md` as a symlink to `CLAUDE.md` ensures the same knowledge base is referenced regardless of CLI provider
+
+### Skills (Dynamic Information Retrieval Scripts)
+
+When static knowledge is insufficient, you can place scripts in the workspace that the Leader can execute to fetch information from external APIs.
+
+```
+workspace/
+├── CLAUDE.md
+├── knowledge/
+└── scripts/
+    └── search_github_docs.sh   # Search docs from GitHub repositories
+```
+
+**Example: Script to search GitHub repository documentation**
+
+Uses `GITHUB_TOKEN` (PAT) from `.env` to call the GitHub REST API via `curl`, searching for documentation and issues in a repository.
+
+```bash
+# Usage example
+./scripts/search_github_docs.sh --repo owner/repo --query "login method"
+```
+
+By documenting the script's existence and usage in CLAUDE.md, the Leader will autonomously execute it when needed and use the retrieved information to answer on Slack.
 
 ## Related Documentation
 
