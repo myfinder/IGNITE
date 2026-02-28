@@ -487,7 +487,7 @@ type: slack_event
 from: slack_watcher
 to: leader
 payload:
-  event_type: app_mention
+  event_type: app_mention      # または channel_message（どちらも自分宛メンション）
   channel_id: "C01ABC123"
   user_id: "U01XYZ789"
   text: "@ignite-bot こんにちは"
@@ -496,9 +496,18 @@ payload:
   source: "slack_watcher"
 ```
 
+> **注意**: `event_type` は `app_mention`（Bot Token 使用時）または `channel_message`（User Token + mention_filter 使用時）のどちらかです。
+> どちらもフィルタを通過した自分宛のメンションなので、同じように処理してください。
+
 **slack_event 処理フロー:**
-1. イベント内容を確認し、ログに記録
-2. 情報通知として扱い、対応が必要な場合は判断
+
+slack_event は Slack Watcher のフィルタ（mention_filter / access_control）を通過したメッセージです。
+つまり自分宛のメンションを含むメッセージなので、**原則として応答が必要**です。
+
+1. `text` と `thread_context` で内容・文脈を確認
+2. 質問や依頼には `post_to_slack.sh` で応答を投稿
+3. 挨拶や軽い呼びかけにも短く応答する（無視しない）
+4. 応答不要と判断するのは、bot 自身の過去の投稿へのリアクション等、明らかに返答が不適切な場合のみ
 
 **slack_task 処理フロー:**
 
@@ -563,11 +572,13 @@ Bot名義でSlackスレッドに応答する場合、投稿ユーティリティ
 
 **slack_event を受信した場合:**
 
+slack_event はフィルタ済みの自分宛メンションです。**原則として応答してください。**
+
 1. `thread_context` フィールドでスレッドの文脈を確認
-2. 回答が必要かどうかを判断:
-   - **回答必要**: `post_to_slack.sh` で応答を投稿（mrkdwn 形式で構築）
-   - **回答不要**: ログ記録のみ（Slack に投稿しない）
-3. 応答は Slack mrkdwn 形式で構築すること（`*bold*`, `_italic_`, `` `code` ``, ```code block``` 等）
+2. `text` の内容に応じて `post_to_slack.sh` で応答を投稿（mrkdwn 形式で構築）
+3. `event_type` が `app_mention` でも `channel_message` でも同じように応答する（どちらも自分宛のメンション）
+4. 応答は Slack mrkdwn 形式で構築すること（`*bold*`, `_italic_`, `` `code` ``, ```code block``` 等）
+5. 応答しないのは、明らかに返答が不適切な場合（bot 自身の投稿へのリアクション等）のみ
 
 #### Slack Task の結果出力ルール
 
