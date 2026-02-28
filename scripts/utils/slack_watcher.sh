@@ -139,12 +139,6 @@ setup_venv() {
         return 1
     fi
 
-    # pip チェック
-    if ! python3 -m pip --version &>/dev/null; then
-        log_error "[slack_watcher] pip が見つかりません。python3-pip をインストールしてください"
-        return 1
-    fi
-
     # venv が既に存在する場合はスキップ
     if [[ -f "${SLACK_VENV_DIR}/bin/python3" ]]; then
         # requirements.txt のハッシュで変更を検出
@@ -167,9 +161,9 @@ setup_venv() {
     log_info "[slack_watcher] Python venv をセットアップ中..."
     mkdir -p "$(dirname "$SLACK_VENV_DIR")"
 
-    # venv 作成
+    # venv 作成（python3-venv が必要）
     if ! python3 -m venv "$SLACK_VENV_DIR"; then
-        log_error "[slack_watcher] venv 作成に失敗しました"
+        log_error "[slack_watcher] venv 作成に失敗しました。python3-venv をインストールしてください: sudo apt install python3-venv"
         return 1
     fi
 

@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash curl jq python3 git sqlite3 ca-certificates openssl gnupg \
+    bash curl jq python3 python3-venv git sqlite3 ca-certificates openssl gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 22 (Claude Code は Node 18+ 必須、Codex CLI は Node 22+ 必須)
