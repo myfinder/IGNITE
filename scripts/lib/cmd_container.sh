@@ -72,23 +72,29 @@ cmd_build_image() {
 
     local runtime="${_ISOLATION_RUNTIME:-podman}"
 
+    # system.yaml の isolation.image からイメージ名を取得（:tag 部分を除去）
+    local configured_image
+    configured_image="$(get_config isolation image 'ignite-agent:latest')"
+    local image_name="${configured_image%%:*}"
+
     print_header "コンテナイメージビルド"
     print_info "Containerfile: $containerfile"
     print_info "CLI Provider: $cli_provider"
+    print_info "イメージ名: $image_name"
     print_info "Workspace: ${WORKSPACE_DIR:-N/A}"
     print_info "バージョン: v${version}"
     echo ""
 
     "$runtime" build \
         --build-arg "CLI_PROVIDER=$cli_provider" \
-        -t "ignite-agent:v${version}" \
-        -t "ignite-agent:latest" \
+        -t "${image_name}:v${version}" \
+        -t "${image_name}:latest" \
         -f "$containerfile" \
         "$(dirname "$containerfile")"
 
     local rc=$?
     if [[ $rc -eq 0 ]]; then
-        print_success "イメージビルド完了: ignite-agent:v${version} / ignite-agent:latest"
+        print_success "イメージビルド完了: ${image_name}:v${version} / ${image_name}:latest"
     else
         print_error "イメージビルドに失敗しました (rc=$rc)"
         return 1
