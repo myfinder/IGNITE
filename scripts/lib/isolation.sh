@@ -85,25 +85,39 @@ isolation_get_container_name() {
 }
 
 # =============================================================================
-# _isolation_copy_claude_config - ~/.claude/ と ~/.claude.json をコンテナ内にコピー
+# _isolation_copy_cli_config - CLI 設定ファイルをコンテナ内にコピー
 # バインドマウントの代わりにコピーすることで、複数コンテナ間の書き込み競合を防止
+# 対象: ~/.claude/, ~/.claude.json, ~/.anthropic/, ~/.config/opencode/, ~/.codex/
 # =============================================================================
-_isolation_copy_claude_config() {
+_isolation_copy_cli_config() {
     local container_name="$1"
 
-    # ~/.claude/ ディレクトリをコピー
-    if [[ -d "${HOME}/.claude" ]]; then
-        "$_ISOLATION_RUNTIME" cp "${HOME}/.claude" "${container_name}:${HOME}/.claude" 2>/dev/null || {
-            log_warn "Failed to copy ~/.claude/ into container"
-        }
-    fi
+    # コピー対象ディレクトリ
+    local _copy_dirs=(
+        "${HOME}/.claude"
+        "${HOME}/.anthropic"
+        "${HOME}/.config/opencode"
+        "${HOME}/.codex"
+    )
+    for _dir in "${_copy_dirs[@]}"; do
+        if [[ -d "$_dir" ]]; then
+            "$_ISOLATION_RUNTIME" cp "$_dir" "${container_name}:${_dir}" 2>/dev/null || {
+                log_warn "Failed to copy ${_dir}/ into container"
+            }
+        fi
+    done
 
-    # ~/.claude.json ファイルをコピー
-    if [[ -f "${HOME}/.claude.json" ]]; then
-        "$_ISOLATION_RUNTIME" cp "${HOME}/.claude.json" "${container_name}:${HOME}/.claude.json" 2>/dev/null || {
-            log_warn "Failed to copy ~/.claude.json into container"
-        }
-    fi
+    # コピー対象ファイル
+    local _copy_files=(
+        "${HOME}/.claude.json"
+    )
+    for _file in "${_copy_files[@]}"; do
+        if [[ -f "$_file" ]]; then
+            "$_ISOLATION_RUNTIME" cp "$_file" "${container_name}:${_file}" 2>/dev/null || {
+                log_warn "Failed to copy ${_file} into container"
+            }
+        fi
+    done
 }
 
 # =============================================================================
@@ -145,11 +159,9 @@ isolation_start_container() {
     # オプショナルマウント: 存在する場合のみ追加
     local _opt_mounts_ro=(
         "${IGNITE_SCRIPTS_DIR}:${IGNITE_SCRIPTS_DIR}"
-        "${HOME}/.anthropic:${HOME}/.anthropic"
-        "${HOME}/.config/opencode:${HOME}/.config/opencode"
     )
-    # 注意: ~/.claude/ と ~/.claude.json はバインドマウントしない（Issue #354）
-    # 複数コンテナが同一ファイルを同時に読み書きすると JSON 破損が発生するため、
+    # CLI 設定・認証ディレクトリはバインドマウントしない（Issue #354）
+    # 複数コンテナが同一ファイルを同時に読み書きすると破損が発生するため、
     # コンテナ起動後に podman cp でコピーする（書き込み競合の構造的解消）
     for _mount in "${_opt_mounts_ro[@]}"; do
         local _src="${_mount%%:*}"
@@ -177,9 +189,9 @@ isolation_start_container() {
 
     echo "$container_name" > "${runtime_dir}/state/container_name"
 
-    # ~/.claude/ と ~/.claude.json をコンテナ内にコピー（バインドマウントの代替）
+    # CLI 設定・認証ファイルをコンテナ内にコピー（バインドマウントの代替）
     # 各コンテナが独立したコピーを持つことで、書き込み競合を構造的に回避する
-    _isolation_copy_claude_config "$container_name"
+    _isolation_copy_cli_config "$container_name"
 
     log_info "Isolation container started: $container_name"
 }
