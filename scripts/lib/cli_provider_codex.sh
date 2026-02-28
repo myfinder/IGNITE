@@ -132,7 +132,7 @@ cli_start_agent_server() {
 
         (
             isolation_exec_with_env "${exec_env_args[@]}" -- bash -c \
-                "cd \"\$_WORK_DIR\" && cat \"\$_MSG_FILE\" | codex exec --json --full-auto -" \
+                "cd \"\$_WORK_DIR\" && cat \"\$_MSG_FILE\" | codex exec --json --full-auto --skip-git-repo-check -" \
                 > "$response_file" 2>> "$log_file"
             rm -f "$msg_file"
         ) &
@@ -142,7 +142,7 @@ cli_start_agent_server() {
             ${extra_env:+eval "$extra_env"}
             WORKSPACE_DIR="$workspace_dir" \
             IGNITE_RUNTIME_DIR="$runtime_dir" \
-            echo "$init_msg" | codex exec --json --full-auto - \
+            echo "$init_msg" | codex exec --json --full-auto --skip-git-repo-check - \
                 > "$response_file" 2>> "$log_file"
         ) &
     fi
@@ -230,7 +230,7 @@ cli_send_message() {
                 -e "_WORK_DIR=$workspace_dir" \
                 -e "_SESSION_ID=$session_id" \
                 -- bash -c \
-                "cd \"\$_WORK_DIR\" && codex exec resume --json --full-auto \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
+                "cd \"\$_WORK_DIR\" && codex exec resume --json --full-auto --skip-git-repo-check \"\$_SESSION_ID\" \"\$(cat \"\$_MSG_FILE\")\"" \
                 2>> "$log_file"
         )
         local rc=$?
@@ -238,7 +238,7 @@ cli_send_message() {
     else
         response=$(
             cd "$workspace_dir" || exit 1
-            codex exec resume --json --full-auto "$session_id" "$message" 2>> "$log_file"
+            codex exec resume --json --full-auto --skip-git-repo-check "$session_id" "$message" 2>> "$log_file"
         )
         local rc=$?
     fi
