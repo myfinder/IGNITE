@@ -92,7 +92,7 @@ clean_dist() {
 prepare_directories() {
     print_header "ディレクトリ準備"
 
-    mkdir -p "$BUILD_DIR"/{bin,config,share/instructions,share/characters,share/scripts/utils,share/scripts/lib,share/templates/systemd}
+    mkdir -p "$BUILD_DIR"/{bin,config,share/instructions,share/characters,share/scripts/utils,share/scripts/lib,share/templates/systemd,share/containers}
     print_success "ビルドディレクトリを作成しました: $BUILD_DIR"
 }
 
@@ -206,6 +206,20 @@ copy_templates() {
         print_success "$count 個のテンプレートファイルをコピーしました"
     else
         print_warning "templates/systemd ディレクトリが見つかりません"
+    fi
+}
+
+copy_containers() {
+    print_header "コンテナファイルのコピー"
+
+    local containers_dir="$PROJECT_ROOT/containers"
+    if [[ -d "$containers_dir" ]]; then
+        cp "$containers_dir"/* "$BUILD_DIR/share/containers/"
+        local count
+        count=$(ls -1 "$BUILD_DIR/share/containers"/* 2>/dev/null | wc -l)
+        print_success "$count 個のコンテナファイルをコピーしました"
+    else
+        print_warning "containers ディレクトリが見つかりません"
     fi
 }
 
@@ -369,6 +383,8 @@ main() {
     copy_characters
     echo ""
     copy_templates
+    echo ""
+    copy_containers
     echo ""
     copy_utils
     echo ""
