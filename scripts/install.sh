@@ -224,13 +224,10 @@ install_config() {
             continue
         fi
 
-        # 既存設定は保持（--upgrade でも --force 以外はスキップ）
-        if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]]; then
-            if [[ "$UPGRADE" == "true" ]]; then
-                print_info "$filename は既に存在します (設定を保持)"
-            else
-                print_info "$filename は既に存在します (スキップ)"
-            fi
+        # --upgrade 時はテンプレート設定を常に上書き（新キー追加のため）
+        # ユーザーのカスタマイズはワークスペース .ignite/system.yaml にあるため安全
+        if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]] && [[ "$UPGRADE" != "true" ]]; then
+            print_info "$filename は既に存在します (スキップ)"
         else
             cp "$file" "$dest"
             print_success "$filename をインストールしました"
