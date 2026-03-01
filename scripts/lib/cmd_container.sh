@@ -24,8 +24,11 @@ _resolve_containerfile() {
     fi
 
     # 2. system.yaml の isolation.containerfile
+    # get_config は awk -F': ' で分割するためパス中の ": " で壊れる。
+    # containerfile は任意パスを取るため専用パーサーで取得する。
     local configured
-    configured="$(get_config isolation containerfile '')"
+    configured="$(sed -n '/^isolation:/,/^[^ ]/p' "${IGNITE_CONFIG_DIR}/system.yaml" 2>/dev/null \
+        | sed -n 's/^  containerfile: *//p' | sed 's/ *#.*//' | tr -d '"' | tr -d "'" | head -n1)"
     if [[ -n "$configured" ]]; then
         if [[ ! "$configured" = /* ]]; then
             configured="${WORKSPACE_DIR:-$(pwd)}/$configured"
@@ -62,6 +65,8 @@ _resolve_containerfile() {
 # cmd_build_image - エージェント用コンテナイメージをビルド
 # Usage: ignite build-image -w <workspace_dir> [-f <containerfile>]
 # cmd_start 経由の自動ビルドでは _BUILD_IMAGE_INTERNAL=1 で呼ばれる（-w 不要）。
+# 注意: _BUILD_IMAGE_INTERNAL=1 時は CLI -f オプションは使用不可。
+#       system.yaml / .ignite/containers/ 経由でカスタム Containerfile を指定すること。
 # =============================================================================
 cmd_build_image() {
     local _internal="${_BUILD_IMAGE_INTERNAL:-}"
@@ -140,7 +145,11 @@ cmd_build_image() {
     local configured_image
     configured_image="$(get_config isolation image 'ignite-agent:latest')"
     local image_name="${configured_image%%:*}"
-    local configured_tag="${configured_image#*:}"
+    # タグ抽出: "name:tag" → "tag"、"name" (タグなし) → ""
+    local configured_tag=""
+    if [[ "$configured_image" == *:* ]]; then
+        configured_tag="${configured_image#*:}"
+    fi
 
     # ビルドコンテキスト: カスタム→ワークスペースルート、デフォルト→Containerfile のディレクトリ
     local build_context
@@ -160,22 +169,32 @@ cmd_build_image() {
     print_info "バージョン: v${version}"
     echo ""
 
-    # タグリスト: v${version} + latest + (設定タグが異なる場合)
+    # タグリスト: v${version} + latest + (設定タグが latest 以外の場合はそれも付与)
     local -a tag_args=( -t "${image_name}:v${version}" -t "${image_name}:latest" )
-    if [[ -n "$configured_tag" ]] && [[ "$configured_tag" != "latest" ]] && [[ "$configured_tag" != "$configured_image" ]]; then
+    if [[ -n "$configured_tag" ]] && [[ "$configured_tag" != "latest" ]]; then
         tag_args+=( -t "${image_name}:${configured_tag}" )
+    fi
+
+    # カスタム時は .ignite/.containerignore を --ignorefile で指定
+    local -a ignorefile_args=()
+    if [[ "$is_custom" == true ]]; then
+        local _ignorefile="${IGNITE_CONFIG_DIR}/.containerignore"
+        if [[ -f "$_ignorefile" ]]; then
+            ignorefile_args=( --ignorefile "$_ignorefile" )
+        fi
     fi
 
     "$runtime" build \
         --build-arg "CLI_PROVIDER=$cli_provider" \
         "${tag_args[@]}" \
+        "${ignorefile_args[@]}" \
         -f "$containerfile" \
         "$build_context"
 
     local rc=$?
     if [[ $rc -eq 0 ]]; then
         local tag_msg="${image_name}:v${version} / ${image_name}:latest"
-        if [[ -n "$configured_tag" ]] && [[ "$configured_tag" != "latest" ]] && [[ "$configured_tag" != "$configured_image" ]]; then
+        if [[ -n "$configured_tag" ]] && [[ "$configured_tag" != "latest" ]]; then
             tag_msg="${tag_msg} / ${image_name}:${configured_tag}"
         fi
         print_success "イメージビルド完了: ${tag_msg}"

@@ -35,13 +35,14 @@ EOF
     export WORKSPACE_DIR="$TEST_TEMP_DIR/workspace"
     mkdir -p "$WORKSPACE_DIR"
 
-    # IGNITE_DATA_DIR / SCRIPT_DIR はデフォルトで存在しない場所にする
-    export IGNITE_DATA_DIR="$TEST_TEMP_DIR/data_dir"
-    mkdir -p "$IGNITE_DATA_DIR"
-
-    # core.sh を source
+    # core.sh を source（IGNITE_DATA_DIR は core.sh 内で PROJECT_ROOT に上書きされる）
     source "$SCRIPTS_DIR/lib/core.sh"
     source "$SCRIPTS_DIR/lib/cmd_container.sh"
+
+    # core.sh source 後に IGNITE_DATA_DIR を一時ディレクトリに上書き
+    # (プロジェクト本体の containers/ を汚染しないため)
+    IGNITE_DATA_DIR="$TEST_TEMP_DIR/data_dir"
+    mkdir -p "$IGNITE_DATA_DIR"
 }
 
 teardown() {
@@ -232,4 +233,80 @@ EOF
     run _resolve_containerfile
     [ "$status" -eq 0 ]
     [ "$output" = "$IGNITE_CONFIG_DIR/containers/Containerfile.agent" ]
+}
+
+# =============================================================================
+# _resolve_containerfile - 専用パーサー（P2: スペース含むパス）
+# =============================================================================
+
+@test "_resolve_containerfile: system.yaml containerfile にスペース含むパスを解決できる" {
+    local cf="$WORKSPACE_DIR/my dir/Containerfile"
+    mkdir -p "$(dirname "$cf")"
+    echo "FROM ubuntu" > "$cf"
+
+    cat > "$IGNITE_CONFIG_DIR/system.yaml" <<EOF
+cli:
+  provider: claude
+isolation:
+  enabled: true
+  image: ignite-agent:latest
+  containerfile: "my dir/Containerfile"
+EOF
+
+    run _resolve_containerfile
+    [ "$status" -eq 0 ]
+    [ "$output" = "$WORKSPACE_DIR/my dir/Containerfile" ]
+}
+
+# =============================================================================
+# cmd_build_image - オプション解析テスト（P5: 統合テスト）
+# =============================================================================
+
+@test "cmd_build_image: -f オプションが解析される" {
+    # cmd_build_image は -w 必須。未初期化で早期エラーになることを確認
+    run cmd_build_image -w "$TEST_TEMP_DIR/nonexist" -f "/some/Containerfile"
+    [ "$status" -eq 1 ]
+    # -w チェックでエラー（.ignite/ がない）
+    [[ "$output" == *"初期化されていません"* ]]
+}
+
+@test "cmd_build_image: --help で -f オプションが表示される" {
+    run cmd_build_image --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--containerfile"* ]]
+    [[ "$output" == *"-f"* ]]
+}
+
+@test "cmd_build_image: 不正なオプションでエラー" {
+    run cmd_build_image --invalid-opt
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"不正なオプション"* ]]
+}
+
+# =============================================================================
+# _init_generate_containerignore テスト（P6）
+# =============================================================================
+
+@test "cmd_init: .containerignore が生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_containerignore"
+    mkdir -p "$target"
+
+    cmd_init --minimal -w "$target"
+    [ -f "$target/.ignite/.containerignore" ]
+    # 主要パターンが含まれていること
+    grep -q ".ignite/queue/" "$target/.ignite/.containerignore"
+    grep -q ".git/" "$target/.ignite/.containerignore"
+    grep -q "node_modules/" "$target/.ignite/.containerignore"
+}
+
+@test "cmd_init --force: .containerignore が再生成される" {
+    source "$SCRIPTS_DIR/lib/cmd_init.sh"
+    local target="$TEST_TEMP_DIR/init_containerignore_force"
+    mkdir -p "$target/.ignite"
+    echo "old-content" > "$target/.ignite/.containerignore"
+
+    cmd_init --force --minimal -w "$target"
+    [ -f "$target/.ignite/.containerignore" ]
+    ! grep -q "old-content" "$target/.ignite/.containerignore"
 }

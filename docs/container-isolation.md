@@ -173,6 +173,17 @@ sudo loginctl enable-linger $(id -u)
 
 カスタム時はワークスペースのファイルを `COPY` できますが、ビルドコンテキストの肥大化を防ぐため
 `.ignite/.containerignore` が自動生成されます（`ignite init` 時）。
+ビルド時には `--ignorefile .ignite/.containerignore` が自動付与されます。
+
+#### `.containerignore` のカスタマイズ
+
+`.ignite/.containerignore` は手動で編集可能です。独自のパターンを追加してください。
+`ignite init --update=apply` では差分ファイルとして検出されますが、`--update=force` を使わない限り上書きされません。
+
+#### `ignite start` 経由の自動ビルド
+
+`ignite start` の自動ビルドでは CLI `-f` オプションは使用できません。
+`system.yaml` の `isolation.containerfile` または `.ignite/containers/Containerfile.agent` で指定してください。
 
 ## マウント設計
 

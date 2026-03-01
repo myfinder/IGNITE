@@ -173,6 +173,17 @@ You can use a custom Containerfile to include additional packages or tools in th
 
 With custom Containerfiles, workspace files can be `COPY`'d into the image, but to prevent
 build context bloat, `.ignite/.containerignore` is auto-generated during `ignite init`.
+The `--ignorefile .ignite/.containerignore` flag is automatically passed during build.
+
+#### Customizing `.containerignore`
+
+`.ignite/.containerignore` can be manually edited. Add your own patterns as needed.
+`ignite init --update=apply` detects it as a changed file but won't overwrite it unless `--update=force` is used.
+
+#### Auto-build via `ignite start`
+
+The CLI `-f` option is not available during auto-build from `ignite start`.
+Use `isolation.containerfile` in `system.yaml` or place the file at `.ignite/containers/Containerfile.agent`.
 
 ## Mount Design
 
