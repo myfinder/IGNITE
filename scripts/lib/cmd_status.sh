@@ -203,7 +203,7 @@ cmd_status() {
     if isolation_is_enabled 2>/dev/null; then
         print_header "コンテナ隔離"
         local _container_info
-        _container_info="$(isolation_get_container_info 2>/dev/null)"
+        _container_info="$(isolation_get_container_info 2>/dev/null)" || true
         if [[ "$_container_info" != "none" ]] && [[ -n "$_container_info" ]]; then
             local _c_name _c_status _c_image _c_started
             IFS='|' read -r _c_name _c_status _c_image _c_started <<< "$_container_info"
