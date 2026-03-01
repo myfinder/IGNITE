@@ -240,6 +240,13 @@ def _create_app(slack_token: str, spool_dir: Path, config: dict) -> App:
                 event_data["channel_id"],
             )
             _write_spool(spool_dir, event_data)
+    else:
+        # channel_message: false でも Slack はメッセージイベントを送信する。
+        # ハンドラ未登録だと Bolt が "Unhandled request" 警告を出すため、
+        # 空ハンドラを登録して抑制する。
+        @app.event("message")
+        def handle_message_noop(event: dict) -> None:
+            pass
 
     return app
 
