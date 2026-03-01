@@ -130,6 +130,50 @@ sudo loginctl enable-linger $(id -u)
 - CLI ツール（cli.provider に応じて claude / opencode / codex）
 - **意図的に含まないもの**: `gh` CLI, `ssh` クライアント
 
+### カスタム Containerfile
+
+追加パッケージや独自ツールを含むカスタムイメージを使用できます。
+
+#### 指定方法（3つ）
+
+1. **`system.yaml` で指定** — チームで共有する場合に推奨
+
+    ```yaml
+    isolation:
+      containerfile: "Containerfile.custom"   # 相対パスはワークスペースルート基準
+    ```
+
+2. **`.ignite/containers/Containerfile.agent` に配置** — ワークスペースローカル
+
+    ```bash
+    mkdir -p .ignite/containers
+    cp /path/to/my/Containerfile .ignite/containers/Containerfile.agent
+    ```
+
+3. **`-f` オプションで直接指定** — 一時的なテスト用
+
+    ```bash
+    ./scripts/ignite build-image -w . -f /path/to/Containerfile.custom
+    ```
+
+#### 検索順序
+
+| 優先度 | ソース | 種別 |
+|--------|--------|------|
+| 1 | CLI `-f` 指定 | カスタム |
+| 2 | `system.yaml` の `isolation.containerfile` | カスタム |
+| 3 | `.ignite/containers/Containerfile.agent` | カスタム |
+| 4 | `${IGNITE_DATA_DIR}/containers/Containerfile.agent`（インストール先） | デフォルト |
+| 5 | `${SCRIPT_DIR}/../containers/Containerfile.agent`（開発時） | デフォルト |
+
+#### ビルドコンテキストの違い
+
+- **カスタム Containerfile**（優先度 1-3）: ビルドコンテキストは `${WORKSPACE_DIR}`（ワークスペースルート）
+- **デフォルト Containerfile**（優先度 4-5）: ビルドコンテキストは Containerfile のあるディレクトリ
+
+カスタム時はワークスペースのファイルを `COPY` できますが、ビルドコンテキストの肥大化を防ぐため
+`.ignite/.containerignore` が自動生成されます（`ignite init` 時）。
+
 ## マウント設計
 
 | マウント先 | モード | 理由 |

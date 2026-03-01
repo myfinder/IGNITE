@@ -214,6 +214,19 @@ cmd_status() {
         else
             echo -e "${RED}コンテナ: 未起動${NC}"
         fi
+
+        # Containerfile パス表示
+        source "${LIB_DIR}/cmd_container.sh"
+        local _cf _cf_rc=0
+        _cf="$(_resolve_containerfile 2>/dev/null)" || _cf_rc=$?
+        if [[ $_cf_rc -eq 0 ]]; then
+            echo -e "${BLUE}Containerfile:${NC} $_cf (カスタム)"
+        elif [[ $_cf_rc -eq 1 ]]; then
+            echo -e "${BLUE}Containerfile:${NC} $_cf"
+        else
+            print_warning "Containerfile が見つかりません"
+        fi
+
         echo ""
     else
         echo -e "${YELLOW}コンテナ隔離: 無効${NC}"
