@@ -130,6 +130,61 @@ On the first `ignite start`, if the image doesn't exist, it will be built automa
 - CLI tools (claude / opencode / codex depending on cli.provider)
 - **Intentionally excluded**: `gh` CLI, `ssh` client
 
+### Custom Containerfile
+
+You can use a custom Containerfile to include additional packages or tools in the agent image.
+
+#### Configuration Methods (3 ways)
+
+1. **Specify in `system.yaml`** — recommended for team sharing
+
+    ```yaml
+    isolation:
+      containerfile: "Containerfile.custom"   # relative paths are resolved from workspace root
+    ```
+
+2. **Place in `.ignite/containers/Containerfile.agent`** — workspace-local
+
+    ```bash
+    mkdir -p .ignite/containers
+    cp /path/to/my/Containerfile .ignite/containers/Containerfile.agent
+    ```
+
+3. **Use `-f` option** — for temporary testing
+
+    ```bash
+    ./scripts/ignite build-image -w . -f /path/to/Containerfile.custom
+    ```
+
+#### Search Order
+
+| Priority | Source | Type |
+|----------|--------|------|
+| 1 | CLI `-f` flag | Custom |
+| 2 | `system.yaml` `isolation.containerfile` | Custom |
+| 3 | `.ignite/containers/Containerfile.agent` | Custom |
+| 4 | `${IGNITE_DATA_DIR}/containers/Containerfile.agent` (installed) | Default |
+| 5 | `${SCRIPT_DIR}/../containers/Containerfile.agent` (development) | Default |
+
+#### Build Context Differences
+
+- **Custom Containerfile** (priority 1-3): Build context is `${WORKSPACE_DIR}` (workspace root)
+- **Default Containerfile** (priority 4-5): Build context is the Containerfile's parent directory
+
+With custom Containerfiles, workspace files can be `COPY`'d into the image, but to prevent
+build context bloat, `.ignite/.containerignore` is auto-generated during `ignite init`.
+The `--ignorefile .ignite/.containerignore` flag is automatically passed during build.
+
+#### Customizing `.containerignore`
+
+`.ignite/.containerignore` can be manually edited. Add your own patterns as needed.
+`ignite init --update=apply` detects it as a changed file but won't overwrite it unless `--update=force` is used.
+
+#### Auto-build via `ignite start`
+
+The CLI `-f` option is not available during auto-build from `ignite start`.
+Use `isolation.containerfile` in `system.yaml` or place the file at `.ignite/containers/Containerfile.agent`.
+
 ## Mount Design
 
 | Mount Target | Mode | Reason |

@@ -65,6 +65,7 @@ isolation:
   runtime: podman        # コンテナランタイム（現在 podman のみ対応）
   image: ignite-agent:latest  # 同一ホストで CLI が異なる複数ワークスペースを動かす場合はイメージ名を分ける
                                # 例: ignite-agent-codex:latest, ignite-agent-claude:latest
+  containerfile: ""        # カスタム Containerfile パス（空=デフォルト検索順）
   resource_memory: 8g     # コンテナメモリ上限（CLI 1プロセス約500MB × 9エージェント + OS）
   resource_cpus: 4       # コンテナ CPU 上限
 

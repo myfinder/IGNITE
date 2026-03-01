@@ -165,6 +165,10 @@ opencode_*.json
 GITIGNORE
     print_success ".ignite/.gitignore を生成しました（ランタイムデータ・秘密鍵・.env を除外）"
 
+    # .containerignore 生成（カスタム Containerfile + ワークスペースルートコンテキスト時の肥大化防止）
+    _init_generate_containerignore "$ignite_dir"
+    print_success ".ignite/.containerignore を生成しました（コンテナビルドコンテキスト制御用）"
+
     # --migrate: ~/.config/ignite/ から .ignite/ へ移行
     if [[ "$migrate" == true ]]; then
         _cmd_init_migrate "$ignite_dir"
@@ -233,6 +237,7 @@ ENVEOF
     echo "  ${target_dir}/"
     echo "  └── .ignite/"
     echo "      ├── .gitignore"
+    echo "      ├── .containerignore"
     echo "      ├── system.yaml"
     if [[ "$minimal" == false ]]; then
         echo "      ├── characters.yaml"
@@ -312,6 +317,24 @@ opencode_*.json
 GITIGNORE
 }
 
+_init_generate_containerignore() {
+    local dest_dir="$1"
+    cat > "$dest_dir/.containerignore" <<'CONTAINERIGNORE'
+# Container build context ignore (auto-generated)
+# カスタム Containerfile でワークスペースルートをビルドコンテキストにする場合に使用
+.ignite/queue/
+.ignite/logs/
+.ignite/state/
+.ignite/archive/
+.ignite/tmp/
+.ignite/repos/
+.ignite/memory.db
+.git/
+node_modules/
+*.log
+CONTAINERIGNORE
+}
+
 _init_generate_env_example() {
     local dest_dir="$1"
     cat > "$dest_dir/.env.example" <<'ENVEOF'
@@ -351,6 +374,7 @@ _init_prepare_template_dir() {
 
     mkdir -p "$dest_dir"
     _init_generate_gitignore "$dest_dir"
+    _init_generate_containerignore "$dest_dir"
 
     if [[ "$minimal" == true ]]; then
         _copy_config_template "system.yaml" "$dest_dir"
