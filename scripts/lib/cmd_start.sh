@@ -178,7 +178,8 @@ cmd_start() {
     cli_load_config
 
     # 起動並列化
-    START_PARALLEL_SLOTS="${IGNITE_START_PARALLEL_SLOTS:-0}"
+    # Default: 3 slots (validated with 9 agents; slots=0 caused timeouts. See Issue #358)
+    START_PARALLEL_SLOTS="${IGNITE_START_PARALLEL_SLOTS:-3}"
     START_PARALLEL_TIMEOUT="${IGNITE_START_PARALLEL_TIMEOUT:-180}"
 
     # .ignite/ 未検出時のエラー表示
